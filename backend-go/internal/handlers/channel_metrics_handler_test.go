@@ -46,6 +46,18 @@ func (f *fakePersistenceStore) DeleteCircuitStatesByMetricsKeys(metricsKeys []st
 }
 func (f *fakePersistenceStore) Close() error { return nil }
 
+// findBucketWithRequests 从补零后的桶序列中挑出带请求数据的桶。
+// filterBucketsByURLs 会在 [since, now] 区间补齐空桶以保持图表比例，
+// 测试只关心非零桶上的聚合结果。
+func findBucketWithRequests(buckets []metrics.AggregatedBucket) *metrics.AggregatedBucket {
+	for i := range buckets {
+		if buckets[i].TotalRequests > 0 {
+			return &buckets[i]
+		}
+	}
+	return nil
+}
+
 func TestFilterBucketsByURLsIncludesEquivalentLegacyMetricsKeys(t *testing.T) {
 	baseURL := "https://shared.example.com"
 	apiKey := "sk-a"
@@ -53,26 +65,31 @@ func TestFilterBucketsByURLsIncludesEquivalentLegacyMetricsKeys(t *testing.T) {
 	legacyKey := metrics.GenerateMetricsKey(baseURL, apiKey)
 	identityKey := metrics.GenerateMetricsIdentityKey(baseURL, apiKey, serviceType)
 
+	const intervalSec = int64(3600)
+	since := time.Now().Add(-2 * time.Hour)
+	dataTs := time.Unix((since.Unix()/intervalSec)*intervalSec+intervalSec, 0)
+
 	store := &fakePersistenceStore{
 		bucketsByMetricsKey: map[string][]metrics.AggregatedBucket{
 			legacyKey: {
-				{Timestamp: time.Unix(3600, 0), TotalRequests: 2, SuccessCount: 1},
+				{Timestamp: dataTs, TotalRequests: 2, SuccessCount: 1},
 			},
 			identityKey: {
-				{Timestamp: time.Unix(3600, 0), TotalRequests: 3, SuccessCount: 3},
+				{Timestamp: dataTs, TotalRequests: 3, SuccessCount: 3},
 			},
 		},
 	}
 
-	buckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{apiKey}, serviceType)
-	if len(buckets) != 1 {
-		t.Fatalf("buckets len = %d, want 1", len(buckets))
+	buckets := filterBucketsByURLs(store, "messages", since, intervalSec, []string{baseURL}, []string{apiKey}, serviceType)
+	hit := findBucketWithRequests(buckets)
+	if hit == nil {
+		t.Fatalf("no bucket with requests found in %+v", buckets)
 	}
-	if buckets[0].TotalRequests != 5 {
-		t.Fatalf("total requests = %d, want 5", buckets[0].TotalRequests)
+	if hit.TotalRequests != 5 {
+		t.Fatalf("total requests = %d, want 5", hit.TotalRequests)
 	}
-	if buckets[0].SuccessCount != 4 {
-		t.Fatalf("success count = %d, want 4", buckets[0].SuccessCount)
+	if hit.SuccessCount != 4 {
+		t.Fatalf("success count = %d, want 4", hit.SuccessCount)
 	}
 }
 
@@ -81,25 +98,67 @@ func TestFilterBucketsByURLsIsolatesChannelsByMetricsKey(t *testing.T) {
 	keyA := "sk-a"
 	keyB := "sk-b"
 
+	const intervalSec = int64(3600)
+	since := time.Now().Add(-2 * time.Hour)
+	dataTs := time.Unix((since.Unix()/intervalSec)*intervalSec+intervalSec, 0)
+
 	store := &fakePersistenceStore{
 		bucketsByMetricsKey: map[string][]metrics.AggregatedBucket{
 			metrics.GenerateMetricsIdentityKey(baseURL, keyA, "claude"): {
-				{Timestamp: time.Unix(3600, 0), TotalRequests: 1, SuccessCount: 1},
+				{Timestamp: dataTs, TotalRequests: 1, SuccessCount: 1},
 			},
 			metrics.GenerateMetricsIdentityKey(baseURL, keyB, "claude"): {
-				{Timestamp: time.Unix(3600, 0), TotalRequests: 2, SuccessCount: 1},
+				{Timestamp: dataTs, TotalRequests: 2, SuccessCount: 1},
 			},
 		},
 	}
 
-	channelABuckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{keyA}, "claude")
-	channelBBuckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{keyB}, "claude")
+	channelABuckets := filterBucketsByURLs(store, "messages", since, intervalSec, []string{baseURL}, []string{keyA}, "claude")
+	channelBBuckets := filterBucketsByURLs(store, "messages", since, intervalSec, []string{baseURL}, []string{keyB}, "claude")
 
-	if len(channelABuckets) != 1 || channelABuckets[0].TotalRequests != 1 {
-		t.Fatalf("channel A buckets = %+v, want only keyA data", channelABuckets)
+	hitA := findBucketWithRequests(channelABuckets)
+	if hitA == nil || hitA.TotalRequests != 1 {
+		t.Fatalf("channel A buckets = %+v, want keyA bucket with 1 request", channelABuckets)
 	}
-	if len(channelBBuckets) != 1 || channelBBuckets[0].TotalRequests != 2 {
-		t.Fatalf("channel B buckets = %+v, want only keyB data", channelBBuckets)
+	hitB := findBucketWithRequests(channelBBuckets)
+	if hitB == nil || hitB.TotalRequests != 2 {
+		t.Fatalf("channel B buckets = %+v, want keyB bucket with 2 requests", channelBBuckets)
+	}
+}
+
+func TestFilterBucketsByURLsFillsEmptyBuckets(t *testing.T) {
+	baseURL := "https://shared.example.com"
+	apiKey := "sk-a"
+	serviceType := "claude"
+
+	const intervalSec = int64(3600)
+	since := time.Now().Add(-7 * 24 * time.Hour)
+	// 仅在最近 1 小时桶放数据，模拟"渠道之前未被使用"的场景。
+	now := time.Now()
+	recentTs := time.Unix((now.Unix()/intervalSec)*intervalSec, 0)
+
+	store := &fakePersistenceStore{
+		bucketsByMetricsKey: map[string][]metrics.AggregatedBucket{
+			metrics.GenerateMetricsIdentityKey(baseURL, apiKey, serviceType): {
+				{Timestamp: recentTs, TotalRequests: 1, SuccessCount: 1},
+			},
+		},
+	}
+
+	buckets := filterBucketsByURLs(store, "messages", since, intervalSec, []string{baseURL}, []string{apiKey}, serviceType)
+
+	// 7 天 / 1 小时 ≈ 168 个桶，留少量边界容差
+	if len(buckets) < 160 {
+		t.Fatalf("buckets len = %d, want around 168 (7d/1h with zero-fill)", len(buckets))
+	}
+	if hit := findBucketWithRequests(buckets); hit == nil || hit.TotalRequests != 1 {
+		t.Fatalf("real data bucket missing or wrong: %+v", hit)
+	}
+	// 必须按时间升序
+	for i := 1; i < len(buckets); i++ {
+		if buckets[i].Timestamp.Before(buckets[i-1].Timestamp) {
+			t.Fatalf("buckets not sorted ascending at index %d", i)
+		}
 	}
 }
 

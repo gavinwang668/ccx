@@ -918,7 +918,9 @@ func parseExtendedDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// filterBucketsByURLs 按渠道的 URL 和 Key 过滤 SQLite 聚合数据
+// filterBucketsByURLs 按渠道的 URL 和 Key 过滤 SQLite 聚合数据。
+// 返回值会按 [since, now] 区间按 intervalSec 对齐补齐空桶，
+// 防止前端图表把缺失时段挤压成"只有最近数据"的失真比例。
 func filterBucketsByURLs(store metrics.PersistenceStore, apiType string, since time.Time, intervalSec int64, baseURLs []string, apiKeys []string, serviceType string) []metrics.AggregatedBucket {
 	// SQLite 里的聚合记录是按 metrics_key(baseURL + apiKey) 归属的。
 	// 因此这里必须按当前渠道的 URL+Key 组合逐个查询并汇总，
@@ -967,13 +969,40 @@ func filterBucketsByURLs(store metrics.PersistenceStore, apiType string, since t
 		}
 	}
 
-	result := make([]metrics.AggregatedBucket, 0, len(bucketMap))
-	for _, b := range bucketMap {
-		result = append(result, *b)
+	return fillEmptyBuckets(bucketMap, since, time.Now(), intervalSec)
+}
+
+// fillEmptyBuckets 按 SQL 桶对齐规则 (timestamp/intervalSec)*intervalSec
+// 在 [since, now] 区间内生成完整时间序列，缺失时段以零值桶填充。
+// 这与内存路径 GetHistoricalStatsMultiURL 的行为保持一致。
+func fillEmptyBuckets(bucketMap map[int64]*metrics.AggregatedBucket, since, now time.Time, intervalSec int64) []metrics.AggregatedBucket {
+	if intervalSec <= 0 {
+		// 异常参数：退化为只返回真实数据，避免死循环
+		result := make([]metrics.AggregatedBucket, 0, len(bucketMap))
+		for _, b := range bucketMap {
+			result = append(result, *b)
+		}
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].Timestamp.Before(result[j].Timestamp)
+		})
+		return result
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Timestamp.Before(result[j].Timestamp)
-	})
+
+	startBucket := (since.Unix() / intervalSec) * intervalSec
+	endBucket := (now.Unix() / intervalSec) * intervalSec
+
+	estimatedSize := int((endBucket-startBucket)/intervalSec) + 1
+	if estimatedSize < 0 {
+		estimatedSize = 0
+	}
+	result := make([]metrics.AggregatedBucket, 0, estimatedSize)
+	for ts := startBucket; ts <= endBucket; ts += intervalSec {
+		if b, ok := bucketMap[ts]; ok {
+			result = append(result, *b)
+		} else {
+			result = append(result, metrics.AggregatedBucket{Timestamp: time.Unix(ts, 0)})
+		}
+	}
 	return result
 }
 
