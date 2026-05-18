@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [Unreleased]
+## [v2.7.5] - 2026-05-18
 
 ### Added
 
