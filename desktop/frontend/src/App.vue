@@ -33,9 +33,12 @@ type DesktopStatus = {
 }
 
 type AgentPlatform = 'claude' | 'codex'
+type AgentProvider = 'ccx' | 'deepseek' | 'mimo'
 
 type AgentConfigStatus = {
   platform: AgentPlatform
+  provider?: string
+  targetProvider?: string
   configured: boolean
   matchesCurrentPort: boolean
   needsUpdate: boolean
@@ -47,7 +50,14 @@ type AgentConfigStatus = {
   lastError?: string
 }
 
-const activeTab = ref<'status' | 'web' | 'settings'>('status')
+type ApplyAgentConfigRequest = {
+  platform: AgentPlatform
+  provider?: AgentProvider
+  apiKey?: string
+  baseUrl?: string
+}
+
+const activeTab = ref<'status' | 'web'>('status')
 const status = ref<DesktopStatus>({
   running: false,
   starting: false,
@@ -66,6 +76,13 @@ const agentStatuses = ref<Record<AgentPlatform, AgentConfigStatus | null>>({
   claude: null,
   codex: null,
 })
+const selectedClaudeProvider = ref<AgentProvider>('ccx')
+const claudeProviderKeys = ref<Record<AgentProvider, string>>({
+  ccx: '',
+  deepseek: '',
+  mimo: '',
+})
+const claudeMiMoBaseUrl = ref('https://api.mimo.xiaomi.com/v1')
 
 let statusInterval: number | undefined
 let unsubscribeTab: (() => void) | undefined
@@ -91,6 +108,40 @@ const agentLabels: Record<AgentPlatform, string> = {
   codex: 'Codex',
 }
 
+const claudeProviderLabels: Record<AgentProvider | 'custom', string> = {
+  ccx: 'CCX',
+  deepseek: 'DeepSeek',
+  mimo: 'MiMo',
+  custom: '自定义',
+}
+
+const isClaudeProvider = (value?: string): value is AgentProvider => {
+  return value === 'ccx' || value === 'deepseek' || value === 'mimo'
+}
+
+const claudeProviderLabel = (value?: string) => {
+  if (!value) return '未识别'
+  return claudeProviderLabels[value as AgentProvider | 'custom'] || value
+}
+
+const claudeTargetBaseUrl = () => {
+  switch (selectedClaudeProvider.value) {
+    case 'ccx':
+      return agentStatuses.value.claude?.targetBaseUrl || '当前 CCX 网关'
+    case 'deepseek':
+      return 'https://api.deepseek.com/anthropic'
+    case 'mimo':
+      return claudeMiMoBaseUrl.value || 'https://api.mimo.xiaomi.com/v1'
+  }
+}
+
+const canApplyAgent = (platform: AgentPlatform) => {
+  if (configLoading.value) return false
+  if (platform === 'codex') return status.value.running
+  if (selectedClaudeProvider.value === 'ccx') return status.value.running
+  return claudeProviderKeys.value[selectedClaudeProvider.value].trim() !== ''
+}
+
 const loadAgentStatuses = async () => {
   configLoading.value = true
   try {
@@ -99,6 +150,12 @@ const loadAgentStatuses = async () => {
       GetAgentConfigStatus('codex') as Promise<AgentConfigStatus>,
     ])
     agentStatuses.value = { claude, codex }
+    if (isClaudeProvider(claude.provider)) {
+      selectedClaudeProvider.value = claude.provider
+    }
+    if (claude.provider === 'mimo' && claude.currentBaseUrl) {
+      claudeMiMoBaseUrl.value = claude.currentBaseUrl
+    }
   } catch (error) {
     actionError.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -106,17 +163,24 @@ const loadAgentStatuses = async () => {
   }
 }
 
-const showSettingsTab = async () => {
-  activeTab.value = 'settings'
-  await syncStatus()
-  await loadAgentStatuses()
-}
-
 const applyAgent = async (platform: AgentPlatform) => {
   actionError.value = ''
   configLoading.value = true
   try {
-    await ApplyAgentConfig(platform)
+    const request: ApplyAgentConfigRequest = { platform }
+    if (platform === 'claude') {
+      request.provider = selectedClaudeProvider.value
+      if (selectedClaudeProvider.value !== 'ccx') {
+        request.apiKey = claudeProviderKeys.value[selectedClaudeProvider.value].trim()
+      }
+      if (selectedClaudeProvider.value === 'mimo') {
+        request.baseUrl = claudeMiMoBaseUrl.value.trim()
+      }
+    }
+    await ApplyAgentConfig(request)
+    if (platform === 'claude' && selectedClaudeProvider.value !== 'ccx') {
+      claudeProviderKeys.value[selectedClaudeProvider.value] = ''
+    }
     await loadAgentStatuses()
   } catch (error) {
     actionError.value = error instanceof Error ? error.message : String(error)
@@ -236,9 +300,6 @@ onBeforeUnmount(() => {
       <button :class="['tab', activeTab === 'web' ? 'active' : '']" @click="showWebTab">
         CCX Web UI
       </button>
-      <button :class="['tab', activeTab === 'settings' ? 'active' : '']" @click="showSettingsTab">
-        设置
-      </button>
     </nav>
 
     <section v-if="activeTab === 'status'" class="panel">
@@ -268,6 +329,73 @@ onBeforeUnmount(() => {
         <div><span>健康状态</span><code>{{ status.health?.status || 'unknown' }}</code></div>
       </div>
 
+      <div class="agent-section">
+        <header class="web-header">
+          <div>
+            <p class="eyebrow">Agent 配置</p>
+            <h2>Claude Code / Codex</h2>
+          </div>
+          <button @click="loadAgentStatuses" :disabled="configLoading">刷新状态</button>
+        </header>
+
+        <p class="hint">
+          Claude Code 可切换到 CCX、DeepSeek 或 MiMo；Codex 固定访问当前 CCX 网关。恢复只回滚 Desktop 写入的字段。
+        </p>
+
+        <div class="agent-grid">
+          <article v-for="platform in agentPlatforms" :key="platform" class="agent-card">
+            <header class="agent-card-header">
+              <div>
+                <p class="eyebrow">{{ platform }}</p>
+                <h3>{{ agentLabels[platform] }}</h3>
+              </div>
+              <span :class="['status-pill', agentStatusClass(agentStatuses[platform])]">
+                {{ agentStatusText(agentStatuses[platform]) }}
+              </span>
+            </header>
+
+            <div class="details compact">
+              <div><span>当前 Provider</span><code>{{ claudeProviderLabel(agentStatuses[platform]?.provider) }}</code></div>
+              <div><span>当前 URL</span><code>{{ agentStatuses[platform]?.currentBaseUrl || '未设置' }}</code></div>
+              <div><span>目标 URL</span><code>{{ platform === 'claude' ? claudeTargetBaseUrl() : agentStatuses[platform]?.targetBaseUrl || '--' }}</code></div>
+              <div><span>配置文件</span><code>{{ agentStatuses[platform]?.configPath || '--' }}</code></div>
+              <div v-if="agentStatuses[platform]?.authPath"><span>认证文件</span><code>{{ agentStatuses[platform]?.authPath }}</code></div>
+            </div>
+
+            <div v-if="platform === 'claude'" class="provider-form">
+              <label>
+                Provider
+                <select v-model="selectedClaudeProvider">
+                  <option value="ccx">CCX 本地网关</option>
+                  <option value="deepseek">DeepSeek 直连</option>
+                  <option value="mimo">MiMo 直连</option>
+                </select>
+              </label>
+              <label v-if="selectedClaudeProvider !== 'ccx'">
+                API Key
+                <input v-model="claudeProviderKeys[selectedClaudeProvider]" type="password" autocomplete="off" placeholder="仅写入 Claude Code 配置" />
+              </label>
+              <label v-if="selectedClaudeProvider === 'mimo'">
+                MiMo Base URL
+                <input v-model="claudeMiMoBaseUrl" type="url" placeholder="https://api.mimo.xiaomi.com/v1" />
+              </label>
+            </div>
+            <p v-else class="hint compact-hint">Codex 固定写入 CCX Responses 配置，暂不直连厂商。</p>
+
+            <p v-if="agentStatuses[platform]?.lastError" class="error">{{ agentStatuses[platform]?.lastError }}</p>
+
+            <div class="actions">
+              <button @click="applyAgent(platform)" :disabled="!canApplyAgent(platform)">
+                {{ platform === 'claude' ? `应用 ${claudeProviderLabel(selectedClaudeProvider)} 配置` : '应用 CCX 配置' }}
+              </button>
+              <button @click="restoreAgent(platform)" :disabled="configLoading || !agentStatuses[platform]?.hasState">
+                恢复原始配置
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
+
       <div class="logs">
         <header>
           <h2>最近日志</h2>
@@ -293,53 +421,6 @@ onBeforeUnmount(() => {
       <div v-else class="placeholder">
         <p>CCX 服务尚未启动，无法显示 Web UI。</p>
         <button @click="showWebTab" :disabled="loading">立即启动</button>
-      </div>
-    </section>
-
-    <section v-else class="panel settings-panel">
-      <header class="web-header">
-        <div>
-          <p class="eyebrow">Agent 配置</p>
-          <h2>Claude Code / Codex</h2>
-        </div>
-        <button @click="loadAgentStatuses" :disabled="configLoading">刷新状态</button>
-      </header>
-
-      <p class="hint">
-        将本机 CLI 工具配置为访问当前 CCX 网关。应用前请先启动 CCX 服务，恢复只回滚 Desktop 写入的字段。
-      </p>
-      <p v-if="actionError" class="error">{{ actionError }}</p>
-
-      <div class="agent-grid">
-        <article v-for="platform in agentPlatforms" :key="platform" class="agent-card">
-          <header class="agent-card-header">
-            <div>
-              <p class="eyebrow">{{ platform }}</p>
-              <h3>{{ agentLabels[platform] }}</h3>
-            </div>
-            <span :class="['status-pill', agentStatusClass(agentStatuses[platform])]">
-              {{ agentStatusText(agentStatuses[platform]) }}
-            </span>
-          </header>
-
-          <div class="details compact">
-            <div><span>当前 URL</span><code>{{ agentStatuses[platform]?.currentBaseUrl || '未设置' }}</code></div>
-            <div><span>目标 URL</span><code>{{ agentStatuses[platform]?.targetBaseUrl || '--' }}</code></div>
-            <div><span>配置文件</span><code>{{ agentStatuses[platform]?.configPath || '--' }}</code></div>
-            <div v-if="agentStatuses[platform]?.authPath"><span>认证文件</span><code>{{ agentStatuses[platform]?.authPath }}</code></div>
-          </div>
-
-          <p v-if="agentStatuses[platform]?.lastError" class="error">{{ agentStatuses[platform]?.lastError }}</p>
-
-          <div class="actions">
-            <button @click="applyAgent(platform)" :disabled="configLoading || !status.running">
-              应用 CCX 配置
-            </button>
-            <button @click="restoreAgent(platform)" :disabled="configLoading || !agentStatuses[platform]?.hasState">
-              恢复原始配置
-            </button>
-          </div>
-        </article>
       </div>
     </section>
   </div>
@@ -525,9 +606,12 @@ p {
   color: #a8b7d6;
 }
 
-.settings-panel,
-.agent-card {
-  align-items: stretch;
+.agent-section {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .agent-grid {
@@ -539,6 +623,7 @@ p {
 .agent-card {
   display: grid;
   gap: 14px;
+  align-items: stretch;
 }
 
 .details.compact {
@@ -547,5 +632,34 @@ p {
 
 .details.compact div {
   flex: unset;
+}
+
+.provider-form {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-form label {
+  display: grid;
+  gap: 6px;
+  color: #90a2c9;
+  font-size: 12px;
+}
+
+.provider-form select,
+.provider-form input {
+  min-width: 0;
+  border: 1px solid rgba(137, 163, 214, 0.2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #0d1422;
+  color: #dfe8fb;
+}
+
+</style>
+
+<style>
+body {
+  margin: 0;
 }
 </style>

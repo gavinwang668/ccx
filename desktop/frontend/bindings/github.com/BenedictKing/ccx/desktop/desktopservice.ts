@@ -12,8 +12,8 @@ import * as backend$0 from "./internal/backend/models.js";
 // @ts-ignore: Unused imports
 import * as configservice$0 from "./internal/configservice/models.js";
 
-export function ApplyAgentConfig(platform: string): $CancellablePromise<void> {
-    return $Call.ByID(1194974726, platform);
+export function ApplyAgentConfig(req: configservice$0.ApplyAgentConfigRequest): $CancellablePromise<void> {
+    return $Call.ByID(1194974726, req);
 }
 
 export function GetAgentConfigStatus(platform: string): $CancellablePromise<configservice$0.AgentConfigStatus> {

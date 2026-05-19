@@ -7,6 +7,8 @@ import { Create as $Create } from "@wailsio/runtime";
 
 export class AgentConfigStatus {
     "platform": string;
+    "provider"?: string;
+    "targetProvider"?: string;
     "configured": boolean;
     "matchesCurrentPort": boolean;
     "needsUpdate": boolean;
@@ -53,5 +55,29 @@ export class AgentConfigStatus {
     static createFrom($$source: any = {}): AgentConfigStatus {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new AgentConfigStatus($$parsedSource as Partial<AgentConfigStatus>);
+    }
+}
+
+export class ApplyAgentConfigRequest {
+    "platform": string;
+    "provider"?: string;
+    "apiKey"?: string;
+    "baseUrl"?: string;
+
+    /** Creates a new ApplyAgentConfigRequest instance. */
+    constructor($$source: Partial<ApplyAgentConfigRequest> = {}) {
+        if (!("platform" in $$source)) {
+            this["platform"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ApplyAgentConfigRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ApplyAgentConfigRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ApplyAgentConfigRequest($$parsedSource as Partial<ApplyAgentConfigRequest>);
     }
 }

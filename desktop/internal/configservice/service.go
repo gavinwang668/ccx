@@ -12,11 +12,21 @@ import (
 const (
 	PlatformClaude = "claude"
 	PlatformCodex  = "codex"
-	stateVersion   = 1
+
+	ProviderCCX      = "ccx"
+	ProviderDeepSeek = "deepseek"
+	ProviderMiMo     = "mimo"
+	ProviderCustom   = "custom"
+
+	deepSeekClaudeBaseURL = "https://api.deepseek.com/anthropic"
+	defaultMiMoBaseURL    = "https://api.mimo.xiaomi.com/v1"
+	stateVersion          = 1
 )
 
 type AgentConfigStatus struct {
 	Platform           string `json:"platform"`
+	Provider           string `json:"provider,omitempty"`
+	TargetProvider     string `json:"targetProvider,omitempty"`
 	Configured         bool   `json:"configured"`
 	MatchesCurrentPort bool   `json:"matchesCurrentPort"`
 	NeedsUpdate        bool   `json:"needsUpdate"`
@@ -26,6 +36,13 @@ type AgentConfigStatus struct {
 	AuthPath           string `json:"authPath,omitempty"`
 	HasState           bool   `json:"hasState"`
 	LastError          string `json:"lastError,omitempty"`
+}
+
+type ApplyAgentConfigRequest struct {
+	Platform string `json:"platform"`
+	Provider string `json:"provider,omitempty"`
+	APIKey   string `json:"apiKey,omitempty"`
+	BaseURL  string `json:"baseUrl,omitempty"`
 }
 
 type Service struct {
@@ -41,8 +58,10 @@ type ClaudeProxyState struct {
 	OriginalBaseURL   *string `json:"originalBaseUrl,omitempty"`
 	OriginalAuthToken *string `json:"originalAuthToken,omitempty"`
 	OriginalAPIKey    *string `json:"originalApiKey,omitempty"`
+	InjectedProvider  string  `json:"injectedProvider"`
 	InjectedBaseURL   string  `json:"injectedBaseUrl"`
-	InjectedAuthToken string  `json:"injectedAuthToken"`
+	InjectedAuthToken string  `json:"injectedAuthToken,omitempty"`
+	InjectedAPIKey    string  `json:"injectedApiKey,omitempty"`
 }
 
 type CodexProxyState struct {
@@ -84,17 +103,21 @@ func (s *Service) GetStatus(platform string, port int) (AgentConfigStatus, error
 	}
 }
 
-func (s *Service) Apply(platform string, port int, accessKey string) error {
-	if port == 0 {
-		return fmt.Errorf("CCX 端口未设置")
-	}
-	if accessKey == "" {
-		return fmt.Errorf("PROXY_ACCESS_KEY 为空")
+func (s *Service) Apply(req ApplyAgentConfigRequest, port int, accessKey string) error {
+	platform := strings.TrimSpace(req.Platform)
+	if platform == "" {
+		return fmt.Errorf("agent 平台不能为空")
 	}
 	switch platform {
 	case PlatformClaude:
-		return s.applyClaude(port, accessKey)
+		return s.applyClaude(req, port, accessKey)
 	case PlatformCodex:
+		if port == 0 {
+			return fmt.Errorf("CCX 端口未设置")
+		}
+		if accessKey == "" {
+			return fmt.Errorf("PROXY_ACCESS_KEY 为空")
+		}
 		return s.applyCodex(port, accessKey)
 	default:
 		return fmt.Errorf("不支持的 agent 平台: %s", platform)
@@ -116,10 +139,12 @@ func (s *Service) getClaudeStatus(port int) (AgentConfigStatus, error) {
 	path := s.claudeSettingsPath()
 	target := claudeBaseURL(port)
 	status := AgentConfigStatus{
-		Platform:      PlatformClaude,
-		TargetBaseURL: target,
-		ConfigPath:    path,
-		HasState:      fileExists(s.claudeStatePath()),
+		Platform:       PlatformClaude,
+		Provider:       ProviderCustom,
+		TargetProvider: ProviderCCX,
+		TargetBaseURL:  target,
+		ConfigPath:     path,
+		HasState:       fileExists(s.claudeStatePath()),
 	}
 	data, _, err := readJSONMap(path)
 	if err != nil {
@@ -128,8 +153,9 @@ func (s *Service) getClaudeStatus(port int) (AgentConfigStatus, error) {
 	}
 	baseURL, _ := getNestedString(data, "env", "ANTHROPIC_BASE_URL")
 	status.CurrentBaseURL = baseURL
+	status.Provider = detectClaudeProvider(baseURL)
 	status.MatchesCurrentPort = baseURL == target
-	status.Configured = status.MatchesCurrentPort
+	status.Configured = status.MatchesCurrentPort || status.Provider == ProviderDeepSeek || status.Provider == ProviderMiMo
 	status.NeedsUpdate = baseURL != "" && isLocalBaseURL(baseURL) && !status.MatchesCurrentPort
 	return status, nil
 }
@@ -139,11 +165,13 @@ func (s *Service) getCodexStatus(port int) (AgentConfigStatus, error) {
 	authPath := s.codexAuthPath()
 	target := codexBaseURL(port)
 	status := AgentConfigStatus{
-		Platform:      PlatformCodex,
-		TargetBaseURL: target,
-		ConfigPath:    path,
-		AuthPath:      authPath,
-		HasState:      fileExists(s.codexStatePath()),
+		Platform:       PlatformCodex,
+		Provider:       ProviderCustom,
+		TargetProvider: ProviderCCX,
+		TargetBaseURL:  target,
+		ConfigPath:     path,
+		AuthPath:       authPath,
+		HasState:       fileExists(s.codexStatePath()),
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -157,13 +185,21 @@ func (s *Service) getCodexStatus(port int) (AgentConfigStatus, error) {
 	baseURL, _ := extractTomlStringField(extractCodexProviderBlock(text), "base_url")
 	modelProvider, _ := extractTopLevelTomlString(text, "model_provider")
 	status.CurrentBaseURL = baseURL
-	status.MatchesCurrentPort = modelProvider == "ccx" && baseURL == target
+	if modelProvider == ProviderCCX {
+		status.Provider = ProviderCCX
+	}
+	status.MatchesCurrentPort = modelProvider == ProviderCCX && baseURL == target
 	status.Configured = status.MatchesCurrentPort
-	status.NeedsUpdate = (modelProvider == "ccx" || isLocalBaseURL(baseURL)) && !status.MatchesCurrentPort
+	status.NeedsUpdate = (modelProvider == ProviderCCX || isLocalBaseURL(baseURL)) && !status.MatchesCurrentPort
 	return status, nil
 }
 
-func (s *Service) applyClaude(port int, accessKey string) error {
+func (s *Service) applyClaude(req ApplyAgentConfigRequest, port int, accessKey string) error {
+	provider := normalizeClaudeProvider(req.Provider)
+	baseURL, authToken, apiKey, err := resolveClaudeProvider(req, port, accessKey)
+	if err != nil {
+		return err
+	}
 	path := s.claudeSettingsPath()
 	data, existed, err := readJSONMap(path)
 	if err != nil {
@@ -174,33 +210,48 @@ func (s *Service) applyClaude(port int, accessKey string) error {
 		env = map[string]any{}
 		data["env"] = env
 	}
-	baseURL, baseOK := env["ANTHROPIC_BASE_URL"].(string)
-	authToken, authOK := env["ANTHROPIC_AUTH_TOKEN"].(string)
-	apiKey, apiOK := env["ANTHROPIC_API_KEY"].(string)
+	originalBaseURL, baseOK := env["ANTHROPIC_BASE_URL"].(string)
+	originalAuthToken, authOK := env["ANTHROPIC_AUTH_TOKEN"].(string)
+	originalAPIKey, apiOK := env["ANTHROPIC_API_KEY"].(string)
 	state := ClaudeProxyState{
 		Version:           stateVersion,
 		TargetPath:        path,
 		FileExisted:       existed,
 		EnvExisted:        envExisted,
-		OriginalBaseURL:   optionalString(baseURL, baseOK),
-		OriginalAuthToken: optionalString(authToken, authOK),
-		OriginalAPIKey:    optionalString(apiKey, apiOK),
-		InjectedBaseURL:   claudeBaseURL(port),
-		InjectedAuthToken: accessKey,
+		OriginalBaseURL:   optionalString(originalBaseURL, baseOK),
+		OriginalAuthToken: optionalString(originalAuthToken, authOK),
+		OriginalAPIKey:    optionalString(originalAPIKey, apiOK),
+		InjectedProvider:  provider,
+		InjectedBaseURL:   baseURL,
+		InjectedAuthToken: authToken,
+		InjectedAPIKey:    apiKey,
 	}
 	if existing, ok := s.readClaudeState(); ok {
 		state = existing
-		state.InjectedBaseURL = claudeBaseURL(port)
-		state.InjectedAuthToken = accessKey
+		state.InjectedProvider = provider
+		state.InjectedBaseURL = baseURL
+		state.InjectedAuthToken = authToken
+		state.InjectedAPIKey = apiKey
 	}
 	if err := writeJSONAtomic(s.claudeStatePath(), state); err != nil {
 		return err
 	}
 	env["ANTHROPIC_BASE_URL"] = state.InjectedBaseURL
-	env["ANTHROPIC_AUTH_TOKEN"] = accessKey
-	delete(env, "ANTHROPIC_API_KEY")
+	if state.InjectedAuthToken != "" {
+		env["ANTHROPIC_AUTH_TOKEN"] = state.InjectedAuthToken
+	} else {
+		delete(env, "ANTHROPIC_AUTH_TOKEN")
+	}
+	if state.InjectedAPIKey != "" {
+		env["ANTHROPIC_API_KEY"] = state.InjectedAPIKey
+	} else {
+		delete(env, "ANTHROPIC_API_KEY")
+	}
 	if err := writeJSONAtomic(path, data); err != nil {
 		return err
+	}
+	if provider != ProviderCCX {
+		return nil
 	}
 	if err := mergeJSONFile(s.claudeConfigPath(), map[string]any{"primaryApiKey": "ccx"}); err != nil {
 		return err
@@ -362,6 +413,71 @@ func (s *Service) readCodexState() (CodexProxyState, bool) {
 
 func claudeBaseURL(port int) string {
 	return fmt.Sprintf("http://127.0.0.1:%d", port)
+}
+
+func normalizeClaudeProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "", ProviderCCX:
+		return ProviderCCX
+	case ProviderDeepSeek:
+		return ProviderDeepSeek
+	case ProviderMiMo:
+		return ProviderMiMo
+	default:
+		return provider
+	}
+}
+
+func resolveClaudeProvider(req ApplyAgentConfigRequest, port int, accessKey string) (string, string, string, error) {
+	provider := normalizeClaudeProvider(req.Provider)
+	switch provider {
+	case ProviderCCX:
+		if port == 0 {
+			return "", "", "", fmt.Errorf("CCX 端口未设置")
+		}
+		if accessKey == "" {
+			return "", "", "", fmt.Errorf("PROXY_ACCESS_KEY 为空")
+		}
+		return claudeBaseURL(port), accessKey, "", nil
+	case ProviderDeepSeek:
+		apiKey := strings.TrimSpace(req.APIKey)
+		if apiKey == "" {
+			return "", "", "", fmt.Errorf("DeepSeek API Key 不能为空")
+		}
+		baseURL := strings.TrimSpace(req.BaseURL)
+		if baseURL == "" {
+			baseURL = deepSeekClaudeBaseURL
+		}
+		return baseURL, "", apiKey, nil
+	case ProviderMiMo:
+		apiKey := strings.TrimSpace(req.APIKey)
+		if apiKey == "" {
+			return "", "", "", fmt.Errorf("MiMo API Key 不能为空")
+		}
+		baseURL := strings.TrimSpace(req.BaseURL)
+		if baseURL == "" {
+			baseURL = defaultMiMoBaseURL
+		}
+		return baseURL, "", apiKey, nil
+	default:
+		return "", "", "", fmt.Errorf("不支持的 Claude Code provider: %s", provider)
+	}
+}
+
+func detectClaudeProvider(baseURL string) string {
+	value := strings.ToLower(strings.TrimSpace(baseURL))
+	switch {
+	case value == "":
+		return ""
+	case isLocalBaseURL(value):
+		return ProviderCCX
+	case strings.Contains(value, "deepseek.com"):
+		return ProviderDeepSeek
+	case strings.Contains(value, "mimo.xiaomi.com") || strings.Contains(value, "xiaomimimo.com"):
+		return ProviderMiMo
+	default:
+		return ProviderCustom
+	}
 }
 
 func codexBaseURL(port int) string {

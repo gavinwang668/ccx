@@ -69,21 +69,29 @@ func (s *DesktopService) GetAgentConfigStatus(platform string) (configservice.Ag
 	return s.configService.GetStatus(platform, status.Port)
 }
 
-func (s *DesktopService) ApplyAgentConfig(platform string) error {
+func (s *DesktopService) ApplyAgentConfig(req configservice.ApplyAgentConfigRequest) error {
 	if s.configService == nil {
 		return fmt.Errorf("配置服务未初始化")
+	}
+	platform := req.Platform
+	if platform == "" {
+		return fmt.Errorf("agent 平台不能为空")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
 	defer cancel()
 	status := s.manager.Status(ctx)
-	if !status.Running {
-		return fmt.Errorf("请先启动 CCX 服务")
+	var key string
+	if platform == configservice.PlatformCodex || (platform == configservice.PlatformClaude && (req.Provider == "" || req.Provider == configservice.ProviderCCX)) {
+		if !status.Running {
+			return fmt.Errorf("请先启动 CCX 服务")
+		}
+		var err error
+		key, err = s.manager.EnsureProxyAccessKey()
+		if err != nil {
+			return err
+		}
 	}
-	key, err := s.manager.EnsureProxyAccessKey()
-	if err != nil {
-		return err
-	}
-	return s.configService.Apply(platform, status.Port, key)
+	return s.configService.Apply(req, status.Port, key)
 }
 
 func (s *DesktopService) RestoreAgentConfig(platform string) error {
