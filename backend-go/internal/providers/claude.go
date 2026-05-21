@@ -54,11 +54,11 @@ const (
 	missingAssistantResponseText = "[prior assistant response unavailable]"
 )
 
-// convertThinkingToReasoningContent 保留真实 thinking 回传，并清理历史版本注入的占位 thinking。
+// convertThinkingToReasoningContent 将真实 thinking 回传为 reasoning_content，并清理历史版本注入的占位 thinking。
 //
-// MiMo 的要求是：开启 thinking mode 后，必须把上游真实返回的 reasoning/thinking 在后续请求中回传。
-// 这里不能为缺少 thinking 的历史 assistant 消息伪造占位内容；否则 MiMo 可能把正式回答续写进
-// 这个假 thinking 块，导致下游只收到 thinking 而没有 text content block。
+// MiMo 的要求是：开启 thinking mode 后，assistant 历史消息都要带顶层 reasoning_content。
+// 有真实 thinking 时原样回传；没有真实 thinking 时只补顶层占位，不能伪造 content thinking 块。
+// 否则 MiMo 可能把正式回答续写进这个假 thinking 块，导致下游只收到 thinking 而没有 text content block。
 //
 // 注：函数名保留以维持向后兼容。
 func convertThinkingToReasoningContent(bodyBytes []byte) []byte {
@@ -96,6 +96,7 @@ func convertThinkingToReasoningContent(bodyBytes []byte) []byte {
 		}
 
 		filteredContent := make([]interface{}, 0, len(content))
+		reasoningParts := make([]string, 0, 1)
 		for _, block := range content {
 			blockMap, ok := block.(map[string]interface{})
 			if !ok {
@@ -105,12 +106,30 @@ func convertThinkingToReasoningContent(bodyBytes []byte) []byte {
 
 			blockType, _ := blockMap["type"].(string)
 			thinking, _ := blockMap["thinking"].(string)
-			if blockType == "thinking" && thinking == legacyThinkingPlaceholder {
+			if blockType == "thinking" {
 				modified = true
+				if thinking == legacyThinkingPlaceholder {
+					continue
+				}
+				if strings.TrimSpace(thinking) != "" {
+					reasoningParts = append(reasoningParts, thinking)
+				}
 				continue
 			}
 
 			filteredContent = append(filteredContent, blockMap)
+		}
+
+		if len(reasoningParts) > 0 {
+			existing, _ := msgMap["reasoning_content"].(string)
+			if strings.TrimSpace(existing) != "" {
+				msgMap["reasoning_content"] = existing + "\n" + strings.Join(reasoningParts, "\n")
+			} else {
+				msgMap["reasoning_content"] = strings.Join(reasoningParts, "\n")
+			}
+		} else if existing, _ := msgMap["reasoning_content"].(string); strings.TrimSpace(existing) == "" {
+			msgMap["reasoning_content"] = legacyThinkingPlaceholder
+			modified = true
 		}
 
 		if len(filteredContent) != len(content) {

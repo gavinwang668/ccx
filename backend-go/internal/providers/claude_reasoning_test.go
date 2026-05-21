@@ -156,7 +156,7 @@ func TestStripThinkingBlocksFromBody(t *testing.T) {
 	}
 }
 
-// TestConvertThinkingToReasoningContent 测试保留真实 thinking 并清理历史占位 thinking
+// TestConvertThinkingToReasoningContent 测试 assistant 历史消息补顶层 reasoning_content，并清理 content thinking
 func TestConvertThinkingToReasoningContent(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -164,7 +164,7 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 		wantJSON map[string]interface{}
 	}{
 		{
-			name: "已有 thinking 块的 assistant 消息保持原样",
+			name: "已有 thinking 块的 assistant 消息转为 reasoning_content",
 			input: `{
 				"model": "mimo-v2.5-pro",
 				"messages": [
@@ -180,9 +180,9 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 				"messages": []interface{}{
 					map[string]interface{}{"role": "user", "content": []interface{}{map[string]interface{}{"type": "text", "text": "hello"}}},
 					map[string]interface{}{
-						"role": "assistant",
+						"role":              "assistant",
+						"reasoning_content": "let me think",
 						"content": []interface{}{
-							map[string]interface{}{"type": "thinking", "thinking": "let me think", "signature": "sig_123"},
 							map[string]interface{}{"type": "text", "text": "response"},
 						},
 					},
@@ -190,7 +190,7 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 			},
 		},
 		{
-			name: "无 thinking 块的 assistant 消息保持不变",
+			name: "无 thinking 块的 assistant 消息补顶层 reasoning_content",
 			input: `{
 				"model": "mimo-v2.5-pro",
 				"messages": [
@@ -206,7 +206,8 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 				"messages": []interface{}{
 					map[string]interface{}{"role": "user", "content": []interface{}{map[string]interface{}{"type": "text", "text": "hello"}}},
 					map[string]interface{}{
-						"role": "assistant",
+						"role":              "assistant",
+						"reasoning_content": legacyThinkingPlaceholder,
 						"content": []interface{}{
 							map[string]interface{}{"type": "text", "text": "answer"},
 							map[string]interface{}{"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": map[string]interface{}{"command": "pwd"}},
@@ -216,7 +217,7 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 			},
 		},
 		{
-			name: "历史占位 thinking 块会被移除",
+			name: "历史占位 thinking 块会被移除并补顶层 reasoning_content",
 			input: `{
 				"model": "mimo-v2.5-pro",
 				"messages": [
@@ -232,7 +233,8 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 				"messages": []interface{}{
 					map[string]interface{}{"role": "user", "content": []interface{}{map[string]interface{}{"type": "text", "text": "hello"}}},
 					map[string]interface{}{
-						"role": "assistant",
+						"role":              "assistant",
+						"reasoning_content": legacyThinkingPlaceholder,
 						"content": []interface{}{
 							map[string]interface{}{"type": "text", "text": "answer"},
 						},
@@ -241,7 +243,7 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 			},
 		},
 		{
-			name: "只有历史占位 thinking 的 assistant 消息转为非空占位 text",
+			name: "只有历史占位 thinking 的 assistant 消息补顶层 reasoning_content 并转为非空 text",
 			input: `{
 				"model": "mimo-v2.5-pro",
 				"messages": [
@@ -257,7 +259,8 @@ func TestConvertThinkingToReasoningContent(t *testing.T) {
 				"messages": []interface{}{
 					map[string]interface{}{"role": "user", "content": []interface{}{map[string]interface{}{"type": "text", "text": "hello"}}},
 					map[string]interface{}{
-						"role": "assistant",
+						"role":              "assistant",
+						"reasoning_content": legacyThinkingPlaceholder,
 						"content": []interface{}{
 							map[string]interface{}{"type": "text", "text": missingAssistantResponseText},
 						},
