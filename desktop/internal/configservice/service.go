@@ -149,21 +149,42 @@ func (s *Service) GetSavedProviderKeys() map[string]string {
 	for name, key := range store.Keys {
 		keys[name] = key
 	}
-	for provider, asset := range store.Assets {
+	for assetKey, asset := range store.Assets {
 		if strings.TrimSpace(asset.APIKey) == "" {
 			continue
 		}
+		provider := asset.Provider
+		planID := asset.PlanID
 		keys["channel:"+provider] = asset.APIKey
 		switch provider {
 		case ProviderDeepSeek, ProviderMiMo:
-			if keys[PlatformClaude+":"+provider] == "" {
-				keys[PlatformClaude+":"+provider] = asset.APIKey
+			legacyKey := PlatformClaude + ":" + provider
+			if planID != "" {
+				planKey := PlatformClaude + ":" + provider + ":" + planID
+				keys[planKey] = asset.APIKey
+				if keys[legacyKey] == "" {
+					keys[legacyKey] = asset.APIKey
+				}
+			} else {
+				if keys[legacyKey] == "" {
+					keys[legacyKey] = asset.APIKey
+				}
 			}
 		case ProviderOpenAI:
-			if keys[PlatformCodex+":"+provider] == "" {
-				keys[PlatformCodex+":"+provider] = asset.APIKey
+			legacyKey := PlatformCodex + ":" + provider
+			if planID != "" {
+				planKey := PlatformCodex + ":" + provider + ":" + planID
+				keys[planKey] = asset.APIKey
+				if keys[legacyKey] == "" {
+					keys[legacyKey] = asset.APIKey
+				}
+			} else {
+				if keys[legacyKey] == "" {
+					keys[legacyKey] = asset.APIKey
+				}
 			}
 		}
+		_ = assetKey
 	}
 	return keys
 }
@@ -192,11 +213,15 @@ func (s *Service) SaveProviderKeyAsset(asset ProviderKeyAsset) error {
 	asset.APIKey = key
 	asset.BaseURL = strings.TrimSpace(asset.BaseURL)
 	asset.PlanID = strings.TrimSpace(asset.PlanID)
-	existing := store.Assets[provider]
+	assetKey := provider
+	if asset.PlanID != "" {
+		assetKey = provider + ":" + asset.PlanID
+	}
+	existing := store.Assets[assetKey]
 	if existing.Usages != nil {
 		asset.Usages = appendUniqueMany(existing.Usages, asset.Usages)
 	}
-	store.Assets[provider] = asset
+	store.Assets[assetKey] = asset
 	store.Keys["channel:"+provider] = key
 	switch provider {
 	case ProviderDeepSeek, ProviderMiMo:

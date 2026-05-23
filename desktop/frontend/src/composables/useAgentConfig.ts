@@ -131,6 +131,14 @@ const loadAgentStatuses = async () => {
   }
 }
 
+const findSavedKey = (provider: string, planID?: string): string => {
+  if (planID) {
+    const planKey = savedProviderKeys.value[`claude:${provider}:${planID}`]
+    if (planKey) return planKey
+  }
+  return savedProviderKeys.value[`claude:${provider}`] || ''
+}
+
 const canApplyAgent = (platform: AgentPlatform, serviceRunning: boolean) => {
   if (configLoading.value) return false
   if (platform === 'codex') {
@@ -142,7 +150,7 @@ const canApplyAgent = (platform: AgentPlatform, serviceRunning: boolean) => {
   if (selectedClaudeProvider.value === 'ccx') return true
   const provider = selectedClaudeProvider.value
   const inputKey = claudeProviderKeys.value[provider].trim()
-  const hasSaved = !!savedProviderKeys.value[`claude:${provider}`]
+  const hasSaved = !!findSavedKey(provider, selectedMiMoPlan.value)
   return inputKey !== '' || hasSaved
 }
 
@@ -154,7 +162,7 @@ const applyAgent = async (platform: AgentPlatform) => {
       request.provider = selectedClaudeProvider.value
       if (selectedClaudeProvider.value !== 'ccx') {
         const inputKey = claudeProviderKeys.value[selectedClaudeProvider.value].trim()
-        request.apiKey = inputKey || savedProviderKeys.value[`claude:${selectedClaudeProvider.value}`] || ''
+        request.apiKey = inputKey || findSavedKey(selectedClaudeProvider.value, selectedMiMoPlan.value)
       }
       if (selectedClaudeProvider.value === 'mimo') {
         request.baseUrl = claudeMiMoBaseUrl.value.trim()

@@ -46,6 +46,9 @@ const onMiMoPlanChange = (e: Event) => {
 }
 
 const keyPlaceholder = (provider: AgentProvider) => {
+  if (provider === 'mimo' && props.selectedMiMoPlan && props.savedProviderKeys[`claude:${provider}:${props.selectedMiMoPlan}`]) {
+    return '已保存，留空则使用已保存的 key'
+  }
   if (props.savedProviderKeys[`claude:${provider}`]) {
     return '已保存，留空则使用已保存的 key'
   }
