@@ -1,3 +1,9 @@
+## [v2.7.24] - 2026-05-23
+
+### 修复
+
+- **Release workflow Bad credentials 错误** - 修复 CI Release workflow 中 GitHub token 认证失败的问题
+
 ## [v2.7.23] - 2026-05-23
 
 ### 修复
