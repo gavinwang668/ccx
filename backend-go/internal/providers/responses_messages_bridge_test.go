@@ -616,8 +616,8 @@ func TestResponsesProvider_BuildProviderRequestBody_NormalizesPassthroughInputTe
 func TestResponsesProvider_BuildProviderRequestBody_PassbackReasoningContentForClaudeUpstream(t *testing.T) {
 	provider := &ResponsesProvider{}
 	upstream := &config.UpstreamConfig{
-		ServiceType:               "claude",
-		PassbackReasoningContent:  true,
+		ServiceType:              "claude",
+		PassbackReasoningContent: true,
 	}
 
 	body := []byte(`{
