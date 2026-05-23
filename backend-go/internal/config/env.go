@@ -41,8 +41,6 @@ type EnvConfig struct {
 	LogMaxAge     int  // 保留的旧日志文件最大天数
 	LogCompress   bool // 是否压缩旧日志文件
 	LogToConsole  bool // 是否同时输出到控制台
-	// OTA 更新配置
-	AutoCheckUpdate bool // 启动时是否自动检查更新
 }
 
 // NewEnvConfig 创建环境配置
@@ -89,8 +87,6 @@ func NewEnvConfig() *EnvConfig {
 		LogMaxAge:     getEnvAsInt("LOG_MAX_AGE", 30),     // 默认保留 30 天
 		LogCompress:   getEnv("LOG_COMPRESS", "true") != "false",
 		LogToConsole:  getEnv("LOG_TO_CONSOLE", "true") != "false",
-		// OTA 更新
-		AutoCheckUpdate: getEnv("AUTO_CHECK_UPDATE", "true") != "false",
 	}
 }
 

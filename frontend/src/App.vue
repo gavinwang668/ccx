@@ -1657,25 +1657,7 @@ const checkVersion = async () => {
 
   systemStore.setCheckingVersion(true)
   try {
-    const updateStatus = await api.checkUpdate()
-    systemStore.setUpdateStatus(updateStatus)
-    systemStore.setVersionInfo({
-      currentVersion: updateStatus.current_version,
-      latestVersion: updateStatus.latest_version || null,
-      isLatest: !updateStatus.has_update,
-      hasUpdate: updateStatus.has_update,
-      releaseUrl: updateStatus.release_url || null,
-      lastCheckTime: Date.now(),
-      status: updateStatus.has_update ? 'update-available' : 'latest',
-    })
-    systemStore.setCheckingVersion(false)
-    return
-  } catch (error) {
-    console.warn('Backend version check failed, falling back to GitHub:', error)
-  }
-
-  try {
-    // 后端接口不可用时降级为前端直连 GitHub
+    // 直接通过 health 接口获取当前版本，再从 GitHub 检查是否有新版本
     const health = await fetchHealth()
     const currentVersion = health.version?.version || ''
 
@@ -1687,14 +1669,24 @@ const checkVersion = async () => {
       systemStore.setVersionInfo(result)
     } else {
       systemStore.setVersionInfo({
-        ...systemStore.versionInfo,
+        currentVersion: systemStore.versionInfo.currentVersion,
+        latestVersion: null,
+        isLatest: false,
+        hasUpdate: false,
+        releaseUrl: null,
+        lastCheckTime: 0,
         status: 'error',
       })
     }
   } catch (error) {
     console.warn('Version check failed:', error)
     systemStore.setVersionInfo({
-      ...systemStore.versionInfo,
+      currentVersion: systemStore.versionInfo.currentVersion,
+      latestVersion: null,
+      isLatest: false,
+      hasUpdate: false,
+      releaseUrl: null,
+      lastCheckTime: 0,
       status: 'error',
     })
   } finally {
@@ -1728,6 +1720,9 @@ onMounted(async () => {
 
   // 版本检查（独立于认证，静默执行）
   checkVersion()
+
+  // 监听 UpdateDialog 手动触发的版本检查
+  window.addEventListener('ccx-check-version', () => { checkVersion() })
 
   const desktopAutoLogin = window.self !== window.top && new URLSearchParams(window.location.search).get('ccx_desktop') === '1'
 

@@ -417,14 +417,8 @@ export type MessageKey =
   | 'update.available'
   | 'update.checking'
   | 'update.checkFailed'
-  | 'update.applyBtn'
-  | 'update.applying'
-  | 'update.success'
-  | 'update.restarting'
-  | 'update.restartTimeout'
-  | 'update.dockerHint'
-  | 'update.permissionDenied'
   | 'update.checkBtn'
+  | 'update.downloadBtn'
 
 export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
   en: {
@@ -841,17 +835,11 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'update.currentVersion': 'Current Version',
     'update.latestVersion': 'Latest Version',
     'update.upToDate': 'You are running the latest version',
-    'update.available': 'A new version is available',
+    'update.available': 'A new version is available. Please download from GitHub Releases.',
     'update.checking': 'Checking for updates...',
     'update.checkFailed': 'Failed to check for updates',
-    'update.applyBtn': 'Update Now',
-    'update.applying': 'Updating...',
-    'update.success': 'Update successful, restarting...',
-    'update.restarting': 'Server is restarting, please wait...',
-    'update.restartTimeout': 'Server did not restart automatically. Please check manually.',
-    'update.dockerHint': 'Docker deployment detected. Please use Watchtower or pull a new image to update.',
-    'update.permissionDenied': 'Insufficient permissions to update',
     'update.checkBtn': 'Check for Updates',
+    'update.downloadBtn': 'Download Update',
   },
   id: {
     'app.auth.verifyingTitle': 'Memverifikasi akses',
@@ -1267,17 +1255,11 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'update.currentVersion': 'Versi Saat Ini',
     'update.latestVersion': 'Versi Terbaru',
     'update.upToDate': 'Anda menggunakan versi terbaru',
-    'update.available': 'Versi baru tersedia',
+    'update.available': 'Versi baru tersedia. Silakan unduh dari GitHub Releases.',
     'update.checking': 'Memeriksa pembaruan...',
     'update.checkFailed': 'Gagal memeriksa pembaruan',
-    'update.applyBtn': 'Perbarui Sekarang',
-    'update.applying': 'Memperbarui...',
-    'update.success': 'Pembaruan berhasil, memulai ulang...',
-    'update.restarting': 'Server sedang dimulai ulang, harap tunggu...',
-    'update.restartTimeout': 'Server tidak dimulai ulang secara otomatis. Silakan periksa secara manual.',
-    'update.dockerHint': 'Terdeteksi deployment Docker. Gunakan Watchtower atau pull image baru untuk memperbarui.',
-    'update.permissionDenied': 'Izin tidak cukup untuk memperbarui',
     'update.checkBtn': 'Periksa Pembaruan',
+    'update.downloadBtn': 'Unduh Pembaruan',
   },
   'zh-CN': {
     'app.auth.verifyingTitle': '正在验证访问权限',
@@ -1693,16 +1675,10 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'update.currentVersion': '当前版本',
     'update.latestVersion': '最新版本',
     'update.upToDate': '已是最新版本',
-    'update.available': '发现新版本',
+    'update.available': '发现新版本，请前往 GitHub Releases 下载',
     'update.checking': '正在检查更新...',
     'update.checkFailed': '检查更新失败',
-    'update.applyBtn': '立即升级',
-    'update.applying': '正在升级...',
-    'update.success': '升级成功，正在重启...',
-    'update.restarting': '服务器正在重启，请稍候...',
-    'update.restartTimeout': '服务器未能自动重启，请手动检查',
-    'update.dockerHint': '检测到 Docker 部署，请使用 Watchtower 或拉取新镜像进行更新',
-    'update.permissionDenied': '权限不足，无法升级',
     'update.checkBtn': '检查更新',
+    'update.downloadBtn': '下载更新',
   },
 }

@@ -194,12 +194,12 @@ jobs:
       - name: Build Backend amd64
         run: |
           go mod download
-          CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.GitCommit=${{ github.sha }}" -o ccx-windows-amd64.exe
+          CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "-s -w -linkmode=internal -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.GitCommit=${{ github.sha }}" -o ccx-windows-amd64.exe
         working-directory: ./backend-go
 
       - name: Build Backend arm64
         run: |
-          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags "-s -w -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.GitCommit=${{ github.sha }}" -o ccx-windows-arm64.exe
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -buildvcs=false -ldflags "-s -w -linkmode=internal -X main.Version=${{ github.ref_name }} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.GitCommit=${{ github.sha }}" -o ccx-windows-arm64.exe
         working-directory: ./backend-go
 
       - name: Generate checksums

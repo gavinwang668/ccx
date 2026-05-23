@@ -24,7 +24,6 @@ import (
 	"github.com/BenedictKing/ccx/internal/middleware"
 	"github.com/BenedictKing/ccx/internal/scheduler"
 	"github.com/BenedictKing/ccx/internal/session"
-	"github.com/BenedictKing/ccx/internal/updater"
 	"github.com/BenedictKing/ccx/internal/warmup"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -283,23 +282,6 @@ func main() {
 		r.GET("/admin/dev/info", handlers.DevInfo(envCfg, cfgManager))
 	}
 
-	// 初始化 OTA 更新器
-	appUpdater := updater.New(Version, func() {
-		p, _ := os.FindProcess(os.Getpid())
-		p.Signal(os.Interrupt)
-	})
-	if envCfg.AutoCheckUpdate {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if status, err := appUpdater.CheckUpdate(ctx); err != nil {
-				log.Printf("[Updater-Init] 自动检查更新失败: %v", err)
-			} else if status.HasUpdate {
-				log.Printf("[Updater-Init] 发现新版本: %s (当前: %s)", status.LatestVersion, status.CurrentVersion)
-			}
-		}()
-	}
-
 	// Web 管理界面 API 路由
 	apiGroup := r.Group("/api")
 	{
@@ -473,10 +455,6 @@ func main() {
 		apiGroup.GET("/conversations", handlers.GetConversations(convDeps))
 		apiGroup.POST("/conversations/:id/override", handlers.SetConversationOverride(convDeps))
 		apiGroup.DELETE("/conversations/:id/override", handlers.RemoveConversationOverride(convDeps))
-
-		// OTA 更新 API
-		apiGroup.GET("/system/update/check", handlers.CheckUpdateHandler(appUpdater))
-		apiGroup.POST("/system/update/apply", handlers.ApplyUpdateHandler(appUpdater))
 	}
 
 	// 代理端点 - Messages API
