@@ -273,12 +273,24 @@ func (s *DesktopService) CreateCCXChannelFromPreset(req channelpreset.CreateChan
 		}
 	}
 	if strings.TrimSpace(req.APIKey) == "" {
+		planID := strings.TrimSpace(req.PlanID)
+		var fallbackKey string
 		for _, asset := range s.configService.GetProviderKeyAssets() {
-			if asset.Provider == strings.TrimSpace(req.Provider) && asset.APIKey != "" {
-				req.APIKey = asset.APIKey
+			if asset.Provider != strings.TrimSpace(req.Provider) || asset.APIKey == "" {
+				continue
+			}
+			if planID != "" && asset.PlanID != planID {
+				continue
+			}
+			if asset.PlanID == "" {
+				fallbackKey = asset.APIKey
 				break
 			}
+			if fallbackKey == "" {
+				fallbackKey = asset.APIKey
+			}
 		}
+		req.APIKey = fallbackKey
 	}
 	payload, err := channelpreset.BuildPayload(req)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -149,7 +150,14 @@ func (s *Service) GetSavedProviderKeys() map[string]string {
 	for name, key := range store.Keys {
 		keys[name] = key
 	}
-	for assetKey, asset := range store.Assets {
+	legacyCandidates := map[string]string{}
+	assetKeys := make([]string, 0, len(store.Assets))
+	for k := range store.Assets {
+		assetKeys = append(assetKeys, k)
+	}
+	sort.Strings(assetKeys)
+	for _, assetKey := range assetKeys {
+		asset := store.Assets[assetKey]
 		if strings.TrimSpace(asset.APIKey) == "" {
 			continue
 		}
@@ -158,33 +166,25 @@ func (s *Service) GetSavedProviderKeys() map[string]string {
 		keys["channel:"+provider] = asset.APIKey
 		switch provider {
 		case ProviderDeepSeek, ProviderMiMo:
-			legacyKey := PlatformClaude + ":" + provider
 			if planID != "" {
-				planKey := PlatformClaude + ":" + provider + ":" + planID
-				keys[planKey] = asset.APIKey
-				if keys[legacyKey] == "" {
-					keys[legacyKey] = asset.APIKey
-				}
-			} else {
-				if keys[legacyKey] == "" {
-					keys[legacyKey] = asset.APIKey
-				}
+				keys[PlatformClaude+":"+provider+":"+planID] = asset.APIKey
+			}
+			if legacyCandidates[PlatformClaude+":"+provider] == "" {
+				legacyCandidates[PlatformClaude+":"+provider] = asset.APIKey
 			}
 		case ProviderOpenAI:
-			legacyKey := PlatformCodex + ":" + provider
 			if planID != "" {
-				planKey := PlatformCodex + ":" + provider + ":" + planID
-				keys[planKey] = asset.APIKey
-				if keys[legacyKey] == "" {
-					keys[legacyKey] = asset.APIKey
-				}
-			} else {
-				if keys[legacyKey] == "" {
-					keys[legacyKey] = asset.APIKey
-				}
+				keys[PlatformCodex+":"+provider+":"+planID] = asset.APIKey
+			}
+			if legacyCandidates[PlatformCodex+":"+provider] == "" {
+				legacyCandidates[PlatformCodex+":"+provider] = asset.APIKey
 			}
 		}
-		_ = assetKey
+	}
+	for k, v := range legacyCandidates {
+		if keys[k] == "" {
+			keys[k] = v
+		}
 	}
 	return keys
 }
