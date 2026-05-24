@@ -6,7 +6,11 @@ import path from "node:path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [vue(), wails("./bindings"), tailwindcss()],
+  plugins: [
+    vue(),
+    wails(path.resolve(__dirname, "./bindings")),
+    tailwindcss(),
+  ],
   server: {
     host: "127.0.0.1",
   },
