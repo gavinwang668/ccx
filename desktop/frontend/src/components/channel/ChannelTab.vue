@@ -137,7 +137,7 @@ const submit = async () => {
           </div>
           <h3 class="text-xl font-bold text-slate-100">渠道中心</h3>
           <p class="text-sm text-slate-500 mt-1 max-w-2xl">
-            同一把 DeepSeek、MiMo、Kimi、GLM、MiniMax Key 可同时用于 Agent 直连和 CCX 统一渠道池，复杂开关由预设自动处理。
+            统一把 DeepSeek、MiMo、Kimi、GLM、MiniMax Key 可同时用于 Agent 直连和 CCX 统一渠道池，复杂开关由预设自动处理。
           </p>
         </div>
         <Button size="sm" variant="secondary" :disabled="loading" @click="loadChannelPresets">
