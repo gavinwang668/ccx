@@ -216,7 +216,7 @@ func Presets() []ProviderPreset {
 			ResponsesCompatible: true,
 			Plans: []ProviderPlan{
 				{ID: "anthropic", Label: "Anthropic-compatible", BaseURL: "https://dashscope.aliyuncs.com/apps/anthropic", Description: "Claude Messages 原生入口", Recommended: true},
-				{ID: "openai-chat", Label: "OpenAI-compatible", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1#", Description: "DashScope OpenAI 兼容入口"},
+				{ID: "openai-chat", Label: "OpenAI-compatible", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Description: "DashScope OpenAI 兼容入口"},
 			},
 			Targets: []ChannelTarget{
 				{Type: TargetMessages, Label: "Messages 原生透传", Description: "Claude Code 直连或 CCX messages 渠道", Recommended: true},
@@ -235,7 +235,7 @@ func Presets() []ProviderPreset {
 			ResponsesCompatible: true,
 			Plans: []ProviderPlan{
 				{ID: "anthropic", Label: "Anthropic-compatible", BaseURL: "https://opencode.ai/zen/v1/messages", Description: "Claude Messages 原生入口", Recommended: true},
-				{ID: "openai-chat", Label: "OpenAI-compatible", BaseURL: "https://opencode.ai/zen/v1#", Description: "OpenCode Zen OpenAI 兼容入口"},
+				{ID: "openai-chat", Label: "OpenAI-compatible", BaseURL: "https://opencode.ai/zen/v1", Description: "OpenCode Zen OpenAI 兼容入口"},
 			},
 			Targets: []ChannelTarget{
 				{Type: TargetMessages, Label: "Messages 原生透传", Description: "Claude Code 直连或 CCX messages 渠道", Recommended: true},
@@ -254,7 +254,7 @@ func Presets() []ProviderPreset {
 			ResponsesCompatible: true,
 			Plans: []ProviderPlan{
 				{ID: "anthropic", Label: "Anthropic-compatible", BaseURL: "https://opencode.ai/zen/go/v1/messages", Description: "Claude Messages 原生入口", Recommended: true},
-				{ID: "openai-chat", Label: "OpenAI-compatible", BaseURL: "https://opencode.ai/zen/go/v1#", Description: "OpenCode Go OpenAI 兼容入口"},
+				{ID: "openai-chat", Label: "OpenAI-compatible", BaseURL: "https://opencode.ai/zen/go/v1", Description: "OpenCode Go OpenAI 兼容入口"},
 			},
 			Targets: []ChannelTarget{
 				{Type: TargetMessages, Label: "Messages 原生透传", Description: "Claude Code 直连或 CCX messages 渠道", Recommended: true},
