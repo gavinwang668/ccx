@@ -9,13 +9,28 @@
   - 新增 `IsSetupComplete` / `GenerateProxyAccessKey` 两个 Wails 绑定方法，前者只读判断密钥存在性，后者仅生成预览不写入文件
   - App 启动时三态渲染（Loading 占位 / Setup 引导页 / 主界面），避免界面切换闪烁
 
-## [v2.7.29] - 2026-05-25
+- **桌面端 bootstrap 启动日志** - 在 backend manager 初始化前写入固定位置的 `bootstrap.log`，覆盖 dataDir 计算阶段的启动诊断盲区
+  - 新增 `mustGetwd` / `mustExecutable` 辅助函数，记录关键启动阶段
+  - 便于 Windows 双击无反应、dataDir 解析异常等场景的故障排查
 
 ### 修复
 
 - **桌面端版本号显示重复 `vv` 前缀** - 修复桌面端左下角及更新弹窗版本号显示为 `vv2.7.29` 的问题
   - VERSION 文件已自带 `v` 前缀，前端模板不应再硬编码 `v`
   - 修正 `Sidebar.vue` 左下角版本徽标，以及 `UpdateDialog.vue` 标题处的当前/最新版本对比
+
+- **detectRootDir 向上遍历边界条件死循环** - 修复 `filepath.Dir` 到达根目录后返回自身导致的潜在死循环
+  - 改为显式检测 `parent == dir` 终止
+  - 新增测试验证 fallback 到 cwd 的行为
+
+### 其他
+
+- **NSIS 构建添加 `/INPUTCHARSET UTF8`** - 修复 NSIS 在非 ASCII 路径下编译失败的问题，并将 `ccx-go.exe` 构建产物加入 `.gitignore`
+- **新增 `make install` 命令** - 一键安装根目录、`backend-go/`、`frontend/`、`desktop/`、`desktop/frontend/` 全部依赖
+
+## [v2.7.29] - 2026-05-25
+
+### 修复
 
 - **批量延迟测试在 Chat 标签页报错 `e.forEach is not a function`** - 修复 Chat 渠道批量延迟测试时，前端 `pingAllChatChannels()` 未解包后端 `{"channels": [...]}` 响应导致 `forEach` 调用失败的问题
   - `api.ts` 中 `pingAllChatChannels()` 现在正确提取 `resp.channels` 并映射字段，与 Images/Gemini 处理方式一致
