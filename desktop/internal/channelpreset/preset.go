@@ -493,10 +493,10 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 			VisionFallbackModel:      "mimo-v2.5",
 		},
 		ProviderCompshare: {
-			ModelMapping: map[string]string{
-				"haiku":  "deepseek-v4-flash",
-				"opus":   "deepseek-v4-pro",
-				"sonnet": "deepseek-v4-pro",
+				ModelMapping: map[string]string{
+					"haiku":  "deepseek-v4-flash",
+					"opus":   "glm-5.1",
+					"sonnet": "glm-5.1",
 			},
 			ReasoningParamStyle:      "reasoning",
 			PassbackReasoningContent: true,
@@ -558,11 +558,11 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 			VisionFallbackModel: "mimo-v2.5",
 		},
 		ProviderCompshare: {
-			ModelMapping: map[string]string{
-				"gpt-5.5":       "glm-5.1",
-				"gpt-5.4":       "deepseek-v4-pro",
-				"gpt-5.4-mini":  "deepseek-v4-flash",
-				"gpt-5.3-codex": "deepseek-v4-pro",
+				ModelMapping: map[string]string{
+					"gpt-5.5":       "glm-5.1",
+					"gpt-5.4":       "glm-5.1",
+					"gpt-5.4-mini":  "deepseek-v4-flash",
+					"gpt-5.3-codex": "glm-5.1",
 			},
 			ReasoningMapping: map[string]string{
 				"gpt-5.5":       "high",
@@ -620,9 +620,9 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 			VisionFallbackModel:   "mimo-v2.5",
 		},
 		ProviderCompshare: {
-			ModelMapping: map[string]string{
-				"gpt":  "deepseek-v4-pro",
-				"mini": "deepseek-v4-flash",
+				ModelMapping: map[string]string{
+					"gpt":  "glm-5.1",
+					"mini": "deepseek-v4-flash",
 			},
 			ReasoningMapping:              map[string]string{"gpt": "max"},
 			ReasoningParamStyle:           "reasoning",
