@@ -13,6 +13,15 @@
       <a class="primary-action" :href="downloadUrl" rel="noopener noreferrer">
         {{ primaryText }}
       </a>
+      <a
+        v-if="mirrorUrl"
+        class="secondary-action"
+        :href="mirrorUrl"
+        rel="noopener noreferrer"
+        :title="text.mirrorTooltip"
+      >
+        {{ text.mirror }}
+      </a>
       <a class="secondary-action" :href="releasesUrl" rel="noopener noreferrer">
         {{ text.allDownloads }}
       </a>
@@ -77,6 +86,8 @@ const copy = {
     latest: '最新版',
     version: '版本',
     platform: '当前平台',
+    mirror: '加速下载（中国）',
+    mirrorTooltip: '通过 gh-proxy.org 镜像下载，适合 GitHub 直连较慢的用户',
     names: {
       darwin: 'macOS',
       windows: 'Windows',
@@ -95,6 +106,8 @@ const copy = {
     latest: 'Latest release',
     version: 'Version',
     platform: 'Platform',
+    mirror: 'Mirror download (China)',
+    mirrorTooltip: 'Download via the gh-proxy.org mirror for users with limited GitHub access',
     names: {
       darwin: 'macOS',
       windows: 'Windows',
@@ -121,6 +134,7 @@ const platformLabel = computed(() => {
 })
 const versionLabel = computed(() => latestTag.value ? `${text.value.version}: ${latestTag.value}` : '')
 const downloadUrl = computed(() => assetUrl.value || releasesUrl)
+const mirrorUrl = computed(() => assetUrl.value ? `https://v6.gh-proxy.org/${assetUrl.value}` : '')
 const privacyUrl = computed(() => withBase(locale.value === 'en' ? '/en/guide/privacy' : '/guide/privacy'))
 const primaryText = computed(() => {
   if (!matchedPlatformName.value) {
