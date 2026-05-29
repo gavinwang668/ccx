@@ -36,7 +36,8 @@ export const translate = (locale: SupportedLocale, key: MessageKey, params?: Rec
 }
 
 // translateOrFallback 用于动态生成的 i18n key（如基于 provider id 拼接）。
-// 查找顺序：当前 locale 的 presetMessages → 默认 locale 的 presetMessages → messages（兼容） → fallback。
+// 查找顺序：当前 locale presetMessages → 当前 locale messages → 默认 locale presetMessages → 默认 locale messages → fallback。
+// 优先穷尽当前 locale 的两张表，避免 zh-CN 的 presetMessages 留空时被英文 presetMessages 截胡。
 export const translateOrFallback = (
   locale: SupportedLocale,
   key: string,
@@ -48,8 +49,8 @@ export const translateOrFallback = (
   const messageTable = messages[locale] as Record<string, string> | undefined
   const value =
     presetTable[key] ??
-    defaultPresetTable[key] ??
     messageTable?.[key] ??
+    defaultPresetTable[key] ??
     messages[defaultLocale][key as MessageKey] ??
     fallback
   if (!params) return value

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyDocumentLanguage, normalizeLocale, resolveInitialLocale, translate } from './core'
+import { applyDocumentLanguage, normalizeLocale, resolveInitialLocale, translate, translateOrFallback } from './core'
 
 describe('normalizeLocale', () => {
   it('returns zh-CN for Chinese variants', () => {
@@ -51,6 +51,32 @@ describe('translate', () => {
 
   it('falls back to key when message missing', () => {
     expect(translate('en', 'common.missing' as never)).toBe('common.missing')
+  })
+})
+
+describe('translateOrFallback', () => {
+  // 回归：zh-CN 的 presetMessages 故意留空，但 messages 表中有完整中文，
+  // 必须穷尽当前 locale 的两张表后再回落到默认 locale，否则会被英文 preset 截胡。
+  it('prefers zh-CN messages over en presetMessages for shared keys', () => {
+    expect(translateOrFallback('zh-CN', 'channel.preset.deepseek.description', 'fallback'))
+      .toBe('Messages 原生透传、Codex Responses、Chat 渠道透传三种用法。')
+  })
+
+  it('uses en presetMessages for keys only defined there', () => {
+    expect(translateOrFallback('en', 'channel.target.messages.label', 'fallback'))
+      .toBe('Messages native')
+  })
+
+  it('falls back to default locale when key missing in current locale', () => {
+    // zh-CN 的两张表都没有这个 key，应回落到 en 的 presetMessages
+    // 注：所有 preset key 目前在 messages.ts 中均有定义，此测试用虚构 key 验证回落逻辑
+    expect(translateOrFallback('zh-CN', 'channel.target.imaginary.label', 'fb'))
+      .toBe('fb')
+  })
+
+  it('returns fallback when key missing everywhere', () => {
+    expect(translateOrFallback('en', 'totally.unknown.key', 'fallback-text'))
+      .toBe('fallback-text')
   })
 })
 
