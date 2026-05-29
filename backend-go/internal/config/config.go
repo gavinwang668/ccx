@@ -51,6 +51,8 @@ type UpstreamConfig struct {
 	NormalizeMetadataUserID *bool `json:"normalizeMetadataUserId,omitempty"` // 规范化 metadata.user_id（默认 true）
 	// Claude 协议空文本兼容
 	StripEmptyTextBlocks bool `json:"stripEmptyTextBlocks,omitempty"` // 转发前移除裸空 text content block（兼容严格校验的第三方 Claude 上游）
+	// Claude 协议 system 角色兼容
+	NormalizeSystemRoleToTopLevel bool `json:"normalizeSystemRoleToTopLevel,omitempty"` // 将 messages 中的 system 角色抽取回顶层 system 字段（针对 Opus 4.8 等新客户端将 system 作为消息 role 发送，兼容仅支持 user/assistant role 的旧 Claude 上游）
 	// Gemini 特定配置
 	InjectDummyThoughtSignature bool `json:"injectDummyThoughtSignature,omitempty"` // 给空 thought_signature 注入 dummy 值（兼容 x666.me 等要求必须有该字段的 API）
 	StripThoughtSignature       bool `json:"stripThoughtSignature,omitempty"`       // 移除 thought_signature 字段（兼容旧版 Gemini API）
@@ -143,6 +145,8 @@ type UpstreamUpdate struct {
 	NormalizeMetadataUserID *bool      `json:"normalizeMetadataUserId"`
 	// Claude 协议空文本兼容
 	StripEmptyTextBlocks *bool `json:"stripEmptyTextBlocks"`
+	// Claude 协议 system 角色兼容
+	NormalizeSystemRoleToTopLevel *bool `json:"normalizeSystemRoleToTopLevel"`
 	// Gemini 特定配置
 	InjectDummyThoughtSignature *bool `json:"injectDummyThoughtSignature"`
 	StripThoughtSignature       *bool `json:"stripThoughtSignature"`

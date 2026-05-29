@@ -228,6 +228,8 @@ export type MessageKey =
   | 'addChannel.normalizeMetadataUserIdHint'
   | 'addChannel.stripEmptyTextBlocksLabel'
   | 'addChannel.stripEmptyTextBlocksHint'
+  | 'addChannel.normalizeSystemRoleToTopLevelLabel'
+  | 'addChannel.normalizeSystemRoleToTopLevelHint'
   | 'addChannel.normalizeNonstandardChatRolesLabel'
   | 'addChannel.normalizeNonstandardChatRolesHint'
   | 'addChannel.stripCodexClientToolsLabel'
@@ -654,6 +656,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.normalizeMetadataUserIdHint': 'Auto-convert JSON object user_id to a flat string for upstream compatibility.',
     'addChannel.stripEmptyTextBlocksLabel': 'Strip empty text blocks',
     'addChannel.stripEmptyTextBlocksHint': 'Remove bare empty text content blocks before forwarding, for Claude-protocol upstreams that strictly reject Claude Code tool-use placeholders.',
+    'addChannel.normalizeSystemRoleToTopLevelLabel': 'Normalize system role to top-level',
+    'addChannel.normalizeSystemRoleToTopLevelHint': 'For Opus 4.8 / similar new clients that emit system as a message role: extract them back to the top-level system field before forwarding, for legacy Claude upstreams that only accept user/assistant roles.',
     'addChannel.normalizeNonstandardChatRolesLabel': 'Normalize non-standard chat roles',
     'addChannel.normalizeNonstandardChatRolesHint': 'Converts non-standard roles like developer to user before forwarding upstream. Recommended for domestic Chinese models that lack non-standard role support.',
     'addChannel.stripCodexClientToolsLabel': 'Strip Codex client tools',
@@ -1079,6 +1083,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.normalizeMetadataUserIdHint': 'Otomatis ubah user_id objek JSON menjadi string datar untuk kompatibilitas upstream.',
     'addChannel.stripEmptyTextBlocksLabel': 'Hapus blok text kosong',
     'addChannel.stripEmptyTextBlocksHint': 'Hapus blok content text kosong murni sebelum diteruskan, untuk upstream protokol Claude yang ketat menolak placeholder tool-use dari Claude Code.',
+    'addChannel.normalizeSystemRoleToTopLevelLabel': 'Normalisasi role system ke top-level',
+    'addChannel.normalizeSystemRoleToTopLevelHint': 'Untuk Opus 4.8 / klien baru yang mengirim system sebagai role pesan: ekstrak kembali ke field system top-level sebelum diteruskan, untuk upstream Claude lama yang hanya menerima role user/assistant.',
     'addChannel.normalizeNonstandardChatRolesLabel': 'Normalisasi role chat non-standar',
     'addChannel.normalizeNonstandardChatRolesHint': 'Konversi role non-standar seperti developer menjadi user sebelum dikirim ke upstream. Disarankan untuk model domestik Tiongkok yang tidak mendukung role non-standar.',
     'addChannel.stripCodexClientToolsLabel': 'Hapus tool klien Codex',
@@ -1504,6 +1510,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.normalizeMetadataUserIdHint': '自动将 JSON 对象格式的 user_id 转换为扁平字符串，确保上游兼容性。',
     'addChannel.stripEmptyTextBlocksLabel': '移除空 Text Block',
     'addChannel.stripEmptyTextBlocksHint': '转发前移除裸空 text content block，兼容严格拒绝 Claude Code tool_use 占位块的 Claude 协议上游',
+    'addChannel.normalizeSystemRoleToTopLevelLabel': '抽取 system 角色到顶层',
+    'addChannel.normalizeSystemRoleToTopLevelHint': '针对 Opus 4.8 等新客户端将 system 作为消息 role 发送的情况：转发前抽回顶层 system 字段，兼容仅支持 user/assistant role 的旧 Claude 上游',
     'addChannel.normalizeNonstandardChatRolesLabel': '规范化非常见 Chat role',
     'addChannel.normalizeNonstandardChatRolesHint': '将 developer 等非标准 role 统一转为 user 后转发给上游。国内模型通常不支持非标准 role，建议开启。',
     'addChannel.stripCodexClientToolsLabel': '剥离 Codex 客户端工具',

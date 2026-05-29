@@ -935,6 +935,20 @@
               </div>
             </v-col>
 
+            <!-- 抽取 system 角色到顶层（仅 Messages 渠道 + claude 服务类型显示） -->
+            <v-col v-if="props.channelType === 'messages' && form.serviceType === 'claude'" cols="12">
+              <div class="d-flex align-center justify-space-between ga-5">
+                <div class="d-flex align-center ga-2" style="min-width: 0; flex: 1 1 auto;">
+                  <v-icon color="warning">mdi-arrow-collapse-up</v-icon>
+                  <div style="min-width: 0;">
+                    <div class="section-title section-title--soft">{{ t('addChannel.normalizeSystemRoleToTopLevelLabel') }}</div>
+                    <div class="text-caption text-medium-emphasis" style="word-break: break-word;">{{ t('addChannel.normalizeSystemRoleToTopLevelHint') }}</div>
+                  </div>
+                </div>
+                <v-switch v-model="form.normalizeSystemRoleToTopLevel" inset color="warning" hide-details style="flex-shrink: 0;" />
+              </div>
+            </v-col>
+
             <!-- 自定义请求头 -->
             <v-col cols="12">
               <v-card variant="outlined">
@@ -1648,6 +1662,7 @@ const claudeChannelPresets: Record<
     passbackReasoningContent: boolean
     passbackThinkingBlocks: boolean
     stripEmptyTextBlocks: boolean
+    normalizeSystemRoleToTopLevel: boolean
     noVision: boolean
     noVisionModels: string[]
     visionFallbackModel: string
@@ -1657,6 +1672,7 @@ const claudeChannelPresets: Record<
     passbackReasoningContent: true,
     passbackThinkingBlocks: false,
     stripEmptyTextBlocks: false,
+    normalizeSystemRoleToTopLevel: false,
     noVision: false,
     noVisionModels: ['mimo-v2.5-pro'],
     visionFallbackModel: 'mimo-v2.5'
@@ -1665,6 +1681,7 @@ const claudeChannelPresets: Record<
     passbackReasoningContent: true,
     passbackThinkingBlocks: true,
     stripEmptyTextBlocks: true,
+    normalizeSystemRoleToTopLevel: false,
     noVision: true,
     noVisionModels: [],
     visionFallbackModel: ''
@@ -1676,6 +1693,7 @@ const applyClaudeChannelPreset = (preset: keyof typeof claudeChannelPresets) => 
   form.passbackReasoningContent = presetConfig.passbackReasoningContent
   form.passbackThinkingBlocks = presetConfig.passbackThinkingBlocks
   form.stripEmptyTextBlocks = presetConfig.stripEmptyTextBlocks
+  form.normalizeSystemRoleToTopLevel = presetConfig.normalizeSystemRoleToTopLevel
   form.noVision = presetConfig.noVision
   form.noVisionModels = [...presetConfig.noVisionModels]
   form.visionFallbackModel = presetConfig.visionFallbackModel
@@ -1800,6 +1818,7 @@ const form = reactive({
   passbackReasoningContent: false,
   passbackThinkingBlocks: false,
   stripEmptyTextBlocks: false,
+  normalizeSystemRoleToTopLevel: false,
   description: '',
   apiKeys: [] as string[],
   modelMapping: {} as Record<string, string>,
@@ -2120,6 +2139,7 @@ const hasEditableDraftChanges = computed(() => {
     passbackReasoningContent: !!props.channel.passbackReasoningContent,
     passbackThinkingBlocks: !!props.channel.passbackThinkingBlocks,
     stripEmptyTextBlocks: !!props.channel.stripEmptyTextBlocks,
+    normalizeSystemRoleToTopLevel: !!props.channel.normalizeSystemRoleToTopLevel,
     description: (props.channel.description || '').trim(),
     apiKeys: normalizeStringArray(props.channel.apiKeys || []),
     modelMapping: Object.fromEntries(Object.entries(props.channel.modelMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
@@ -2197,6 +2217,7 @@ const resetForm = () => {
   form.passbackReasoningContent = false
   form.passbackThinkingBlocks = false
   form.stripEmptyTextBlocks = false
+  form.normalizeSystemRoleToTopLevel = false
   form.description = ''
   form.apiKeys = []
   form.modelMapping = {}
@@ -2256,6 +2277,7 @@ const loadChannelData = (channel: Channel) => {
   form.passbackReasoningContent = !!channel.passbackReasoningContent
   form.passbackThinkingBlocks = !!channel.passbackThinkingBlocks
   form.stripEmptyTextBlocks = !!channel.stripEmptyTextBlocks
+  form.normalizeSystemRoleToTopLevel = !!channel.normalizeSystemRoleToTopLevel
   form.description = channel.description || ''
 
   // 同步 baseUrlsText（优先使用 baseUrls，否则使用 baseUrl），保留用户显式配置的原始 URL 形式
@@ -2676,7 +2698,7 @@ const PAYLOAD_KEYS = [
   'lowQuality', 'injectDummyThoughtSignature', 'stripThoughtSignature', 'description',
   'apiKeys', 'modelMapping', 'reasoningMapping', 'reasoningParamStyle', 'textVerbosity',
   'fastMode', 'customHeaders', 'proxyUrl', 'routePrefix', 'supportedModels',
-  'autoBlacklistBalance', 'normalizeMetadataUserId', 'passbackThinkingBlocks', 'stripEmptyTextBlocks', 'codexNativeToolPassthrough',
+  'autoBlacklistBalance', 'normalizeMetadataUserId', 'passbackThinkingBlocks', 'stripEmptyTextBlocks', 'normalizeSystemRoleToTopLevel', 'codexNativeToolPassthrough',
   'codexToolCompat', 'normalizeNonstandardChatRoles', 'stripCodexClientTools'
 ] as const
 

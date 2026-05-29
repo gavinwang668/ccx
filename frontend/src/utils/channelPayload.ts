@@ -28,6 +28,7 @@ export interface ChannelFormLike {
   autoBlacklistBalance: boolean
   normalizeMetadataUserId: boolean
   stripEmptyTextBlocks: boolean
+  normalizeSystemRoleToTopLevel: boolean
   codexNativeToolPassthrough: boolean
   codexToolCompat: boolean
   normalizeNonstandardChatRoles?: boolean
@@ -75,6 +76,7 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     autoBlacklistBalance: form.autoBlacklistBalance,
     normalizeMetadataUserId: form.normalizeMetadataUserId,
     stripEmptyTextBlocks: form.stripEmptyTextBlocks,
+    normalizeSystemRoleToTopLevel: form.normalizeSystemRoleToTopLevel,
     codexNativeToolPassthrough: form.codexNativeToolPassthrough,
     codexToolCompat: form.codexToolCompat,
     normalizeNonstandardChatRoles: !!form.normalizeNonstandardChatRoles,

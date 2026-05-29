@@ -212,6 +212,9 @@ func (cm *ConfigManager) UpdateUpstream(index int, updates UpstreamUpdate) (shou
 	if updates.StripEmptyTextBlocks != nil {
 		upstream.StripEmptyTextBlocks = *updates.StripEmptyTextBlocks
 	}
+	if updates.NormalizeSystemRoleToTopLevel != nil {
+		upstream.NormalizeSystemRoleToTopLevel = *updates.NormalizeSystemRoleToTopLevel
+	}
 	if updates.CodexNativeToolPassthrough != nil {
 		upstream.CodexNativeToolPassthrough = *updates.CodexNativeToolPassthrough
 	}

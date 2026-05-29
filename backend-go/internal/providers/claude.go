@@ -498,6 +498,94 @@ func stripThinkingBlocksFromBody(bodyBytes []byte) []byte {
 	return newBytes
 }
 
+func extractClaudeSystemText(content interface{}) string {
+	switch v := content.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case []interface{}:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			block, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if blockType, _ := block["type"].(string); blockType != "text" {
+				continue
+			}
+			text, _ := block["text"].(string)
+			text = strings.TrimSpace(text)
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	default:
+		return ""
+	}
+}
+
+func normalizeSystemRoleToTopLevel(bodyBytes []byte) []byte {
+	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
+	decoder.UseNumber()
+
+	var data map[string]interface{}
+	if err := decoder.Decode(&data); err != nil {
+		return bodyBytes
+	}
+
+	messages, ok := data["messages"].([]interface{})
+	if !ok {
+		return bodyBytes
+	}
+
+	systemTexts := make([]string, 0, 2)
+	filteredMessages := make([]interface{}, 0, len(messages))
+	modified := false
+
+	for _, rawMsg := range messages {
+		msgMap, ok := rawMsg.(map[string]interface{})
+		if !ok {
+			filteredMessages = append(filteredMessages, rawMsg)
+			continue
+		}
+		role, _ := msgMap["role"].(string)
+		if role != "system" {
+			filteredMessages = append(filteredMessages, msgMap)
+			continue
+		}
+		modified = true
+		if text := extractClaudeSystemText(msgMap["content"]); text != "" {
+			systemTexts = append(systemTexts, text)
+		}
+	}
+
+	if !modified {
+		return bodyBytes
+	}
+
+	existingTopLevel := ""
+	switch s := data["system"].(type) {
+	case string:
+		existingTopLevel = strings.TrimSpace(s)
+	case []interface{}:
+		existingTopLevel = extractClaudeSystemText(s)
+	}
+	if existingTopLevel != "" {
+		systemTexts = append([]string{existingTopLevel}, systemTexts...)
+	}
+
+	data["messages"] = filteredMessages
+	if len(systemTexts) > 0 {
+		data["system"] = strings.Join(systemTexts, "\n\n")
+	}
+
+	newBytes, err := utils.MarshalJSONNoEscape(data)
+	if err != nil {
+		return bodyBytes
+	}
+	return newBytes
+}
+
 // convertReasoningContentToThinking 将响应中的 reasoning_content 转为 Claude thinking 内容块
 // 用于兼容 mimo 等返回 OpenAI 风格 reasoning_content 的 Claude 协议上游
 func convertReasoningContentToThinking(bodyBytes []byte) []byte {
@@ -587,6 +675,9 @@ func (p *ClaudeProvider) ConvertToProviderRequest(c *gin.Context, upstream *conf
 		}
 	}
 
+	if upstream.NormalizeSystemRoleToTopLevel {
+		bodyBytes = normalizeSystemRoleToTopLevel(bodyBytes)
+	}
 	// 构建目标URL
 	// 智能拼接逻辑：
 	// 1. 如果 baseURL 以 # 结尾，跳过自动添加 /v1
