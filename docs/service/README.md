@@ -21,7 +21,7 @@ sudo chmod +x /opt/ccx/ccx-linux-amd64
 
 ```bash
 PROXY_ACCESS_KEY=your-proxy-access-key
-PORT=3000
+PORT=3688
 ENABLE_WEB_UI=true
 APP_UI_LANGUAGE=zh-CN
 ENV=production
@@ -108,7 +108,7 @@ launchctl unload ~/Library/LaunchAgents/com.ccx.gateway.plist
 ```powershell
 nssm install ccx C:\ccx\ccx-windows-amd64.exe
 nssm set ccx AppDirectory C:\ccx
-nssm set ccx AppEnvironmentExtra PROXY_ACCESS_KEY=your-proxy-access-key PORT=3000 ENABLE_WEB_UI=true APP_UI_LANGUAGE=zh-CN
+nssm set ccx AppEnvironmentExtra PROXY_ACCESS_KEY=your-proxy-access-key PORT=3688 ENABLE_WEB_UI=true APP_UI_LANGUAGE=zh-CN
 nssm set ccx Start SERVICE_AUTO_START
 nssm start ccx
 ```

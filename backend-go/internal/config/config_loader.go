@@ -45,22 +45,26 @@ func NewConfigManager(configFile string) (*ConfigManager, error) {
 }
 
 // loadConfig 加载配置
+// loadConfig 加载配置
 func (cm *ConfigManager) loadConfig() error {
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
 
 	// 如果配置文件不存在，创建默认配置
 	if _, err := os.Stat(cm.configFile); os.IsNotExist(err) {
-		return cm.createDefaultConfig()
+		err := cm.createDefaultConfig()
+		cm.mu.Unlock()
+		return err
 	}
 
 	// 读取配置文件
 	data, err := os.ReadFile(cm.configFile)
 	if err != nil {
+		cm.mu.Unlock()
 		return err
 	}
 
 	if err := json.Unmarshal(data, &cm.config); err != nil {
+		cm.mu.Unlock()
 		return err
 	}
 
@@ -81,6 +85,7 @@ func (cm *ConfigManager) loadConfig() error {
 	if needSaveDefaults || needMigration {
 		if err := cm.saveConfigLocked(cm.config); err != nil {
 			log.Printf("[Config-Migration] 警告: 保存迁移后的配置失败: %v", err)
+			cm.mu.Unlock()
 			return err
 		}
 		if needMigration {
@@ -92,10 +97,13 @@ func (cm *ConfigManager) loadConfig() error {
 	if cm.validateChannelKeys() {
 		if err := cm.saveConfigLocked(cm.config); err != nil {
 			log.Printf("[Config-Validate] 警告: 保存自检后的配置失败: %v", err)
+			cm.mu.Unlock()
 			return err
 		}
 	}
 
+	// 成功加载后通知回调（在锁内构造快照，释放锁后通知）
+	cm.fireConfigChangeCallbacks()
 	return nil
 }
 

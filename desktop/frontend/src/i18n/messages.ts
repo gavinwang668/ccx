@@ -306,6 +306,19 @@ export type MessageKey =
   | 'env.groupCircuitBreakerDesc'
   | 'env.fieldMetricsWindowSize'
   | 'env.fieldMetricsFailureThreshold'
+  | 'env.runtimeCbTitle'
+  | 'env.runtimeCbDesc'
+  | 'env.runtimeCbWindowSize'
+  | 'env.runtimeCbWindowSizeDesc'
+  | 'env.runtimeCbFailureThreshold'
+  | 'env.runtimeCbFailureThresholdDesc'
+  | 'env.runtimeCbConsecutiveFailures'
+  | 'env.runtimeCbConsecutiveFailuresDesc'
+  | 'env.runtimeCbSaved'
+  | 'env.runtimeCbSaveFailed'
+  | 'env.runtimeCbLoadFailed'
+  | 'env.runtimeCbNoBackend'
+  | 'env.runtimeCbServiceStopped'
   | 'env.groupMetricsPersistence'
   | 'env.groupMetricsPersistenceDesc'
   | 'env.fieldMetricsPersistenceEnabled'
@@ -652,6 +665,19 @@ export const messages: Record<SupportedLocale, Messages> = {
     'env.groupCircuitBreakerDesc': 'Control scheduler metric windows and failure-rate thresholds.',
     'env.fieldMetricsWindowSize': 'Window size',
     'env.fieldMetricsFailureThreshold': 'Failure-rate threshold',
+    'env.runtimeCbTitle': 'Runtime Circuit Breaker Config',
+    'env.runtimeCbDesc': 'Changes take effect immediately without restarting the service. Overrides .env defaults.',
+    'env.runtimeCbWindowSize': 'Sliding Window Size',
+    'env.runtimeCbWindowSizeDesc': 'Number of recent requests for failure rate (3-100)',
+    'env.runtimeCbFailureThreshold': 'Failure Rate Threshold',
+    'env.runtimeCbFailureThresholdDesc': 'Triggers circuit break when exceeded (0.01-1.0)',
+    'env.runtimeCbConsecutiveFailures': 'Consecutive Failures Threshold',
+    'env.runtimeCbConsecutiveFailuresDesc': 'Triggers circuit break on N consecutive retryable failures (1-100)',
+    'env.runtimeCbSaved': 'Circuit breaker config saved. Changes take effect immediately.',
+    'env.runtimeCbSaveFailed': 'Failed to save: {error}',
+    'env.runtimeCbLoadFailed': 'Failed to load: {error}',
+    'env.runtimeCbNoBackend': 'Backend service not running. Start the service first.',
+    'env.runtimeCbServiceStopped': 'Service is stopped. Start it to configure runtime parameters.',
     'env.groupMetricsPersistence': 'Metrics persistence config',
     'env.groupMetricsPersistenceDesc': 'Control SQLite metrics persistence and data retention.',
     'env.fieldMetricsPersistenceEnabled': 'Enable metrics persistence',
@@ -995,6 +1021,19 @@ export const messages: Record<SupportedLocale, Messages> = {
     'env.groupCircuitBreakerDesc': '控制调度指标窗口与失败率阈值。',
     'env.fieldMetricsWindowSize': '滑动窗口大小',
     'env.fieldMetricsFailureThreshold': '失败率阈值',
+    'env.runtimeCbTitle': '运行时熔断器配置',
+    'env.runtimeCbDesc': '修改立即生效，无需重启服务。优先于 .env 默认值。',
+    'env.runtimeCbWindowSize': '滑动窗口大小',
+    'env.runtimeCbWindowSizeDesc': '计算失败率的最近请求数（3-100）',
+    'env.runtimeCbFailureThreshold': '失败率阈值',
+    'env.runtimeCbFailureThresholdDesc': '超过此值触发熔断（0.01-1.0）',
+    'env.runtimeCbConsecutiveFailures': '连续失败阈值',
+    'env.runtimeCbConsecutiveFailuresDesc': '连续可重试失败次数达此值触发熔断（1-100）',
+    'env.runtimeCbSaved': '熔断器配置已保存，修改立即生效',
+    'env.runtimeCbSaveFailed': '保存失败：{error}',
+    'env.runtimeCbLoadFailed': '加载失败：{error}',
+    'env.runtimeCbNoBackend': '后端服务未运行，请先启动服务',
+    'env.runtimeCbServiceStopped': '服务已停止，启动后可配置运行时参数',
     'env.groupMetricsPersistence': '指标持久化配置',
     'env.groupMetricsPersistenceDesc': '控制 SQLite 指标持久化与数据保留。',
     'env.fieldMetricsPersistenceEnabled': '启用指标持久化',

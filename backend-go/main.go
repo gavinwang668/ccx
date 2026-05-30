@@ -128,13 +128,39 @@ func main() {
 	}
 	traceAffinityManager := session.NewTraceAffinityManager()
 
+	applyCircuitBreakerConfig := func(cfg config.Config) {
+		params := metrics.CircuitBreakerParams{
+			WindowSize:                   envCfg.MetricsWindowSize,
+			FailureThreshold:             envCfg.MetricsFailureThreshold,
+			ConsecutiveFailuresThreshold: 3,
+		}
+		if cfg.CircuitBreaker != nil {
+			if cfg.CircuitBreaker.WindowSize != nil {
+				params.WindowSize = *cfg.CircuitBreaker.WindowSize
+			}
+			if cfg.CircuitBreaker.FailureThreshold != nil {
+				params.FailureThreshold = *cfg.CircuitBreaker.FailureThreshold
+			}
+			if cfg.CircuitBreaker.ConsecutiveFailuresThreshold != nil {
+				params.ConsecutiveFailuresThreshold = int64(*cfg.CircuitBreaker.ConsecutiveFailuresThreshold)
+			}
+		}
+		messagesMetricsManager.UpdateCircuitBreakerConfig(params)
+		responsesMetricsManager.UpdateCircuitBreakerConfig(params)
+		geminiMetricsManager.UpdateCircuitBreakerConfig(params)
+		chatMetricsManager.UpdateCircuitBreakerConfig(params)
+		imagesMetricsManager.UpdateCircuitBreakerConfig(params)
+	}
+	applyCircuitBreakerConfig(cfgManager.GetConfig())
+	cfgManager.RegisterOnConfigChange(applyCircuitBreakerConfig)
+
 	// 初始化 URL 管理器（非阻塞，动态排序）
 	urlManager := warmup.NewURLManager(30*time.Second, 3) // 30秒冷却期，连续3次失败后移到末尾
 	log.Printf("[URLManager-Init] URL管理器已初始化 (冷却期: 30秒, 最大连续失败: 3)")
 
 	channelScheduler := scheduler.NewChannelScheduler(cfgManager, messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager, traceAffinityManager, urlManager)
-	log.Printf("[Scheduler-Init] 多渠道调度器已初始化 (失败率阈值: %.0f%%, 滑动窗口: %d)",
-		messagesMetricsManager.GetFailureThreshold()*100, messagesMetricsManager.GetWindowSize())
+	log.Printf("[Scheduler-Init] 多渠道调度器已初始化 (失败率阈值: %.0f%%, 滑动窗口: %d, 连续失败阈值: %d)",
+		messagesMetricsManager.GetFailureThreshold()*100, messagesMetricsManager.GetWindowSize(), messagesMetricsManager.GetConsecutiveRetryableFailuresThreshold())
 
 	// 初始化对话追踪器和覆盖管理器
 	conversationTracker := conversation.NewConversationTracker(1*time.Hour, 24*time.Hour, ".config/conversation_state.json")
@@ -445,6 +471,10 @@ func main() {
 		// 移除计费头设置
 		apiGroup.GET("/settings/strip-billing-header", handlers.GetStripBillingHeader(cfgManager))
 		apiGroup.PUT("/settings/strip-billing-header", handlers.SetStripBillingHeader(cfgManager))
+
+		// 熔断器运行时设置
+		apiGroup.GET("/settings/circuit-breaker", handlers.GetCircuitBreaker(messagesMetricsManager.GetCircuitBreakerConfig))
+		apiGroup.PUT("/settings/circuit-breaker", handlers.SetCircuitBreaker(cfgManager))
 
 		// 会话调度看板 API
 		convDeps := &handlers.ConversationHandlerDeps{

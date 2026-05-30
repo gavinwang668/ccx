@@ -144,10 +144,10 @@ Go 测试优先使用表驱动测试 + `httptest`。
 - [desktop/CLAUDE.md](desktop/CLAUDE.md) - 桌面模块索引
 - [desktop/frontend/CLAUDE.md](desktop/frontend/CLAUDE.md) - 桌面前端模块索引
 - [backend-go/README.md](backend-go/README.md) - 后端专项文档
-- [ARCHITECTURE.md](ARCHITECTURE.md) - 架构说明
-- [DEVELOPMENT.md](DEVELOPMENT.md) - 开发指南
-- [ENVIRONMENT.md](ENVIRONMENT.md) - 环境变量说明
-- [RELEASE.md](RELEASE.md) - 发布流程
+- [ARCHITECTURE.md](docs/guide/architecture.md) - 架构说明
+- [DEVELOPMENT.md](docs/guide/development.md) - 开发指南
+- [ENVIRONMENT.md](docs/guide/environment.md) - 环境变量说明
+- [RELEASE.md](docs/guide/release.md) - 发布流程
 
 ## 重要提示
 

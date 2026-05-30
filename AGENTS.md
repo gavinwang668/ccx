@@ -15,7 +15,7 @@
 - `dist/`：发布构建产物，禁止手动编辑。
 - `.config/`：运行时配置与持久化目录（如 `config.json`、`metrics.db`、`backups/`）。
 - `refs/`：外部参考项目存档，仅供对照，默认只读。
-- 文档入口：`README.md`、`README.zh-CN.md`、`backend-go/README.md`、`ARCHITECTURE.md`、`DEVELOPMENT.md`、`ENVIRONMENT.md`、`RELEASE.md`。
+- 文档入口：`README.md`、`README.zh-CN.md`、`backend-go/README.md`、`docs/guide/architecture.md`、`docs/guide/development.md`、`docs/guide/environment.md`、`docs/guide/release.md`。
 
 ## 构建 / 测试 / 开发命令
 - 全栈开发（推荐）：根目录 `make dev`（前端 `bun run dev` + 后端 `air` 热重载）。

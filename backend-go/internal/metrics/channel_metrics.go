@@ -61,11 +61,12 @@ func ParseCircuitState(text string) CircuitState {
 	}
 }
 
+// 默认熔断器参数常量
 const (
-	consecutiveRetryableFailuresThreshold int64         = 3
-	halfOpenSuccessThreshold              int           = 1
-	defaultCircuitBackoffBase             time.Duration = 30 * time.Second
-	defaultCircuitBackoffMax              time.Duration = 10 * time.Minute
+	defaultConsecutiveRetryableFailuresThreshold int64         = 3
+	defaultHalfOpenSuccessThreshold              int           = 1
+	defaultCircuitBackoffBase                    time.Duration = 30 * time.Second
+	defaultCircuitBackoffMax                     time.Duration = 10 * time.Minute
 )
 
 // RequestRecord 带时间戳的请求记录（扩展版，支持 Token、Cache 和失败分类数据）。
@@ -149,16 +150,17 @@ type TimeWindowStats struct {
 
 // MetricsManager 指标管理器
 type MetricsManager struct {
-	mu                    sync.RWMutex
-	keyMetrics            map[string]*KeyMetrics // key: hash(baseURL + apiKey)
-	windowSize            int                    // 滑动窗口大小
-	failureThreshold      float64                // 失败率阈值
-	circuitRecoveryTime   time.Duration          // 兼容旧统计字段，表示基础探测冷却时间
-	circuitBackoffBase    time.Duration
-	circuitBackoffMax     time.Duration
-	halfOpenSuccessTarget int
-	stopCh                chan struct{} // 用于停止清理 goroutine
-	nextRequestID         uint64        // 单进程递增请求ID（用于 pendingHistoryIdx）
+	mu                           sync.RWMutex
+	keyMetrics                   map[string]*KeyMetrics // key: hash(baseURL + apiKey)
+	windowSize                   int                    // 滑动窗口大小
+	failureThreshold             float64                // 失败率阈值
+	consecutiveFailuresThreshold int64                  // 连续可重试失败触发阈值
+	circuitRecoveryTime          time.Duration          // 兼容旧统计字段，表示基础探测冷却时间
+	circuitBackoffBase           time.Duration
+	circuitBackoffMax            time.Duration
+	halfOpenSuccessTarget        int
+	stopCh                       chan struct{} // 用于停止清理 goroutine
+	nextRequestID                uint64        // 单进程递增请求ID（用于 pendingHistoryIdx）
 
 	// 持久化存储（可选）
 	store   PersistenceStore
@@ -176,22 +178,25 @@ func (m *MetricsManager) GetAPIType() string {
 }
 
 // NewMetricsManager 创建指标管理器
+// NewMetricsManager 创建指标管理器
 func NewMetricsManager() *MetricsManager {
 	m := &MetricsManager{
-		keyMetrics:            make(map[string]*KeyMetrics),
-		windowSize:            10,  // 默认基于最近 10 次请求计算失败率
-		failureThreshold:      0.5, // 默认 50% 失败率阈值
-		circuitRecoveryTime:   defaultCircuitBackoffBase,
-		circuitBackoffBase:    defaultCircuitBackoffBase,
-		circuitBackoffMax:     defaultCircuitBackoffMax,
-		halfOpenSuccessTarget: halfOpenSuccessThreshold,
-		stopCh:                make(chan struct{}),
+		keyMetrics:                   make(map[string]*KeyMetrics),
+		windowSize:                   10,  // 默认基于最近 10 次请求计算失败率
+		failureThreshold:             0.5, // 默认 50% 失败率阈值
+		consecutiveFailuresThreshold: defaultConsecutiveRetryableFailuresThreshold,
+		circuitRecoveryTime:          defaultCircuitBackoffBase,
+		circuitBackoffBase:           defaultCircuitBackoffBase,
+		circuitBackoffMax:            defaultCircuitBackoffMax,
+		halfOpenSuccessTarget:        defaultHalfOpenSuccessThreshold,
+		stopCh:                       make(chan struct{}),
 	}
 	// 启动后台熔断恢复任务
 	go m.cleanupCircuitBreakers()
 	return m
 }
 
+// NewMetricsManagerWithConfig 创建带配置的指标管理器
 // NewMetricsManagerWithConfig 创建带配置的指标管理器
 func NewMetricsManagerWithConfig(windowSize int, failureThreshold float64) *MetricsManager {
 	if windowSize < 3 {
@@ -201,20 +206,22 @@ func NewMetricsManagerWithConfig(windowSize int, failureThreshold float64) *Metr
 		failureThreshold = 0.5
 	}
 	m := &MetricsManager{
-		keyMetrics:            make(map[string]*KeyMetrics),
-		windowSize:            windowSize,
-		failureThreshold:      failureThreshold,
-		circuitRecoveryTime:   defaultCircuitBackoffBase,
-		circuitBackoffBase:    defaultCircuitBackoffBase,
-		circuitBackoffMax:     defaultCircuitBackoffMax,
-		halfOpenSuccessTarget: halfOpenSuccessThreshold,
-		stopCh:                make(chan struct{}),
+		keyMetrics:                   make(map[string]*KeyMetrics),
+		windowSize:                   windowSize,
+		failureThreshold:             failureThreshold,
+		consecutiveFailuresThreshold: defaultConsecutiveRetryableFailuresThreshold,
+		circuitRecoveryTime:          defaultCircuitBackoffBase,
+		circuitBackoffBase:           defaultCircuitBackoffBase,
+		circuitBackoffMax:            defaultCircuitBackoffMax,
+		halfOpenSuccessTarget:        defaultHalfOpenSuccessThreshold,
+		stopCh:                       make(chan struct{}),
 	}
 	// 启动后台熔断恢复任务
 	go m.cleanupCircuitBreakers()
 	return m
 }
 
+// NewMetricsManagerWithPersistence 创建带持久化的指标管理器
 // NewMetricsManagerWithPersistence 创建带持久化的指标管理器
 func NewMetricsManagerWithPersistence(windowSize int, failureThreshold float64, store PersistenceStore, apiType string) *MetricsManager {
 	if windowSize < 3 {
@@ -224,16 +231,17 @@ func NewMetricsManagerWithPersistence(windowSize int, failureThreshold float64, 
 		failureThreshold = 0.5
 	}
 	m := &MetricsManager{
-		keyMetrics:            make(map[string]*KeyMetrics),
-		windowSize:            windowSize,
-		failureThreshold:      failureThreshold,
-		circuitRecoveryTime:   defaultCircuitBackoffBase,
-		circuitBackoffBase:    defaultCircuitBackoffBase,
-		circuitBackoffMax:     defaultCircuitBackoffMax,
-		halfOpenSuccessTarget: halfOpenSuccessThreshold,
-		stopCh:                make(chan struct{}),
-		store:                 store,
-		apiType:               apiType,
+		keyMetrics:                   make(map[string]*KeyMetrics),
+		windowSize:                   windowSize,
+		failureThreshold:             failureThreshold,
+		consecutiveFailuresThreshold: defaultConsecutiveRetryableFailuresThreshold,
+		circuitRecoveryTime:          defaultCircuitBackoffBase,
+		circuitBackoffBase:           defaultCircuitBackoffBase,
+		circuitBackoffMax:            defaultCircuitBackoffMax,
+		halfOpenSuccessTarget:        defaultHalfOpenSuccessThreshold,
+		stopCh:                       make(chan struct{}),
+		store:                        store,
+		apiType:                      apiType,
 	}
 
 	// 从持久化存储加载历史数据
@@ -1181,7 +1189,7 @@ func (m *MetricsManager) isKeyCircuitBroken(metrics *KeyMetrics) bool {
 	if metrics == nil {
 		return false
 	}
-	if metrics.ConsecutiveFailures >= consecutiveRetryableFailuresThreshold {
+	if metrics.ConsecutiveFailures >= m.consecutiveFailuresThreshold {
 		return true
 	}
 	minRequests := max(3, m.windowSize/2)
@@ -2079,18 +2087,65 @@ func (m *MetricsManager) GetHalfOpenSuccessTarget() int {
 }
 
 // GetConsecutiveRetryableFailuresThreshold 获取连续可重试失败触发阈值。
+// GetConsecutiveRetryableFailuresThreshold 获取连续可重试失败触发阈值。
 func (m *MetricsManager) GetConsecutiveRetryableFailuresThreshold() int64 {
-	return consecutiveRetryableFailuresThreshold
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.consecutiveFailuresThreshold
 }
 
 // GetFailureThreshold 获取失败率阈值
+// GetFailureThreshold 获取失败率阈值
 func (m *MetricsManager) GetFailureThreshold() float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.failureThreshold
 }
 
 // GetWindowSize 获取滑动窗口大小
+// GetWindowSize 获取滑动窗口大小
 func (m *MetricsManager) GetWindowSize() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.windowSize
+}
+
+// CircuitBreakerParams 熔断器可配置参数
+type CircuitBreakerParams struct {
+	WindowSize                   int     `json:"windowSize"`
+	FailureThreshold             float64 `json:"failureThreshold"`
+	ConsecutiveFailuresThreshold int64   `json:"consecutiveFailuresThreshold"`
+}
+
+// GetCircuitBreakerConfig 获取当前运行时生效的熔断器配置
+func (m *MetricsManager) GetCircuitBreakerConfig() CircuitBreakerParams {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return CircuitBreakerParams{
+		WindowSize:                   m.windowSize,
+		FailureThreshold:             m.failureThreshold,
+		ConsecutiveFailuresThreshold: m.consecutiveFailuresThreshold,
+	}
+}
+
+// UpdateCircuitBreakerConfig 原子更新熔断器配置
+func (m *MetricsManager) UpdateCircuitBreakerConfig(params CircuitBreakerParams) {
+	if params.WindowSize < 3 {
+		params.WindowSize = 3
+	}
+	if params.FailureThreshold <= 0 || params.FailureThreshold > 1 {
+		params.FailureThreshold = 0.5
+	}
+	if params.ConsecutiveFailuresThreshold < 1 {
+		params.ConsecutiveFailuresThreshold = defaultConsecutiveRetryableFailuresThreshold
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.windowSize = params.WindowSize
+	m.failureThreshold = params.FailureThreshold
+	m.consecutiveFailuresThreshold = params.ConsecutiveFailuresThreshold
 }
 
 // ============ 兼容旧 API 的方法（基于 channelIndex，需要调用方提供 baseURL 和 keys）============

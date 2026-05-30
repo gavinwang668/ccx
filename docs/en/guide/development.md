@@ -1,24 +1,57 @@
-# 开发指南
+# Development Guide
 
-本文档说明 CCX 的本地开发方式、常用命令和验证流程。
+This document explains how to set up CCX for local development, common commands, and the verification workflow.
 
-> 相关文档：
-> - 架构设计：`ARCHITECTURE.md`
-> - 环境变量：`ENVIRONMENT.md`
-> - 发布流程：`RELEASE.md`
+> Related docs:
+> - Architecture: [architecture.md](architecture.md)
+> - Environment variables: [environment.md](environment.md)
+> - Release process: [release.md](release.md)
 
-## 推荐开发方式
+## Environment Setup
 
-| 方式 | 适用场景 | 说明 |
+### Prerequisites
+
+| Tool | Minimum Version | Install (macOS) | Install (Linux) | Notes |
+| --- | --- | --- | --- | --- |
+| **Go** | 1.25 | `brew install go` | [go.dev/dl](https://go.dev/dl/) | Backend compilation and runtime |
+| **Bun** | 1.x | `brew install oven-sh/bun/bun` | `curl -fsSL https://bun.sh/install \| bash` | Frontend dependency management and build |
+| **Git** | - | Comes with Xcode CLT | `apt install git` / `yum install git` | Version control |
+| **Make** | - | Comes with Xcode CLT | Usually pre-installed | Build scripts |
+
+macOS users who do not have Xcode Command Line Tools yet, run:
+
+```bash
+xcode-select --install
+```
+
+### Install All Dependencies at Once
+
+The root Makefile provides `make install` to automatically install frontend dependencies, Go modules, and development tools (Air hot-reload, Wails 3):
+
+```bash
+make install
+```
+
+### Verify Environment
+
+```bash
+go version     # should be >= 1.25
+bun --version  # should be >= 1.x
+make help      # confirm available commands
+```
+
+## Recommended Development Methods
+
+| Method | Use Case | Description |
 | --- | --- | --- |
-| 根目录 Make | 日常联调 | 同时启动前端开发服务器和后端热重载 |
-| backend-go Make | 后端专项开发 | 只运行 Go 后端命令 |
-| frontend Bun | 前端专项开发 | 只运行 Vue/Vite 前端命令 |
-| Docker | 接近生产环境验证 | 不适合作为主要热重载开发方式 |
+| Root Makefile | Full-stack development | Starts frontend dev server and backend hot-reload simultaneously |
+| backend-go Makefile | Backend-only development | Runs Go backend commands only |
+| Frontend Bun | Frontend-only development | Runs Vue/Vite frontend commands only |
+| Docker | Production-like verification | Not recommended as the primary hot-reload development method |
 
-## 方式一：根目录开发（推荐）
+## Method 1: Root Directory (Recommended)
 
-根目录 `Makefile` 是联调开发的事实来源。
+The root `Makefile` is the source of truth for full-stack development.
 
 ```bash
 make help
@@ -29,15 +62,15 @@ make build
 make clean
 ```
 
-说明：
-- `make dev`：启动前端开发服务器，并在 `backend-go/` 下以热重载模式运行 Go 后端
-- `make run`：构建前端并运行后端
-- `make build`：构建前端并编译 Go 后端
-- `make frontend-dev`：仅启动前端开发服务器
+Details:
+- `make dev`: Starts the frontend dev server and runs the Go backend with hot-reload in `backend-go/`
+- `make run`: Builds the frontend then runs the backend
+- `make build`: Builds the frontend and compiles the Go backend
+- `make frontend-dev`: Starts only the frontend dev server
 
-## 方式二：backend-go 目录开发
+## Method 2: backend-go Directory
 
-`backend-go/Makefile` 是后端命令的事实来源。
+The `backend-go/Makefile` is the source of truth for backend commands.
 
 ```bash
 cd "backend-go"
@@ -52,16 +85,16 @@ make lint
 make deps
 ```
 
-说明：
-- `make dev`：使用 Air 热重载
-- `make run`：复制前端构建产物后直接运行
-- `make build`：构建生产二进制到 `dist/`
-- `make test`：运行所有 Go 测试
-- `make test-cover`：生成覆盖率报告
+Details:
+- `make dev`: Uses Air for hot-reload
+- `make run`: Copies frontend build artifacts then runs directly
+- `make build`: Builds production binary to `dist/`
+- `make test`: Runs all Go tests
+- `make test-cover`: Generates a coverage report
 
-## 方式三：frontend 目录开发
+## Method 3: frontend Directory
 
-前端脚本以 `frontend/package.json` 为准，优先使用 Bun。
+Frontend scripts follow `frontend/package.json`. Bun is the preferred package manager.
 
 ```bash
 cd "frontend"
@@ -73,11 +106,11 @@ bun run type-check
 bun run lint
 ```
 
-如果需要验证 pnpm 兼容性，可运行 `pnpm install`；日常开发、构建和依赖变更仍以 Bun 为准。
+If you need to verify pnpm compatibility, you can run `pnpm install`. For daily development, building, and dependency changes, always use Bun.
 
-## Windows 环境建议
+## Windows Environment Tips
 
-如果没有 `make`，可分别使用 Go 和 Bun 命令：
+If `make` is not available, use Go and Bun commands directly:
 
 ```powershell
 cd backend-go
@@ -90,27 +123,27 @@ bun install
 bun run dev
 ```
 
-推荐安装：
+Recommended installations:
 - Go
 - Bun
 - Make
 - Git
 
-## 文件变更与重载规则
+## File Change and Reload Rules
 
-### 自动热重载
+### Automatic Hot-Reload
 
-- Go 源码：`make dev` / `cd "backend-go" && make dev` 下自动重载
-- 配置文件：`backend-go/.config/config.json` 修改后自动生效
+- Go source code: Automatic reload under `make dev` / `cd "backend-go" && make dev`
+- Config file: `backend-go/.config/config.json` changes take effect automatically
 
-### 需要重启
+### Requires Restart
 
-- 环境变量文件：`backend-go/.env`
-- 依赖或构建配置变更
+- Environment file: `backend-go/.env`
+- Dependency or build config changes
 
-## 常用验证命令
+## Common Verification Commands
 
-在提交改动前，至少执行以下检查：
+Before committing changes, at minimum run:
 
 ```bash
 make build
@@ -118,51 +151,51 @@ cd "backend-go" && make test
 cd "frontend" && bun run build
 ```
 
-如果只改后端代码，建议额外执行：
+If you only changed backend code, also run:
 
 ```bash
 cd "backend-go" && make lint
 ```
 
-## 本地访问入口
+## Local Access Points
 
-- Web 管理界面：`http://localhost:3000`
-- 代理 API：`http://localhost:3000/v1`
-- 健康检查：`http://localhost:3000/health`
-- 前端开发服务器：默认 `http://localhost:5173`
+- Web admin UI: `http://localhost:3688`
+- Proxy API: `http://localhost:3688/v1`
+- Health check: `http://localhost:3688/health`
+- Frontend dev server: `http://localhost:5173` by default
 
-### Windows / WSL / Docker 访问建议
+### Windows / WSL / Docker Access Tips
 
-Windows 下 cmd、PowerShell、WSL 与 Docker 可能处在不同网络环境中，`localhost` / `127.0.0.1` 不一定指向运行 CCX 的进程。跨环境调用时建议使用 Windows 主机的局域网 IPv4 地址，例如：
+On Windows, cmd, PowerShell, WSL, and Docker may be in different network environments. `localhost` / `127.0.0.1` may not reach the CCX process. For cross-environment access, use the Windows host LAN IPv4 address, for example:
 
 ```text
-http://192.168.1.23:3000/v1
+http://192.168.1.23:3688/v1
 ```
 
-获取地址：
+Get the address:
 
 ```powershell
 ipconfig
 ```
 
-验证连通性：
+Verify connectivity:
 
 ```powershell
-curl.exe -i http://192.168.1.23:3000/health
+curl.exe -i http://192.168.1.23:3688/health
 ```
 
-CCX 后端默认监听 `:PORT`，等价于监听所有网卡地址；通常不需要额外修改为 `0.0.0.0`。如果局域网 IP 无法访问，优先检查 Windows 防火墙是否允许对应端口入站。
+The CCX backend listens on `:PORT` by default, which means all network interfaces. You generally do not need to change it to `0.0.0.0`. If the LAN IP is not accessible, first check whether the Windows firewall allows inbound traffic on the corresponding port.
 
-## 常见开发任务
+## Common Development Tasks
 
-### 只调试后端
+### Backend Only
 
 ```bash
 cd "backend-go"
 make dev
 ```
 
-### 只调试前端
+### Frontend Only
 
 ```bash
 cd "frontend"
@@ -170,13 +203,13 @@ bun install
 bun run dev
 ```
 
-### 前后端联调
+### Full-Stack Development
 
 ```bash
 make dev
 ```
 
-### 验证生产构建
+### Verify Production Build
 
 ```bash
 make build

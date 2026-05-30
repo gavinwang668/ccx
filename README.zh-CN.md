@@ -68,7 +68,7 @@ CCX 对外提供一个统一后端入口：
 - `POST /v1/images/edits`
 - `POST /v1/images/variations`
 
-详细设计请参考 [ARCHITECTURE.md](ARCHITECTURE.md)。
+详细设计请参考 [ARCHITECTURE.md](docs/guide/architecture.md)。
 
 ## 快速开始
 
@@ -87,7 +87,7 @@ CCX 对外提供一个统一后端入口：
 
 ```bash
 PROXY_ACCESS_KEY=your-proxy-access-key
-PORT=3000
+PORT=3688
 ENABLE_WEB_UI=true
 APP_UI_LANGUAGE=zh-CN
 ```
@@ -131,10 +131,13 @@ docker compose up -d ccx
 
 ### 方式三：源码构建
 
+前置依赖：[Go 1.25+](https://go.dev/dl/)、[Bun](https://bun.sh)、Make（macOS 需先执行 `xcode-select --install`）。
+
 ```bash
 git clone https://github.com/BenedictKing/ccx
 cd ccx
 cp backend-go/.env.example backend-go/.env
+make install   # 安装所有依赖（前端 + Go 模块 + 开发工具）
 make run
 ```
 
@@ -150,7 +153,7 @@ make frontend-dev
 ## 主要环境变量
 
 ```bash
-PORT=3000
+PORT=3688
 ENV=production
 ENABLE_WEB_UI=true
 PROXY_ACCESS_KEY=your-proxy-access-key
@@ -201,11 +204,11 @@ make dev
 - [客户端接入总览](docs/guide/clients)
 - [README.md](README.md)
 - [backend-go/README.md](backend-go/README.md)
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [DEVELOPMENT.md](DEVELOPMENT.md)
-- [ENVIRONMENT.md](ENVIRONMENT.md)
+- [ARCHITECTURE.md](docs/guide/architecture.md)
+- [DEVELOPMENT.md](docs/guide/development.md)
+- [ENVIRONMENT.md](docs/guide/environment.md)
 - [docs/service/README.md](docs/service/README.md) - 非 Docker 自启动
-- [RELEASE.md](RELEASE.md)
+- [RELEASE.md](docs/guide/release.md)
 
 ## 社区交流
 

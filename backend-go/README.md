@@ -63,7 +63,7 @@ make build
 常见变量示例：
 
 ```env
-PORT=3000
+PORT=3688
 ENV=production
 ENABLE_WEB_UI=true
 PROXY_ACCESS_KEY=your-secure-access-key
@@ -237,8 +237,8 @@ Images 请求会额外记录 `operation`，用于区分具体端点：
 
 - 项目入口：`../README.md`
 - 中文入口：`../README.zh-CN.md`
-- 架构说明：`../ARCHITECTURE.md`
-- 开发指南：`../DEVELOPMENT.md`
-- 环境变量：`../ENVIRONMENT.md`
-- 发布流程：`../RELEASE.md`
+- 架构说明：`../docs/guide/architecture.md`
+- 开发指南：`../docs/guide/development.md`
+- 环境变量：`../docs/guide/environment.md`
+- 发布流程：`../docs/guide/release.md`
 - 版本历史：`../CHANGELOG.md`

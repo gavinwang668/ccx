@@ -1,3 +1,17 @@
+## [Unreleased]
+
+### 新增
+
+- **熔断器参数运行时可配置化** - 将 `windowSize`、`failureThreshold`、`consecutiveFailuresThreshold` 三个核心熔断器参数从硬编码/环境变量改为 `config.json` 热更新配置，支持通过 Admin API `GET/PUT /api/settings/circuit-breaker` 实时读写，无需重启服务。
+- **ConfigManager 配置变更回调机制** - 新增 `RegisterOnConfigChange` 回调注册，`loadConfig` 和各 `Set*` 方法在配置变更后自动触发已注册回调，支持熔断器参数热同步到 MetricsManager。
+- **Web UI 熔断器设置弹窗** - 工具栏新增 CB 按钮，点击打开熔断器参数配置弹窗，修改立即生效。
+- **桌面端运行时熔断器配置卡片** - 环境参数页新增"运行时熔断器配置"卡片，通过 Admin API 读写，服务未运行时给出提示。
+- **Admin API `/api/settings/circuit-breaker`** - 新增 `GET` 获取当前运行时生效值、`PUT` partial update 熔断器配置，含参数范围校验。
+
+### 变更
+
+- **MetricsManager 熔断器参数改为可变字段** - `consecutiveRetryableFailuresThreshold` 从包级常量改为 `MetricsManager` 字段，支持运行时原子更新；`GetFailureThreshold`、`GetWindowSize`、`GetConsecutiveRetryableFailuresThreshold` 补加 `RLock()` 保证并发安全。
+
 ## [v2.8.17] - 2026-05-29
 
 ### 新增

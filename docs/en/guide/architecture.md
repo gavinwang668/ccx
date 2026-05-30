@@ -165,6 +165,6 @@ Images 请求会在渠道日志中记录具体端点类型：
 
 - 入口说明：`README.md`
 - 后端专项：`backend-go/README.md`
-- 开发流程：`DEVELOPMENT.md`
-- 环境变量：`ENVIRONMENT.md`
-- 发布流程：`RELEASE.md`
+- 开发流程：`development.md`
+- 环境变量：`environment.md`
+- 发布流程：`release.md`

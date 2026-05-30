@@ -167,6 +167,13 @@ type UpstreamUpdate struct {
 }
 
 // Config 配置结构
+// CircuitBreakerConfig 熔断器运行时配置（所有字段可选，nil 使用默认值）
+type CircuitBreakerConfig struct {
+	WindowSize                   *int     `json:"windowSize,omitempty"`
+	FailureThreshold             *float64 `json:"failureThreshold,omitempty"`
+	ConsecutiveFailuresThreshold *int     `json:"consecutiveFailuresThreshold,omitempty"`
+}
+
 type Config struct {
 	Upstream        []UpstreamConfig `json:"upstream"`
 	CurrentUpstream int              `json:"currentUpstream,omitempty"` // 已废弃：旧格式兼容用
@@ -189,6 +196,9 @@ type Config struct {
 
 	// 移除计费头中的 cch= 参数：启用时自动从 system 数组中移除 cch=xxx; 部分
 	StripBillingHeader bool `json:"stripBillingHeader"`
+
+	// 熔断器运行时配置（可选，nil 使用环境变量或代码默认值）
+	CircuitBreaker *CircuitBreakerConfig `json:"circuitBreaker,omitempty"`
 }
 
 // FailedKey 失败密钥记录
@@ -199,15 +209,16 @@ type FailedKey struct {
 
 // ConfigManager 配置管理器
 type ConfigManager struct {
-	mu              sync.RWMutex
-	config          Config
-	configFile      string
-	watcher         *fsnotify.Watcher
-	failedKeysCache map[string]*FailedKey
-	keyRecoveryTime time.Duration
-	maxFailureCount int
-	stopChan        chan struct{} // 用于通知 goroutine 停止
-	closeOnce       sync.Once     // 确保 Close 只执行一次
+	mu                    sync.RWMutex
+	config                Config
+	configFile            string
+	watcher               *fsnotify.Watcher
+	failedKeysCache       map[string]*FailedKey
+	keyRecoveryTime       time.Duration
+	maxFailureCount       int
+	stopChan              chan struct{} // 用于通知 goroutine 停止
+	closeOnce             sync.Once     // 确保 Close 只执行一次
+	configChangeCallbacks []func(Config)
 }
 
 // failedKeyCacheKey 构造 FailedKeysCache 的复合键（apiType:apiKey）
@@ -263,6 +274,12 @@ func (cm *ConfigManager) GetConfig() Config {
 		for i := range cm.config.ImagesUpstream {
 			cloned.ImagesUpstream[i] = *cm.config.ImagesUpstream[i].Clone()
 		}
+	}
+
+	// 深拷贝 CircuitBreaker 指针字段
+	if cm.config.CircuitBreaker != nil {
+		cb := *cm.config.CircuitBreaker
+		cloned.CircuitBreaker = &cb
 	}
 
 	return cloned
@@ -453,11 +470,11 @@ func (cm *ConfigManager) GetFuzzyModeEnabled() bool {
 // SetFuzzyModeEnabled 设置 Fuzzy 模式状态
 func (cm *ConfigManager) SetFuzzyModeEnabled(enabled bool) error {
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
 
 	cm.config.FuzzyModeEnabled = enabled
 
 	if err := cm.saveConfigLocked(cm.config); err != nil {
+		cm.mu.Unlock()
 		return err
 	}
 
@@ -466,6 +483,8 @@ func (cm *ConfigManager) SetFuzzyModeEnabled(enabled bool) error {
 		status = "启用"
 	}
 	log.Printf("[Config-FuzzyMode] Fuzzy 模式已%s", status)
+
+	cm.fireConfigChangeCallbacks()
 	return nil
 }
 
@@ -481,11 +500,11 @@ func (cm *ConfigManager) GetStripBillingHeader() bool {
 // SetStripBillingHeader 设置移除计费头状态
 func (cm *ConfigManager) SetStripBillingHeader(enabled bool) error {
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
 
 	cm.config.StripBillingHeader = enabled
 
 	if err := cm.saveConfigLocked(cm.config); err != nil {
+		cm.mu.Unlock()
 		return err
 	}
 
@@ -494,6 +513,8 @@ func (cm *ConfigManager) SetStripBillingHeader(enabled bool) error {
 		status = "启用"
 	}
 	log.Printf("[Config-StripBillingHeader] 移除计费头已%s", status)
+
+	cm.fireConfigChangeCallbacks()
 	return nil
 }
 
@@ -556,6 +577,89 @@ func (cm *ConfigManager) BlacklistKey(apiType string, channelIndex int, apiKey s
 	}
 
 	return cm.saveConfigLocked(cm.config)
+}
+
+// ============== 熔断器运行时配置 ==============
+
+// GetCircuitBreakerConfig 获取熔断器运行时配置
+func (cm *ConfigManager) GetCircuitBreakerConfig() CircuitBreakerConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	if cm.config.CircuitBreaker == nil {
+		return CircuitBreakerConfig{}
+	}
+	return *cm.config.CircuitBreaker
+}
+
+// SetCircuitBreakerConfig 更新熔断器运行时配置（partial update，nil 字段不覆盖）
+func (cm *ConfigManager) SetCircuitBreakerConfig(update CircuitBreakerConfig) error {
+	cm.mu.Lock()
+
+	if cm.config.CircuitBreaker == nil {
+		cm.config.CircuitBreaker = &CircuitBreakerConfig{}
+	}
+	cb := cm.config.CircuitBreaker
+	if update.WindowSize != nil {
+		v := *update.WindowSize
+		if v < 3 {
+			v = 3
+		} else if v > 100 {
+			v = 100
+		}
+		cb.WindowSize = &v
+	}
+	if update.FailureThreshold != nil {
+		v := *update.FailureThreshold
+		if v < 0.01 {
+			v = 0.01
+		} else if v > 1.0 {
+			v = 1.0
+		}
+		cb.FailureThreshold = &v
+	}
+	if update.ConsecutiveFailuresThreshold != nil {
+		v := *update.ConsecutiveFailuresThreshold
+		if v < 1 {
+			v = 1
+		} else if v > 100 {
+			v = 100
+		}
+		cb.ConsecutiveFailuresThreshold = &v
+	}
+
+	if err := cm.saveConfigLocked(cm.config); err != nil {
+		cm.mu.Unlock()
+		return err
+	}
+
+	log.Printf("[Config-CircuitBreaker] 熔断器配置已更新")
+	cm.fireConfigChangeCallbacks()
+	return nil
+}
+
+// RegisterOnConfigChange 注册配置变更回调（在 loadConfig / Set 成功后触发）
+func (cm *ConfigManager) RegisterOnConfigChange(fn func(Config)) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.configChangeCallbacks = append(cm.configChangeCallbacks, fn)
+}
+
+// fireConfigChangeCallbacks 在锁外通知所有已注册的回调
+// 调用方需已持有 cm.mu，本方法会在内部释放锁
+// fireConfigChangeCallbacks 在锁外异步通知所有已注册的回调
+// 调用方需已持有 cm.mu，本方法会在内部释放锁
+func (cm *ConfigManager) fireConfigChangeCallbacks() {
+	snapshot := cm.config.deepCopy()
+	callbacks := cm.configChangeCallbacks
+	cm.mu.Unlock()
+	// 异步执行回调，避免回调中触发配置写操作导致重入死锁
+	if len(callbacks) > 0 {
+		go func() {
+			for _, fn := range callbacks {
+				fn(snapshot)
+			}
+		}()
+	}
 }
 
 // RestoreKey 将指定 Key 从拉黑列表恢复到活跃列表（持久化）

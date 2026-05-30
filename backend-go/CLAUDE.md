@@ -121,6 +121,6 @@ log.Printf("[Component-Action] 消息内容: %v", value)
 
 - [../README.md](../README.md) - 项目入口
 - [README.md](README.md) - 后端专项文档
-- [../ARCHITECTURE.md](../ARCHITECTURE.md) - 架构说明
-- [../DEVELOPMENT.md](../DEVELOPMENT.md) - 开发指南
-- [../RELEASE.md](../RELEASE.md) - 发布流程
+- [../docs/guide/architecture.md](../docs/guide/architecture.md) - 架构说明
+- [../docs/guide/development.md](../docs/guide/development.md) - 开发指南
+- [../docs/guide/release.md](../docs/guide/release.md) - 发布流程

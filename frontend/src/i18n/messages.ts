@@ -417,6 +417,14 @@ export type MessageKey =
   | 'tooltip.billingDisabled'
   | 'tooltip.fuzzyEnabled'
   | 'tooltip.fuzzyDisabled'
+  | 'tooltip.circuitBreakerSettings'
+  | 'toast.circuitBreakerSaved'
+  | 'toast.circuitBreakerFailed'
+  | 'dialog.circuitBreaker.title'
+  | 'dialog.circuitBreaker.description'
+  | 'dialog.circuitBreaker.windowSize'
+  | 'dialog.circuitBreaker.failureThreshold'
+  | 'dialog.circuitBreaker.consecutiveFailuresThreshold'
   | 'update.title'
   | 'update.currentVersion'
   | 'update.latestVersion'
@@ -845,6 +853,14 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'tooltip.billingDisabled': 'Disabled: keeps full billing header information.',
     'tooltip.fuzzyEnabled': 'Fuzzy mode is enabled: errors are handled loosely and all channels are retried.',
     'tooltip.fuzzyDisabled': 'Fuzzy mode is disabled: upstream responses are passed through precisely.',
+    'tooltip.circuitBreakerSettings': 'Circuit breaker settings',
+    'toast.circuitBreakerSaved': 'Circuit breaker settings saved. Changes take effect immediately.',
+    'toast.circuitBreakerFailed': 'Failed to save circuit breaker settings: {message}',
+    'dialog.circuitBreaker.title': 'Circuit Breaker Settings',
+    'dialog.circuitBreaker.description': 'Changes take effect immediately without restarting the service.',
+    'dialog.circuitBreaker.windowSize': 'Sliding Window Size',
+    'dialog.circuitBreaker.failureThreshold': 'Failure Rate Threshold',
+    'dialog.circuitBreaker.consecutiveFailuresThreshold': 'Consecutive Failures Threshold',
     'update.title': 'System Update',
     'update.currentVersion': 'Current Version',
     'update.latestVersion': 'Latest Version',
@@ -1272,6 +1288,14 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'tooltip.billingDisabled': 'Nonaktif: mempertahankan informasi header billing lengkap.',
     'tooltip.fuzzyEnabled': 'Fuzzy mode aktif: error diproses longgar dan semua channel akan dicoba otomatis.',
     'tooltip.fuzzyDisabled': 'Fuzzy mode nonaktif: response upstream diteruskan secara presisi.',
+    'tooltip.circuitBreakerSettings': 'Pengaturan circuit breaker',
+    'toast.circuitBreakerSaved': 'Pengaturan circuit breaker disimpan. Perubahan berlaku segera.',
+    'toast.circuitBreakerFailed': 'Gagal menyimpan pengaturan circuit breaker: {message}',
+    'dialog.circuitBreaker.title': 'Pengaturan Circuit Breaker',
+    'dialog.circuitBreaker.description': 'Perubahan berlaku segera tanpa perlu restart layanan.',
+    'dialog.circuitBreaker.windowSize': 'Ukuran Sliding Window',
+    'dialog.circuitBreaker.failureThreshold': 'Ambang Batas Gagal',
+    'dialog.circuitBreaker.consecutiveFailuresThreshold': 'Ambang Batas Kegagalan Beruntun',
     'update.title': 'Pembaruan Sistem',
     'update.currentVersion': 'Versi Saat Ini',
     'update.latestVersion': 'Versi Terbaru',
@@ -1699,6 +1723,14 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'tooltip.billingDisabled': '已关闭：保留完整的计费头信息',
     'tooltip.fuzzyEnabled': 'Fuzzy 模式已启用：模糊处理错误，自动尝试所有渠道',
     'tooltip.fuzzyDisabled': 'Fuzzy 模式已关闭：精确处理错误，透传上游响应',
+    'tooltip.circuitBreakerSettings': '熔断器设置',
+    'toast.circuitBreakerSaved': '熔断器设置已保存，修改立即生效',
+    'toast.circuitBreakerFailed': '保存熔断器设置失败：{message}',
+    'dialog.circuitBreaker.title': '熔断器设置',
+    'dialog.circuitBreaker.description': '修改立即生效，无需重启服务',
+    'dialog.circuitBreaker.windowSize': '滑动窗口大小',
+    'dialog.circuitBreaker.failureThreshold': '失败率阈值',
+    'dialog.circuitBreaker.consecutiveFailuresThreshold': '连续失败阈值',
     'update.title': '系统更新',
     'update.currentVersion': '当前版本',
     'update.latestVersion': '最新版本',

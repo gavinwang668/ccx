@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/gin-gonic/gin"
 )
 
@@ -66,6 +67,74 @@ func SetStripBillingHeader(cfgManager *config.ConfigManager) gin.HandlerFunc {
 		c.JSON(200, gin.H{
 			"success":            true,
 			"stripBillingHeader": req.Enabled,
+		})
+	}
+}
+
+// GetCircuitBreaker 获取熔断器运行时配置
+// getCurrent: 返回当前运行时生效的熔断器参数的函数
+func GetCircuitBreaker(getCurrent func() metrics.CircuitBreakerParams) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		params := getCurrent()
+		c.JSON(200, gin.H{
+			"windowSize":                   params.WindowSize,
+			"failureThreshold":             params.FailureThreshold,
+			"consecutiveFailuresThreshold": params.ConsecutiveFailuresThreshold,
+		})
+	}
+}
+
+// SetCircuitBreaker 更新熔断器运行时配置
+func SetCircuitBreaker(cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			WindowSize                   *int     `json:"windowSize"`
+			FailureThreshold             *float64 `json:"failureThreshold"`
+			ConsecutiveFailuresThreshold *int     `json:"consecutiveFailuresThreshold"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "请求格式无效"})
+			return
+		}
+
+		// 参数校验
+		if req.WindowSize != nil {
+			if *req.WindowSize < 3 || *req.WindowSize > 100 {
+				c.JSON(400, gin.H{"error": "windowSize 必须在 3-100 之间"})
+				return
+			}
+		}
+		if req.FailureThreshold != nil {
+			if *req.FailureThreshold < 0.01 || *req.FailureThreshold > 1.0 {
+				c.JSON(400, gin.H{"error": "failureThreshold 必须在 0.01-1.0 之间"})
+				return
+			}
+		}
+		if req.ConsecutiveFailuresThreshold != nil {
+			if *req.ConsecutiveFailuresThreshold < 1 || *req.ConsecutiveFailuresThreshold > 100 {
+				c.JSON(400, gin.H{"error": "consecutiveFailuresThreshold 必须在 1-100 之间"})
+				return
+			}
+		}
+
+		if err := cfgManager.SetCircuitBreakerConfig(config.CircuitBreakerConfig{
+			WindowSize:                   req.WindowSize,
+			FailureThreshold:             req.FailureThreshold,
+			ConsecutiveFailuresThreshold: req.ConsecutiveFailuresThreshold,
+		}); err != nil {
+			c.JSON(500, gin.H{"error": "保存配置失败"})
+			return
+		}
+
+		// 返回更新后的完整配置
+		updated := cfgManager.GetCircuitBreakerConfig()
+		c.JSON(200, gin.H{
+			"success": true,
+			"circuitBreaker": gin.H{
+				"windowSize":                   updated.WindowSize,
+				"failureThreshold":             updated.FailureThreshold,
+				"consecutiveFailuresThreshold": updated.ConsecutiveFailuresThreshold,
+			},
 		})
 	}
 }

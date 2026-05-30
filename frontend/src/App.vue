@@ -355,10 +355,26 @@
               </template>
               <span>{{ systemStore.fuzzyModeLoadError ? t('tooltip.loadFailedRefresh') : (preferencesStore.fuzzyModeEnabled ? t('tooltip.fuzzyEnabled') : t('tooltip.fuzzyDisabled')) }}</span>
             </v-tooltip>
+
+            <!-- 熔断器配置按钮 -->
+            <v-tooltip location="bottom" content-class="ccx-tooltip">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  variant="tonal"
+                  size="large"
+                  color="default"
+                  class="action-btn"
+                  @click="openCircuitBreakerDialog"
+                >
+                  <v-icon start size="20">mdi-tune</v-icon>
+                  CB
+                </v-btn>
+              </template>
+              <span>{{ t('tooltip.circuitBreakerSettings') }}</span>
+            </v-tooltip>
           </div>
         </div>
-
-        <!-- 渠道编排（高密度列表模式） -->
         <router-view
           @edit="editChannel"
           @delete="deleteChannel"
@@ -398,6 +414,67 @@
 
     <!-- OTA 更新对话框 -->
     <UpdateDialog v-model="systemStore.updateDialogOpen" />
+
+    <!-- 熔断器配置对话框 -->
+    <v-dialog v-model="circuitBreakerDialogOpen" max-width="480">
+      <v-card rounded="lg">
+        <v-card-title class="d-flex align-center pa-4 pb-2">
+          <v-icon start color="primary">mdi-tune</v-icon>
+          {{ t('dialog.circuitBreaker.title') }}
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div class="mb-4">
+            <div class="text-caption text-medium-emphasis mb-3">
+              {{ t('dialog.circuitBreaker.description') }}
+            </div>
+            <v-text-field
+              v-model.number="cbForm.windowSize"
+              :label="t('dialog.circuitBreaker.windowSize')"
+              type="number"
+              :min="3"
+              :max="100"
+              density="compact"
+              variant="outlined"
+              class="mb-3"
+              hide-details
+            />
+            <v-text-field
+              v-model.number="cbForm.failureThreshold"
+              :label="t('dialog.circuitBreaker.failureThreshold')"
+              type="number"
+              :min="0.01"
+              :max="1"
+              :step="0.01"
+              density="compact"
+              variant="outlined"
+              class="mb-3"
+              hide-details
+            />
+            <v-text-field
+              v-model.number="cbForm.consecutiveFailuresThreshold"
+              :label="t('dialog.circuitBreaker.consecutiveFailuresThreshold')"
+              type="number"
+              :min="1"
+              :max="100"
+              density="compact"
+              variant="outlined"
+              hide-details
+            />
+          </div>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="circuitBreakerDialogOpen = false">
+            {{ t('app.actions.cancel') }}
+          </v-btn>
+          <v-btn color="primary" :loading="cbSaving" @click="saveCircuitBreaker">
+            {{ t('app.actions.confirm') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- 添加API密钥对话框 -->
     <v-dialog v-model="dialogStore.showAddKeyModal" max-width="500">
@@ -464,7 +541,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTheme } from 'vuetify'
 import Logo from './components/Logo.vue'
@@ -1530,6 +1607,44 @@ const toggleStripBillingHeader = async () => {
     showToast(t('toast.billingToggleFailed', { message: e instanceof Error ? e.message : t('system.unknown') }), 'error')
   } finally {
     systemStore.setStripBillingHeaderLoading(false)
+  }
+}
+
+// 熔断器配置
+const circuitBreakerDialogOpen = ref(false)
+const cbSaving = ref(false)
+const cbForm = reactive({
+  windowSize: 10,
+  failureThreshold: 0.5,
+  consecutiveFailuresThreshold: 3,
+})
+
+const openCircuitBreakerDialog = async () => {
+  try {
+    const params = await api.getCircuitBreaker()
+    cbForm.windowSize = params.windowSize
+    cbForm.failureThreshold = params.failureThreshold
+    cbForm.consecutiveFailuresThreshold = params.consecutiveFailuresThreshold
+  } catch (e) {
+    console.error('Failed to load circuit breaker config:', e)
+  }
+  circuitBreakerDialogOpen.value = true
+}
+
+const saveCircuitBreaker = async () => {
+  cbSaving.value = true
+  try {
+    await api.setCircuitBreaker({
+      windowSize: cbForm.windowSize,
+      failureThreshold: cbForm.failureThreshold,
+      consecutiveFailuresThreshold: cbForm.consecutiveFailuresThreshold,
+    })
+    circuitBreakerDialogOpen.value = false
+    showToast(t('toast.circuitBreakerSaved'), 'success')
+  } catch (e) {
+    showToast(t('toast.circuitBreakerFailed', { message: e instanceof Error ? e.message : t('system.unknown') }), 'error')
+  } finally {
+    cbSaving.value = false
   }
 }
 

@@ -3,9 +3,42 @@
 本文档说明 CCX 的本地开发方式、常用命令和验证流程。
 
 > 相关文档：
-> - 架构设计：`ARCHITECTURE.md`
-> - 环境变量：`ENVIRONMENT.md`
-> - 发布流程：`RELEASE.md`
+> - 架构设计：[architecture.md](architecture.md)
+> - 环境变量：[environment.md](environment.md)
+> - 发布流程：[release.md](release.md)
+
+## 环境准备
+
+### 前置依赖
+
+| 工具 | 最低版本 | 安装方式 (macOS) | 安装方式 (Linux) | 说明 |
+| --- | --- | --- | --- | --- |
+| **Go** | 1.25 | `brew install go` | [go.dev/dl](https://go.dev/dl/) | 后端编译与运行 |
+| **Bun** | 1.x | `brew install oven-sh/bun/bun` | `curl -fsSL https://bun.sh/install \| bash` | 前端依赖管理与构建 |
+| **Git** | - | Xcode CLT 自带 | `apt install git` / `yum install git` | 版本管理 |
+| **Make** | - | Xcode CLT 自带 | 通常已预装 | 构建脚本 |
+
+macOS 用户如果还没有 Xcode Command Line Tools，先执行：
+
+```bash
+xcode-select --install
+```
+
+### 一键安装所有依赖
+
+项目根目录 Makefile 提供了 `make install`，可自动安装前端依赖、Go 模块和开发工具（Air 热重载、Wails 3）：
+
+```bash
+make install
+```
+
+### 验证环境
+
+```bash
+go version     # 应 >= 1.25
+bun --version  # 应 >= 1.x
+make help      # 确认可用命令
+```
 
 ## 推荐开发方式
 
@@ -126,9 +159,9 @@ cd "backend-go" && make lint
 
 ## 本地访问入口
 
-- Web 管理界面：`http://localhost:3000`
-- 代理 API：`http://localhost:3000/v1`
-- 健康检查：`http://localhost:3000/health`
+- Web 管理界面：`http://localhost:3688`
+- 代理 API：`http://localhost:3688/v1`
+- 健康检查：`http://localhost:3688/health`
 - 前端开发服务器：默认 `http://localhost:5173`
 
 ### Windows / WSL / Docker 访问建议
@@ -136,7 +169,7 @@ cd "backend-go" && make lint
 Windows 下 cmd、PowerShell、WSL 与 Docker 可能处在不同网络环境中，`localhost` / `127.0.0.1` 不一定指向运行 CCX 的进程。跨环境调用时建议使用 Windows 主机的局域网 IPv4 地址，例如：
 
 ```text
-http://192.168.1.23:3000/v1
+http://192.168.1.23:3688/v1
 ```
 
 获取地址：
@@ -148,7 +181,7 @@ ipconfig
 验证连通性：
 
 ```powershell
-curl.exe -i http://192.168.1.23:3000/health
+curl.exe -i http://192.168.1.23:3688/health
 ```
 
 CCX 后端默认监听 `:PORT`，等价于监听所有网卡地址；通常不需要额外修改为 `0.0.0.0`。如果局域网 IP 无法访问，优先检查 Windows 防火墙是否允许对应端口入站。

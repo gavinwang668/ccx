@@ -38,7 +38,7 @@ ccx/
 
 ```bash
 # 服务器配置
-PORT=3000                              # 服务器端口
+PORT=3688                              # 服务器端口（程序内部默认 3000，建议 .env 中显式设置为 3688）
 
 # 运行环境
 ENV=production                         # 运行环境: development | production
@@ -250,7 +250,7 @@ VITE_APP_ENV=production
 ### backend-go/.env.example
 ```env
 # 服务器配置
-PORT=3000
+PORT=3688
 
 # 运行环境
 ENV=production
@@ -317,7 +317,7 @@ server: {
 make dev
 
 # 方式 2: 分别启动
-# 启动后端 (端口 3000)
+# 启动后端 (端口 3688)
 cd backend-go && make dev
 
 # 启动前端 (端口 5173)
@@ -368,7 +368,7 @@ VITE_FRONTEND_PORT=3000
 ```env
 # backend-go/.env
 ENV=production
-PORT=3000
+PORT=3688
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
 # 可选：管理界面与 /api/* 使用独立管理密钥
 ADMIN_ACCESS_KEY=$(openssl rand -base64 32)
@@ -388,7 +388,7 @@ ENABLE_WEB_UI=true
 ```env
 # backend-go/.env
 ENV=production
-PORT=3000
+PORT=3688
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
 ADMIN_ACCESS_KEY=$(openssl rand -base64 32)
 
@@ -407,7 +407,7 @@ ENABLE_WEB_UI=true
 ```env
 # backend-go/.env
 ENV=production
-PORT=3000
+PORT=3688
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
 ADMIN_ACCESS_KEY=$(openssl rand -base64 32)
 
@@ -426,7 +426,7 @@ ENABLE_WEB_UI=true
 ```env
 # backend-go/.env
 ENV=development
-PORT=3000
+PORT=3688
 PROXY_ACCESS_KEY=dev-test-key
 
 # 完整日志输出
