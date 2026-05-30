@@ -1,16 +1,30 @@
-## [Unreleased]
+## [v2.8.18] - 2026-05-30
 
 ### 新增
 
-- **熔断器参数运行时可配置化** - 将 `windowSize`、`failureThreshold`、`consecutiveFailuresThreshold` 三个核心熔断器参数从硬编码/环境变量改为 `config.json` 热更新配置，支持通过 Admin API `GET/PUT /api/settings/circuit-breaker` 实时读写，无需重启服务。
-- **ConfigManager 配置变更回调机制** - 新增 `RegisterOnConfigChange` 回调注册，`loadConfig` 和各 `Set*` 方法在配置变更后自动触发已注册回调，支持熔断器参数热同步到 MetricsManager。
-- **Web UI 熔断器设置弹窗** - 工具栏新增 CB 按钮，点击打开熔断器参数配置弹窗，修改立即生效。
-- **桌面端运行时熔断器配置卡片** - 环境参数页新增"运行时熔断器配置"卡片，通过 Admin API 读写，服务未运行时给出提示。
-- **Admin API `/api/settings/circuit-breaker`** - 新增 `GET` 获取当前运行时生效值、`PUT` partial update 熔断器配置，含参数范围校验。
+- **按 ReasoningParamStyle 转换客户端原始 reasoning 参数** - 新增按 ReasoningParamStyle 配置项转换客户端原始 reasoning 参数的能力。
+- **Passthrough 路径 ReasoningMapping 分支补充 reasoning_effort 样式处理** - 在 passthrough 路径的 ReasoningMapping 分支中补充 reasoning_effort 样式的处理逻辑。
+- **桌面端 add Homebrew tap 自动化** - 新增 Homebrew tap 自动化发布流程。
+- **桌面端点击版本号触发手动更新检查并计入冷却时间** - 点击版本号可手动触发更新检查，并计入冷却时间避免频繁检查。
+- **桌面端 Codex CCX 代理切换为 openai_base_url 官方模式** - Codex CCX 代理从自定义模式切换为 openai_base_url 官方模式。
 
-### 变更
+### 修复
 
-- **MetricsManager 熔断器参数改为可变字段** - `consecutiveRetryableFailuresThreshold` 从包级常量改为 `MetricsManager` 字段，支持运行时原子更新；`GetFailureThreshold`、`GetWindowSize`、`GetConsecutiveRetryableFailuresThreshold` 补加 `RLock()` 保证并发安全。
+- **渠道中心布局断点降低至 md 并修复窄屏 URL 溢出** - 修复渠道中心在窄屏下的布局问题，将断点降低至 md 并修复 URL 文本溢出。
+- **Responses API 返回 426 让 Codex WebSocket 回退到 HTTP POST** - 修复 Responses API 返回 426 状态码时 Codex WebSocket 正确回退到 HTTP POST。
+- **修复断裂文档链接，统一 PORT=3688，补充源码构建前置依赖** - 修复文档中断裂的链接，统一 PORT 配置为 3688，补充源码构建的前置依赖说明。
+- **MiMo messages 目标描述统一为通用表述** - 统一桌面端 MiMo messages 渠道目标描述为通用表述。
+
+### 重构
+
+- **移除熔断器弹窗标题图标** - 移除熔断器弹窗中的标题图标，简化界面。
+- **渠道中心添加目标标签改为产品名称** - 将渠道中心的添加目标标签改为显示产品名称。
+
+### 其他
+
+- **UI 熔断器配置改为预设按钮+滑块交互** - 将熔断器配置改为预设按钮+滑块的交互方式，删除重复的 .env 分组。
+- **UI 熔断器参数三列并排布局+间隔线** - 调整熔断器参数为三列并排布局并增加间隔线。
+- **UI 预设按钮移到滑块下方，参数列增加内边距** - 将预设按钮移到滑块下方，参数列增加内边距优化间距。
 
 ## [v2.8.17] - 2026-05-29
 
