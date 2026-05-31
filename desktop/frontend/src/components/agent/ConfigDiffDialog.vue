@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle } from 'lucide-vue-next'
@@ -28,6 +28,30 @@ const emit = defineEmits<{
   confirm: []
   cancel: []
 }>()
+
+// Keyboard shortcuts: Esc 取消，Enter 确认
+const handleKeydown = (e: KeyboardEvent) => {
+  if (!props.open) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    emit('cancel')
+  } else if (e.key === 'Enter' && !props.loading) {
+    e.preventDefault()
+    emit('confirm')
+  }
+}
+
+watch(() => props.open, (isOpen) => {
+  if (isOpen) {
+    window.addEventListener('keydown', handleKeydown)
+  } else {
+    window.removeEventListener('keydown', handleKeydown)
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
 
 const title = computed(() =>
   props.mode === 'apply' ? t('agent.diffPreviewApply') : t('agent.diffPreviewRestore')
@@ -264,10 +288,10 @@ const processedFiles = computed(() => {
           <!-- Footer -->
           <div class="flex justify-end gap-2 border-t border-border px-6 py-4 shrink-0">
             <Button variant="ghost" size="sm" @click="emit('cancel')">
-              {{ t('agent.diffCancel') }}
+              {{ t('agent.diffCancel') }} <span class="ml-1.5 text-xs opacity-60">Esc</span>
             </Button>
             <Button size="sm" :disabled="loading" @click="emit('confirm')">
-              {{ confirmLabel }}
+              {{ confirmLabel }} <span class="ml-1.5 text-xs opacity-60">Enter</span>
             </Button>
           </div>
         </div>

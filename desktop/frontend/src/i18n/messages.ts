@@ -239,10 +239,11 @@ export type MessageKey =
   | 'agent.diffExpandContext'
   | 'agent.diffCollapseContext'
   | 'agent.diffCancel'
-  | 'agent.provider.ccxOpenAI'
-  | 'agent.provider.ccxNative'
-  | 'agent.ccxQuickMode'
-  | 'agent.ccxPluginMode'
+  | 'agent.codexMode'
+  | 'agent.codexQuickMode'
+  | 'agent.codexPluginMode'
+  | 'agent.codexQuickModeHint'
+  | 'agent.codexPluginModeHint'
   | 'agent.sessionMigrationWarning'
   | 'agent.provider.localGateway'
   | 'agent.provider.deepseekDirect'
@@ -606,10 +607,11 @@ export const messages: Record<SupportedLocale, Messages> = {
     'agent.diffCollapseContext': 'Collapse {count} lines',
     'agent.diffCancel': 'Cancel',
     'agent.sessionMigrationWarning': 'Switching provider mode will make existing sessions invisible in Codex. Sessions are not deleted — switch back to the previous mode to access them.',
-    'agent.provider.ccxOpenAI': 'CCX (Quick mode)',
-    'agent.provider.ccxNative': 'CCX (Plugin mode)',
-    'agent.ccxQuickMode': 'Quick mode (via OpenAI)',
-    'agent.ccxPluginMode': 'Plugin mode (CCX native)',
+    'agent.codexMode': 'Mode',
+    'agent.codexQuickMode': 'Quick mode',
+    'agent.codexPluginMode': 'Plugin mode',
+    'agent.codexQuickModeHint': 'Keeps OpenAI conversation history. Uses OpenAI as provider with the CCX proxy.',
+    'agent.codexPluginModeHint': 'Enables Codex plugins. Previous OpenAI sessions may not be visible — switch back to Quick mode to access them.',
     'agent.provider.localGateway': 'CCX local gateway',
     'agent.provider.deepseekDirect': 'DeepSeek direct',
     'agent.provider.mimoDirect': 'MiMo direct',
@@ -968,11 +970,12 @@ export const messages: Record<SupportedLocale, Messages> = {
     'agent.diffExpandContext': '展开 {count} 行未变更内容',
     'agent.diffCollapseContext': '收起 {count} 行',
     'agent.diffCancel': '取消',
-    'agent.provider.ccxOpenAI': 'CCX (快捷模式)',
-    'agent.provider.ccxNative': 'CCX (插件模式)',
-    'agent.ccxQuickMode': '快捷模式 (OpenAI)',
-    'agent.ccxPluginMode': '插件模式 (原生)',
-    'agent.sessionMigrationWarning': '切换 provider 模式后，Codex 中已有的会话将不可见。会话不会被删除 — 切回之前的模式即可访问。',
+    'agent.codexMode': '模式',
+    'agent.codexQuickMode': '快捷模式',
+    'agent.codexPluginMode': '插件模式',
+    'agent.codexQuickModeHint': '保留 OpenAI 对话历史。使用 OpenAI provider + CCX 代理。',
+    'agent.codexPluginModeHint': '启用 Codex 插件功能。切换后之前的 OpenAI 对话可能不可见，切回快捷模式即可访问。',
+    'agent.sessionMigrationWarning': '切换 Codex 模式后，已有会话可能不可见。会话不会被删除 — 切回之前的模式即可访问。',
     'agent.provider.localGateway': 'CCX 本地网关',
     'agent.provider.deepseekDirect': 'DeepSeek 直连',
     'agent.provider.mimoDirect': 'MiMo 直连',

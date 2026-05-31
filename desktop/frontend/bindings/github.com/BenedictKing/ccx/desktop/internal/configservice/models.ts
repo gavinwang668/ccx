@@ -8,6 +8,11 @@ import { Create as $Create } from "@wailsio/runtime";
 export class AgentConfigStatus {
     "platform": string;
     "provider"?: string;
+
+    /**
+     * "quick" | "plugin"
+     */
+    "mode"?: string;
     "targetProvider"?: string;
     "configured": boolean;
     "matchesCurrentPort": boolean;
@@ -63,6 +68,11 @@ export class ApplyAgentConfigRequest {
     "provider"?: string;
     "apiKey"?: string;
     "baseUrl"?: string;
+
+    /**
+     * "quick" | "plugin"
+     */
+    "mode"?: string;
 
     /** Creates a new ApplyAgentConfigRequest instance. */
     constructor($$source: Partial<ApplyAgentConfigRequest> = {}) {

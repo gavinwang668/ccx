@@ -31,6 +31,7 @@ const props = defineProps<{
   claudeProviderLabel?: (value?: string) => string
   claudeTargetBaseUrl?: () => string
   selectedCodexProvider?: AgentProvider
+  codexMode?: 'quick' | 'plugin'
   codexOpenAIKey?: string
   codexProviderLabels?: Record<string, string>
   codexProviderLabel?: (value?: string) => string
@@ -51,6 +52,7 @@ const emit = defineEmits<{
   'update:selectedMimoPlan': [value: string]
   'update:selectedDashScopePlan': [value: string]
   'update:selectedCodexProvider': [value: AgentProvider]
+  'update:codexMode': [value: 'quick' | 'plugin']
   'update:codexOpenAIKey': [value: string]
   'update:selectedOpenCodeProvider': [value: AgentProvider]
   'update:openCodeOpenAIKey': [value: string]
@@ -58,7 +60,7 @@ const emit = defineEmits<{
 
 const codexKeyRequired = computed(() => {
   const p = props.selectedCodexProvider
-  return p !== 'ccx' && p !== 'ccx-openai' && p !== 'openai'
+  return p !== 'ccx' && p !== 'openai'
 })
 
 const { t } = useLanguage()
@@ -193,16 +195,39 @@ const openFileInEditor = async (editorPath: string, filePath: string) => {
             class="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             @change="emit('update:selectedCodexProvider', ($event.target as HTMLSelectElement).value as AgentProvider)"
           >
-            <option value="ccx-openai">{{ t('agent.provider.ccxOpenAI') }}</option>
-            <option value="ccx">{{ t('agent.provider.ccxNative') }}</option>
+            <option value="ccx">{{ t('agent.provider.localGateway') }}</option>
             <option value="openai">{{ t('agent.provider.openaiDirect') }}</option>
             <option value="dashscope">{{ t('agent.provider.dashscopeDirect') }}</option>
             <option value="opencode-zen">{{ t('agent.provider.opencodeZenDirect') }}</option>
             <option value="opencode-go">{{ t('agent.provider.opencodeGoDirect') }}</option>
           </select>
         </div>
+        <div v-if="selectedCodexProvider === 'ccx'" class="space-y-2">
+          <Label class="text-xs text-muted-foreground">{{ t('agent.codexMode') }}</Label>
+          <div class="grid grid-cols-2 gap-2 rounded-lg bg-secondary/40 p-1">
+            <button
+              type="button"
+              class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="codexMode === 'quick' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+              @click="emit('update:codexMode', 'quick')"
+            >
+              {{ t('agent.codexQuickMode') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="codexMode === 'plugin' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+              @click="emit('update:codexMode', 'plugin')"
+            >
+              {{ t('agent.codexPluginMode') }}
+            </button>
+          </div>
+          <p class="text-xs text-muted-foreground leading-relaxed">
+            {{ codexMode === 'plugin' ? t('agent.codexPluginModeHint') : t('agent.codexQuickModeHint') }}
+          </p>
+        </div>
         <button
-          v-if="selectedCodexProvider && selectedCodexProvider !== 'ccx' && selectedCodexProvider !== 'ccx-openai' && providerConsoleLinks[selectedCodexProvider]"
+          v-if="selectedCodexProvider && selectedCodexProvider !== 'ccx' && providerConsoleLinks[selectedCodexProvider]"
           type="button"
           class="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
           @click="openProviderConsole(selectedCodexProvider)"
@@ -210,7 +235,7 @@ const openFileInEditor = async (editorPath: string, filePath: string) => {
           {{ t('agent.openConsole') }}
           <ExternalLink class="h-3 w-3" />
         </button>
-        <div v-if="selectedCodexProvider !== 'ccx' && selectedCodexProvider !== 'ccx-openai'" class="space-y-1.5">
+        <div v-if="selectedCodexProvider !== 'ccx'" class="space-y-1.5">
           <Label class="text-xs text-muted-foreground">API Key <span v-if="codexKeyRequired" class="text-destructive">*</span></Label>
           <Input
             type="password"

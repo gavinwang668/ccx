@@ -27,6 +27,7 @@ const {
   loadAgentStatuses,
   canApplyAgent,
   selectedCodexProvider,
+  codexMode,
   selectedOpenCodeProvider,
   codexProviderLabels,
   codexProviderLabel,
@@ -106,6 +107,7 @@ const handleConfirm = async () => {
         :claude-provider-label="claudeProviderLabel"
         :claude-target-base-url="claudeTargetBaseUrl"
         :selected-codex-provider="selectedCodexProvider"
+        :codex-mode="codexMode"
         :codex-open-a-i-key="codexOpenAIKey"
         :codex-provider-labels="codexProviderLabels"
         :codex-provider-label="codexProviderLabel"
@@ -123,6 +125,7 @@ const handleConfirm = async () => {
         @update:selected-mimo-plan="selectedMimoPlan = $event"
         @update:selected-dash-scope-plan="selectedDashScopePlan = $event"
         @update:selected-codex-provider="selectedCodexProvider = $event"
+        @update:codex-mode="codexMode = $event"
         @update:codex-open-a-i-key="codexOpenAIKey = $event"
         @update:selected-open-code-provider="selectedOpenCodeProvider = $event"
         @update:open-code-open-a-i-key="openCodeOpenAIKey = $event"

@@ -28,11 +28,12 @@ export type DesktopStatus = {
 }
 
 export type AgentPlatform = 'claude' | 'codex' | 'opencode'
-export type AgentProvider = 'ccx' | 'ccx-openai' | 'deepseek' | 'mimo' | 'compshare' | 'kimi' | 'glm' | 'minimax' | 'dashscope' | 'opencode-zen' | 'opencode-go' | 'openai'
+export type AgentProvider = 'ccx' | 'deepseek' | 'mimo' | 'compshare' | 'kimi' | 'glm' | 'minimax' | 'dashscope' | 'opencode-zen' | 'opencode-go' | 'openai'
 
 export type AgentConfigStatus = {
   platform: AgentPlatform
   provider?: string
+  mode?: 'quick' | 'plugin'
   targetProvider?: string
   configured: boolean
   matchesCurrentPort: boolean
@@ -50,6 +51,7 @@ export type ApplyAgentConfigRequest = {
   provider?: AgentProvider
   apiKey?: string
   baseUrl?: string
+  mode?: 'quick' | 'plugin'
 }
 
 export type TabValue = 'status' | 'agent' | 'env' | 'channels' | 'web'
