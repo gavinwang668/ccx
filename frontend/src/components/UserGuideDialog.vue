@@ -77,7 +77,8 @@
               {{ t('app.actions.addChannel') }}
             </v-btn>
           </div>
-          <p class="guide-section-body mb-3">{{ t('guide.addChannel.body') }}</p>
+          <p class="guide-section-body">{{ t('guide.addChannel.body1') }}</p>
+          <p class="guide-section-body">{{ t('guide.addChannel.body2') }}</p>
         </section>
 
         <!-- 4. 看懂渠道列表（自绘两渠道示意） -->
