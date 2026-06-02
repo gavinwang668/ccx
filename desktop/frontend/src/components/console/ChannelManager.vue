@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Plus, RefreshCw, Search, Wifi, Loader2, Layers, Archive } from 'lucide-vue-next'
+import { Plus, RefreshCw, Search, Layers, Archive } from 'lucide-vue-next'
 import { useConsoleChannels } from '@/composables/useConsoleChannels'
 import { useLanguage } from '@/composables/useLanguage'
 import ChannelCard from '@/components/console/ChannelCard.vue'
@@ -25,10 +25,7 @@ const {
   activeTab,
   channelsByType,
   dashboardCache,
-  isPingingAll,
   refreshChannels,
-  pingChannel,
-  pingAllChannels,
   deleteChannel,
   setChannelStatus,
   resumeChannel,
@@ -127,23 +124,6 @@ async function refreshCurrentChannels() {
   }
 }
 
-async function handlePing(channelId: number) {
-  clearActionError()
-  try {
-    await pingChannel(channelId)
-  } catch (e) {
-    actionError.value = e instanceof Error ? e.message : String(e)
-  }
-}
-
-async function handlePingAll() {
-  clearActionError()
-  try {
-    await pingAllChannels()
-  } catch (e) {
-    actionError.value = e instanceof Error ? e.message : String(e)
-  }
-}
 
 async function handleDelete(channelId: number) {
   clearActionError()
@@ -370,7 +350,6 @@ onMounted(() => {
               :supports-capability="type !== 'images'"
               @edit="handleEdit(channel)"
               @delete="handleDelete(channel.index)"
-              @ping="handlePing(channel.index)"
               @status="handleStatusToggle(channel.index, channel.status || 'active')"
               @disable="handleDisable(channel.index)"
               @enable="handleEnable(channel.index)"
@@ -402,7 +381,6 @@ onMounted(() => {
             inactive
             @edit="handleEdit(channel)"
             @delete="handleDelete(channel.index)"
-            @ping="handlePing(channel.index)"
             @status="handleStatusToggle(channel.index, channel.status || 'disabled')"
             @disable="handleDisable(channel.index)"
             @enable="handleEnable(channel.index)"

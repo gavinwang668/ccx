@@ -25,7 +25,6 @@ import {
   Copy,
   Edit3,
   ExternalLink,
-  Gauge,
   GripVertical,
   Key,
   MoreVertical,
@@ -56,7 +55,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   edit: []
   delete: []
-  ping: []
   logs: []
   capability: []
   status: []
@@ -277,10 +275,6 @@ async function copyChannelInfo() {
     </div>
 
     <div class="flex items-center justify-end gap-1.5">
-      <Button variant="outline" size="sm" @click="emit('ping')">
-        <Gauge class="h-3.5 w-3.5" />
-        {{ tf('console.actions.ping', 'Ping') }}
-      </Button>
       <Button v-if="isDisabled" variant="outline" size="sm" @click="emit('enable')">
         <Play class="h-3.5 w-3.5" />
         {{ tf('console.actions.enable', 'Enable') }}

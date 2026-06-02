@@ -337,18 +337,29 @@ async function handleSubmit() {
   }
 }
 
+function shouldSkipEnterSubmit(target: EventTarget | null) {
+  const el = target instanceof Element ? target : null
+  if (!el) return false
+
+  // textarea / contenteditable 内保留原生编辑行为；按钮和选择器内保留自身 Enter 行为。
+  if (el.closest('textarea, button, [contenteditable]')) return true
+  const interactiveRole = el.closest('[role="button"], [role="combobox"], [role="listbox"], [role="option"], [role="switch"], [role="checkbox"]')
+  return Boolean(interactiveRole)
+}
+
 // Keyboard shortcuts: Esc 取消，Enter 保存（与 Agent 配置卡片一致）
 const handleGlobalKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
     e.preventDefault()
     emit('close')
-  } else if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
-    // 如果焦点在 textarea 内，Enter 换行不触发提交
-    const tag = (e.target as HTMLElement)?.tagName
-    if (tag === 'TEXTAREA') return
-    e.preventDefault()
-    void handleSubmit()
+    return
   }
+
+  if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
+  if (saving.value || !isValid.value || shouldSkipEnterSubmit(e.target)) return
+
+  e.preventDefault()
+  void handleSubmit()
 }
 
 // 组件挂载即注册快捷键（新建和编辑模式都需要）
@@ -681,14 +692,15 @@ onBeforeUnmount(() => {
               <kbd class="ml-2 rounded border border-border px-1 py-0.5 font-mono">Enter</kbd> {{ isEditMode ? tf('console.form.save', '保存') : tf('console.form.create', '创建') }}
             </span>
             <Button variant="ghost" @click="emit('close')">
-              {{ tf('common.cancel', '取消') }}
+              {{ tf('common.cancel', '取消') }} <span class="ml-1.5 text-xs opacity-60">Esc</span>
             </Button>
-            <Button :disabled="!isValid || saving" @click="handleSubmit">
+            <Button type="button" :disabled="!isValid || saving" @click="handleSubmit">
               <Loader2 v-if="saving" class="mr-2 h-4 w-4 animate-spin" />
               {{ isEditMode
                 ? tf('console.form.save', '保存')
                 : tf('console.form.create', '创建')
               }}
+              <span class="ml-1.5 text-xs opacity-60">Enter</span>
             </Button>
           </div>
         </div>
