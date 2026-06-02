@@ -29,6 +29,7 @@ import {
 import { useConsoleChannels } from '@/composables/useConsoleChannels'
 import { useLanguage } from '@/composables/useLanguage'
 import { buildChannelPayload } from '@/utils/channel-payload'
+import { getChannelTypeApi, type ManagedChannelType } from '@/utils/channel-type-api'
 import { parseQuickInput } from '@/utils/quick-input-parser'
 import type { Channel, DisabledKeyInfo } from '@/services/admin-api'
 
@@ -545,6 +546,196 @@ function removeModelMappingRow(index: number) {
   modelMappingRows.value.splice(index, 1)
 }
 
+// ── 预设模板 ──
+
+type ModelMappingPresetEntry = { source: string; target: string; reasoning?: ModelMappingRow['reasoning'] }
+
+const modelMappingPresets: Record<string, { mapping: ModelMappingPresetEntry[]; fastMode?: boolean; textVerbosity?: string }> = {
+  'gpt-5.5': {
+    mapping: [
+      { source: 'claude-opus-4-6', target: 'gpt-5.5', reasoning: 'xhigh' },
+      { source: 'claude-sonnet-4-6', target: 'gpt-5.4', reasoning: 'xhigh' },
+      { source: 'claude-haiku-4-5', target: 'gpt-5.3-codex', reasoning: 'high' },
+    ],
+    fastMode: true,
+    textVerbosity: 'medium',
+  },
+  'gpt-5.4': {
+    mapping: [
+      { source: 'claude-opus-4-6', target: 'gpt-5.4', reasoning: 'xhigh' },
+      { source: 'claude-sonnet-4-6', target: 'gpt-5.4', reasoning: 'xhigh' },
+      { source: 'claude-haiku-4-5', target: 'gpt-5.3-codex', reasoning: 'high' },
+    ],
+    fastMode: true,
+    textVerbosity: 'medium',
+  },
+  'gpt-5.3-codex': {
+    mapping: [
+      { source: 'claude-opus-4-6', target: 'gpt-5.3-codex', reasoning: 'xhigh' },
+      { source: 'claude-sonnet-4-6', target: 'gpt-5.3-codex', reasoning: 'xhigh' },
+      { source: 'claude-haiku-4-5', target: 'gpt-5.3-codex', reasoning: 'high' },
+    ],
+    fastMode: true,
+    textVerbosity: 'medium',
+  },
+  'gpt-5.2-codex': {
+    mapping: [
+      { source: 'claude-opus-4-6', target: 'gpt-5.2', reasoning: 'xhigh' },
+      { source: 'claude-sonnet-4-6', target: 'gpt-5.2-codex', reasoning: 'xhigh' },
+      { source: 'claude-haiku-4-5', target: 'gpt-5.2-codex', reasoning: 'high' },
+    ],
+    fastMode: true,
+    textVerbosity: 'medium',
+  },
+}
+
+type ClaudePresetEntry = { source: string; target: string }
+const claudeChannelPresets: Record<string, {
+  mapping: ClaudePresetEntry[]
+  passbackReasoningContent: boolean
+  passbackThinkingBlocks: boolean
+  stripEmptyTextBlocks: boolean
+  normalizeSystemRoleToTopLevel: boolean
+  noVision: boolean
+  noVisionModels: string[]
+  visionFallbackModel: string
+}> = {
+  mimo: {
+    mapping: [
+      { source: 'claude-opus-4-6', target: 'mimo-v2.5-pro' },
+      { source: 'claude-sonnet-4-6', target: 'mimo-v2.5-pro' },
+      { source: 'claude-haiku-4-5', target: 'mimo-v2.5-pro' },
+    ],
+    passbackReasoningContent: true,
+    passbackThinkingBlocks: false,
+    stripEmptyTextBlocks: false,
+    normalizeSystemRoleToTopLevel: false,
+    noVision: false,
+    noVisionModels: ['mimo-v2.5-pro'],
+    visionFallbackModel: 'mimo-v2.5',
+  },
+  deepseek: {
+    mapping: [
+      { source: 'claude-opus-4-6', target: 'deepseek-v4-pro' },
+      { source: 'claude-sonnet-4-6', target: 'deepseek-v4-pro' },
+      { source: 'claude-haiku-4-5', target: 'deepseek-v4-flash' },
+    ],
+    passbackReasoningContent: true,
+    passbackThinkingBlocks: true,
+    stripEmptyTextBlocks: true,
+    normalizeSystemRoleToTopLevel: false,
+    noVision: true,
+    noVisionModels: [],
+    visionFallbackModel: '',
+  },
+}
+
+const codexResponsesPresets: Record<string, {
+  mapping: ClaudePresetEntry[]
+  reasoningMapping: Record<string, string>
+  reasoningParamStyle: string
+  codexNativeToolPassthrough: boolean
+  codexToolCompat: boolean
+  stripCodexClientTools: boolean
+  normalizeNonstandardChatRoles: boolean
+  noVision: boolean
+}> = {
+  mimo: {
+    mapping: [
+      { source: 'gpt-5', target: 'mimo-v2.5-pro' },
+      { source: 'codex-auto-review', target: 'mimo-v2.5' },
+    ],
+    reasoningMapping: {},
+    reasoningParamStyle: 'reasoning',
+    codexNativeToolPassthrough: false,
+    codexToolCompat: false,
+    stripCodexClientTools: false,
+    normalizeNonstandardChatRoles: false,
+    noVision: false,
+  },
+  deepseek: {
+    mapping: [
+      { source: 'gpt-5', target: 'deepseek-v4-pro' },
+      { source: 'gpt-mini', target: 'deepseek-v4-flash' },
+      { source: 'codex-auto-review', target: 'deepseek-v4-flash' },
+    ],
+    reasoningMapping: { gpt: 'max' },
+    reasoningParamStyle: 'reasoning',
+    codexNativeToolPassthrough: true,
+    codexToolCompat: false,
+    stripCodexClientTools: false,
+    normalizeNonstandardChatRoles: true,
+    noVision: true,
+  },
+}
+
+const supportsOpenAIAdvanced = computed(() => form.serviceType === 'openai' || form.serviceType === 'responses')
+const showModelMappingPresets = computed(() => props.channelType === 'messages' && supportsOpenAIAdvanced.value)
+const showClaudeChannelPresets = computed(() => form.serviceType === 'claude' && ['messages', 'chat', 'responses'].includes(props.channelType))
+const showCodexResponsesPresets = computed(() => props.channelType === 'responses' && supportsOpenAIAdvanced.value)
+
+function applyModelMappingPreset(name: string) {
+  const preset = modelMappingPresets[name]
+  if (!preset) return
+  modelMappingRows.value = preset.mapping.map(m => ({ id: ++rowId, source: m.source, target: m.target, reasoning: m.reasoning || '', noVision: false }))
+  if (preset.fastMode !== undefined) form.fastMode = preset.fastMode
+  if (preset.textVerbosity !== undefined) form.textVerbosity = preset.textVerbosity as typeof form.textVerbosity
+}
+
+function applyClaudePreset(name: string) {
+  const preset = claudeChannelPresets[name]
+  if (!preset) return
+  modelMappingRows.value = preset.mapping.map(m => ({ id: ++rowId, source: m.source, target: m.target, reasoning: '', noVision: false }))
+  form.passbackReasoningContent = preset.passbackReasoningContent
+  form.passbackThinkingBlocks = preset.passbackThinkingBlocks
+  form.stripEmptyTextBlocks = preset.stripEmptyTextBlocks
+  form.normalizeSystemRoleToTopLevel = preset.normalizeSystemRoleToTopLevel
+  form.noVision = preset.noVision
+  form.noVisionModelsText = preset.noVisionModels.join('\n')
+  form.visionFallbackModel = preset.visionFallbackModel
+}
+
+function applyCodexResponsesPreset(name: string) {
+  const preset = codexResponsesPresets[name]
+  if (!preset) return
+  modelMappingRows.value = preset.mapping.map(m => ({ id: ++rowId, source: m.source, target: m.target, reasoning: '', noVision: false }))
+  form.reasoningParamStyle = preset.reasoningParamStyle as typeof form.reasoningParamStyle
+  form.codexNativeToolPassthrough = preset.codexNativeToolPassthrough
+  form.codexToolCompat = preset.codexToolCompat
+  form.stripCodexClientTools = preset.stripCodexClientTools
+  form.normalizeNonstandardChatRoles = preset.normalizeNonstandardChatRoles
+  form.noVision = preset.noVision
+}
+
+// ── 模型列表拉取 ──
+
+const fetchingModels = ref(false)
+const targetModelOptions = ref<string[]>([])
+const fetchedModelsError = ref('')
+
+async function fetchTargetModels() {
+  if (!props.channel) return
+  if (!form.baseUrl.trim() || getSubmitApiKeys().length === 0) {
+    fetchedModelsError.value = tf('console.form.modelFetchNeedsConfig', '需要 Base URL 和 API Key 才能获取模型列表')
+    return
+  }
+  fetchingModels.value = true
+  fetchedModelsError.value = ''
+  try {
+    const typeApi = getChannelTypeApi(props.channelType as ManagedChannelType)
+    const models = await typeApi.getChannelModels(props.channel.index, {
+      baseUrl: form.baseUrl,
+      proxyUrl: form.proxyUrl,
+      insecureSkipVerify: form.insecureSkipVerify,
+    })
+    targetModelOptions.value = [...new Set<string>((models as any[]).map((m: any) => m.id || m.name || String(m)).filter(Boolean))].sort()
+  } catch (e) {
+    fetchedModelsError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    fetchingModels.value = false
+  }
+}
+
 function getModelMappingAsObject(): Record<string, string> {
   const result: Record<string, string> = {}
   for (const row of modelMappingRows.value) {
@@ -815,20 +1006,6 @@ function buildCurrentPayload() {
                     <Label>{{ tf('console.form.additionalUrls', '额外 URL（每行一个）') }}</Label>
                     <Textarea v-model="form.baseUrlsText" rows="3" placeholder="https://backup.example.com" />
                   </div>
-                  <div class="grid grid-cols-2 gap-3">
-                    <div class="space-y-1.5">
-                      <Label>{{ tf('console.form.proxyUrl', '代理 URL') }}</Label>
-                      <Input v-model="form.proxyUrl" placeholder="socks5://..." />
-                    </div>
-                    <div class="space-y-1.5">
-                      <Label>{{ tf('console.form.routePrefix', '路由前缀') }}</Label>
-                      <Input v-model="form.routePrefix" placeholder="kimi" />
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <Switch v-model="form.insecureSkipVerify" />
-                    <Label class="text-xs">{{ tf('console.form.insecureSkipVerify', '跳过 TLS 验证') }}</Label>
-                  </div>
                 </section>
 
                 <section class="space-y-3 border border-border bg-background/40 p-4">
@@ -908,13 +1085,40 @@ function buildCurrentPayload() {
                   <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {{ tf('console.form.models', '模型') }}
                   </h4>
+
+                  <!-- 预设按钮 -->
+                  <div v-if="showModelMappingPresets" class="flex flex-wrap gap-1.5">
+                    <Button v-for="(preset, name) in modelMappingPresets" :key="name" type="button" variant="outline" size="sm" class="h-6 text-[10px]" @click="applyModelMappingPreset(String(name))">
+                      <Zap class="mr-1 h-3 w-3" />
+                      {{ name }}
+                    </Button>
+                  </div>
+                  <div v-if="showClaudeChannelPresets" class="flex flex-wrap gap-1.5">
+                    <Button type="button" variant="outline" size="sm" class="h-6 text-[10px]" @click="applyClaudePreset('mimo')"><Zap class="mr-1 h-3 w-3" />MiMo</Button>
+                    <Button type="button" variant="outline" size="sm" class="h-6 text-[10px]" @click="applyClaudePreset('deepseek')"><Zap class="mr-1 h-3 w-3" />DeepSeek</Button>
+                  </div>
+                  <div v-if="showCodexResponsesPresets" class="flex flex-wrap gap-1.5">
+                    <Button type="button" variant="outline" size="sm" class="h-6 text-[10px]" @click="applyCodexResponsesPreset('mimo')"><Zap class="mr-1 h-3 w-3" />MiMo</Button>
+                    <Button type="button" variant="outline" size="sm" class="h-6 text-[10px]" @click="applyCodexResponsesPreset('deepseek')"><Zap class="mr-1 h-3 w-3" />DeepSeek</Button>
+                  </div>
+
                   <!-- 结构化模型映射行 -->
                   <div class="space-y-2">
-                    <Label>{{ tf('console.form.modelMapping', '模型映射') }}</Label>
+                    <div class="flex items-center justify-between">
+                      <Label>{{ tf('console.form.modelMapping', '模型映射') }}</Label>
+                      <Button v-if="channel" type="button" variant="ghost" size="sm" class="h-6 text-[10px]" :disabled="fetchingModels" @click="fetchTargetModels">
+                        <Loader2 v-if="fetchingModels" class="mr-1 h-3 w-3 animate-spin" />
+                        {{ fetchingModels ? tf('console.form.fetchingModels', '拉取中...') : tf('console.form.fetchModels', '获取模型列表') }}
+                      </Button>
+                    </div>
+                    <p v-if="fetchedModelsError" class="text-[10px] text-destructive">{{ fetchedModelsError }}</p>
                     <div v-for="(row, index) in modelMappingRows" :key="row.id" class="flex items-center gap-2 border border-border bg-background/60 px-2 py-1.5 text-xs">
                       <Input v-model="row.source" class="h-7 flex-1 font-mono text-xs" placeholder="source-model" />
                       <ArrowRight class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <Input v-model="row.target" class="h-7 flex-1 font-mono text-xs" placeholder="target-model" />
+                      <Input v-model="row.target" class="h-7 flex-1 font-mono text-xs" placeholder="target-model" :list="targetModelOptions.length ? `target-models-${index}` : undefined" />
+                      <datalist v-if="targetModelOptions.length" :id="`target-models-${index}`">
+                        <option v-for="m in targetModelOptions" :key="m" :value="m" />
+                      </datalist>
                       <Select v-model="row.reasoning">
                         <SelectTrigger class="h-7 w-28 text-xs"><SelectValue :placeholder="'推理'" /></SelectTrigger>
                         <SelectContent>
@@ -932,7 +1136,10 @@ function buildCurrentPayload() {
                     <div class="flex items-center gap-2">
                       <Input v-model="newModelMapping.source" class="h-7 flex-1 font-mono text-xs" placeholder="source" @keydown.enter.prevent="addModelMappingRow" />
                       <ArrowRight class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <Input v-model="newModelMapping.target" class="h-7 flex-1 font-mono text-xs" placeholder="target" @keydown.enter.prevent="addModelMappingRow" />
+                      <Input v-model="newModelMapping.target" class="h-7 flex-1 font-mono text-xs" placeholder="target" :list="targetModelOptions.length ? 'target-models-new' : undefined" @keydown.enter.prevent="addModelMappingRow" />
+                      <datalist v-if="targetModelOptions.length" id="target-models-new">
+                        <option v-for="m in targetModelOptions" :key="m" :value="m" />
+                      </datalist>
                       <Button type="button" variant="outline" size="sm" :disabled="!newModelMapping.source.trim() || !newModelMapping.target.trim()" @click="addModelMappingRow">
                         <Plus class="h-3.5 w-3.5" />
                       </Button>
@@ -945,83 +1152,68 @@ function buildCurrentPayload() {
                 </section>
 
                 <section class="space-y-3 border border-border bg-background/40 p-4 lg:col-span-2">
-                  <button
-                    type="button"
-                    class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-                    @click="showProtocolOptions = !showProtocolOptions"
-                  >
-                    <ChevronDown v-if="!showProtocolOptions" class="h-3.5 w-3.5" />
-                    <ChevronUp v-else class="h-3.5 w-3.5" />
-                    {{ tf('console.form.protocolOptions', '协议与模型高级选项') }}
-                  </button>
-                  <div v-if="showProtocolOptions" class="grid gap-4 lg:grid-cols-3">
-                    <div class="space-y-1.5">
-                      <Label>{{ tf('console.form.reasoningParamStyle', 'Reasoning 参数风格') }}</Label>
-                      <Select v-model="form.reasoningParamStyle">
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem v-for="item in reasoningParamStyleOptions" :key="item.value" :value="item.value">
-                            {{ item.label }}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div class="space-y-1.5">
-                      <Label>{{ tf('console.form.textVerbosity', 'Text verbosity') }}</Label>
-                      <Select v-model="form.textVerbosity">
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem v-for="item in textVerbosityOptions" :key="item.value || 'default'" :value="item.value">
-                            {{ item.label }}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div class="space-y-1.5">
-                      <Label>Vision fallback model</Label>
-                      <Input v-model="form.visionFallbackModel" placeholder="mimo-v2.5" />
-                    </div>
-                    <div class="space-y-1.5 lg:col-span-3">
-                      <Label>No vision models（每行一个）</Label>
-                      <Textarea v-model="form.noVisionModelsText" rows="2" class="font-mono text-xs" />
-                    </div>
-                  </div>
-                </section>
-
-                <section class="space-y-3 border border-border bg-background/40 p-4 lg:col-span-2">
-                  <button
-                    type="button"
-                    class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-                    @click="showAdvanced = !showAdvanced"
-                  >
+                  <button type="button" class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground" @click="showAdvanced = !showAdvanced">
                     <ChevronDown v-if="!showAdvanced" class="h-3.5 w-3.5" />
                     <ChevronUp v-else class="h-3.5 w-3.5" />
                     {{ tf('console.form.advancedFlags', '高级选项') }}
                   </button>
-                  <div v-if="showAdvanced" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <div
-                      v-for="flag in [
-                        { key: 'noVision', label: tf('console.form.noVision', '禁用视觉') },
-                        { key: 'passbackReasoningContent', label: tf('console.form.passbackReasoning', '回传推理内容') },
-                        { key: 'passbackThinkingBlocks', label: tf('console.form.passbackThinking', '回传思考块') },
-                        { key: 'fastMode', label: tf('console.form.fastMode', '快速模式') },
-                        { key: 'lowQuality', label: tf('console.form.lowQuality', '低质量标记') },
-                        { key: 'injectDummyThoughtSignature', label: tf('console.form.injectDummySignature', '注入假思考签名') },
-                        { key: 'stripThoughtSignature', label: tf('console.form.stripThoughtSignature', '移除思考签名') },
-                        { key: 'stripEmptyTextBlocks', label: tf('console.form.stripEmptyBlocks', '移除空文本块') },
-                        { key: 'normalizeSystemRoleToTopLevel', label: tf('console.form.normalizeSystem', '规范化系统角色') },
-                        { key: 'normalizeMetadataUserId', label: tf('console.form.normalizeUserId', '规范化用户 ID') },
-                        { key: 'normalizeNonstandardChatRoles', label: tf('console.form.normalizeChatRoles', '规范化 Chat 角色') },
-                        { key: 'autoBlacklistBalance', label: tf('console.form.autoBlacklist', '自动黑名单余额异常 Key') },
-                        { key: 'codexNativeToolPassthrough', label: tf('console.form.codexNativeTools', 'Codex 原生工具透传') },
-                        { key: 'codexToolCompat', label: tf('console.form.codexCompat', 'Codex 工具兼容') },
-                        { key: 'stripCodexClientTools', label: tf('console.form.stripCodexTools', '移除 Codex 客户端工具') },
-                      ]"
-                      :key="flag.key"
-                      class="flex items-center gap-2"
-                    >
-                      <Switch :model-value="(form as any)[flag.key]" @update:model-value="(v: boolean) => (form as any)[flag.key] = v" />
-                      <Label class="text-xs">{{ flag.label }}</Label>
+
+                  <div v-if="showAdvanced" class="space-y-4">
+                    <!-- Vision -->
+                    <div class="space-y-2">
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Vision</div>
+                      <div class="grid gap-2 md:grid-cols-2">
+                        <div class="flex items-center gap-2"><Switch v-model="form.noVision" /><Label class="text-xs">{{ tf('console.form.noVision', '禁用视觉') }}</Label></div>
+                        <div class="space-y-1"><Label class="text-[10px]">Vision fallback model</Label><Input v-model="form.visionFallbackModel" class="h-7 text-xs" placeholder="mimo-v2.5" /></div>
+                        <div class="space-y-1 md:col-span-2"><Label class="text-[10px]">No vision models（每行一个）</Label><Textarea v-model="form.noVisionModelsText" rows="2" class="font-mono text-xs" /></div>
+                      </div>
+                    </div>
+
+                    <!-- Reasoning / Thinking -->
+                    <div class="space-y-2" v-if="form.serviceType === 'claude' || form.serviceType === 'gemini' || supportsOpenAIAdvanced">
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Reasoning / Thinking</div>
+                      <div class="grid gap-2 md:grid-cols-2">
+                        <div v-if="form.serviceType === 'claude' && channelType !== 'images'" class="flex items-center gap-2"><Switch v-model="form.passbackReasoningContent" /><Label class="text-xs">{{ tf('console.form.passbackReasoning', '回传推理内容') }}</Label></div>
+                        <div v-if="form.serviceType === 'claude' && channelType !== 'images'" class="flex items-center gap-2"><Switch v-model="form.passbackThinkingBlocks" /><Label class="text-xs">{{ tf('console.form.passbackThinking', '回传思考块') }}</Label></div>
+                        <div v-if="form.serviceType === 'gemini' && ['gemini','messages','chat','responses'].includes(channelType)" class="flex items-center gap-2"><Switch v-model="form.stripThoughtSignature" /><Label class="text-xs">{{ tf('console.form.stripThoughtSignature', '移除思考签名') }}</Label></div>
+                        <div v-if="form.serviceType === 'gemini' && ['gemini','messages'].includes(channelType)" class="flex items-center gap-2"><Switch v-model="form.injectDummyThoughtSignature" /><Label class="text-xs">{{ tf('console.form.injectDummySignature', '注入假思考签名') }}</Label></div>
+                        <div v-if="supportsOpenAIAdvanced" class="space-y-1"><Label class="text-[10px]">{{ tf('console.form.reasoningParamStyle', 'Reasoning 参数风格') }}</Label><Select v-model="form.reasoningParamStyle"><SelectTrigger class="h-7"><SelectValue /></SelectTrigger><SelectContent><SelectItem v-for="item in reasoningParamStyleOptions" :key="item.value" :value="item.value">{{ item.label }}</SelectItem></SelectContent></Select></div>
+                        <div v-if="supportsOpenAIAdvanced" class="space-y-1"><Label class="text-[10px]">{{ tf('console.form.textVerbosity', 'Text verbosity') }}</Label><Select v-model="form.textVerbosity"><SelectTrigger class="h-7"><SelectValue /></SelectTrigger><SelectContent><SelectItem v-for="item in textVerbosityOptions" :key="item.value || 'default'" :value="item.value">{{ item.label }}</SelectItem></SelectContent></Select></div>
+                        <div class="flex items-center gap-2"><Switch v-model="form.fastMode" /><Label class="text-xs">{{ tf('console.form.fastMode', '快速模式') }}</Label></div>
+                      </div>
+                    </div>
+
+                    <!-- Codex / Responses -->
+                    <div class="space-y-2" v-if="channelType === 'responses'">
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Codex / Responses</div>
+                      <div class="grid gap-2 md:grid-cols-2">
+                        <div class="flex items-center gap-2"><Switch v-model="form.codexNativeToolPassthrough" /><Label class="text-xs">{{ tf('console.form.codexNativeTools', 'Codex 原生工具透传') }}</Label></div>
+                        <div class="flex items-center gap-2"><Switch v-model="form.codexToolCompat" /><Label class="text-xs">{{ tf('console.form.codexCompat', 'Codex 工具兼容') }}</Label></div>
+                        <div class="flex items-center gap-2"><Switch v-model="form.stripCodexClientTools" /><Label class="text-xs">{{ tf('console.form.stripCodexTools', '移除 Codex 客户端工具') }}</Label></div>
+                      </div>
+                    </div>
+
+                    <!-- Compatibility / Normalization -->
+                    <div class="space-y-2">
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compatibility / Normalization</div>
+                      <div class="grid gap-2 md:grid-cols-2">
+                        <div v-if="form.serviceType === 'claude' && channelType === 'messages'" class="flex items-center gap-2"><Switch v-model="form.stripEmptyTextBlocks" /><Label class="text-xs">{{ tf('console.form.stripEmptyBlocks', '移除空文本块') }}</Label></div>
+                        <div v-if="form.serviceType === 'claude' && channelType === 'messages'" class="flex items-center gap-2"><Switch v-model="form.normalizeSystemRoleToTopLevel" /><Label class="text-xs">{{ tf('console.form.normalizeSystem', '规范化系统角色') }}</Label></div>
+                        <div v-if="['messages','responses'].includes(channelType)" class="flex items-center gap-2"><Switch v-model="form.normalizeMetadataUserId" /><Label class="text-xs">{{ tf('console.form.normalizeUserId', '规范化用户 ID') }}</Label></div>
+                        <div v-if="channelType === 'chat' || (channelType === 'responses' && form.serviceType === 'openai')" class="flex items-center gap-2"><Switch v-model="form.normalizeNonstandardChatRoles" /><Label class="text-xs">{{ tf('console.form.normalizeChatRoles', '规范化 Chat 角色') }}</Label></div>
+                      </div>
+                    </div>
+
+                    <!-- Runtime / Transport -->
+                    <div class="space-y-2">
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Runtime</div>
+                      <div class="grid gap-2 md:grid-cols-3">
+                        <div class="flex items-center gap-2"><Switch v-model="form.lowQuality" /><Label class="text-xs">{{ tf('console.form.lowQuality', '低质量标记') }}</Label></div>
+                        <div class="flex items-center gap-2"><Switch v-model="form.autoBlacklistBalance" /><Label class="text-xs">{{ tf('console.form.autoBlacklist', '自动黑名单') }}</Label></div>
+                        <div class="flex items-center gap-2"><Switch v-model="form.insecureSkipVerify" /><Label class="text-xs">{{ tf('console.form.insecureSkipVerify', '跳过 TLS 验证') }}</Label></div>
+                        <div class="space-y-1"><Label class="text-[10px]">{{ tf('console.form.proxyUrl', '代理 URL') }}</Label><Input v-model="form.proxyUrl" class="h-7 text-xs" placeholder="socks5://..." /></div>
+                        <div class="space-y-1"><Label class="text-[10px]">{{ tf('console.form.routePrefix', '路由前缀') }}</Label><Input v-model="form.routePrefix" class="h-7 text-xs" placeholder="kimi" /></div>
+                      </div>
                     </div>
                   </div>
                 </section>
