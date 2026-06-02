@@ -8,16 +8,23 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   ClipboardPaste,
+  Copy,
+  Eye,
+  EyeOff,
   Key,
   Loader2,
+  Plus,
   RotateCcw,
   Trash2,
   Wand2,
   X,
+  Zap,
 } from 'lucide-vue-next'
 import { useConsoleChannels } from '@/composables/useConsoleChannels'
 import { useLanguage } from '@/composables/useLanguage'
@@ -34,6 +41,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved'): void
+  (e: 'test-capability', channel: Channel): void
 }>()
 
 const { tf } = useLanguage()
@@ -48,6 +56,28 @@ const showProtocolOptions = ref(false)
 const quickInput = ref('')
 const existingApiKeys = ref<string[]>([])
 const newApiKeysText = ref('')
+const copiedKeyIndex = ref<number | null>(null)
+const localRestoredKeys = ref<Set<string>>(new Set())
+
+type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+interface ModelMappingRow {
+  id: number
+  source: string
+  target: string
+  reasoning: ReasoningEffort | ''
+  noVision: boolean
+}
+interface HeaderRow {
+  id: number
+  key: string
+  value: string
+}
+
+let rowId = 0
+const modelMappingRows = ref<ModelMappingRow[]>([])
+const newModelMapping = reactive<ModelMappingRow>({ id: 0, source: '', target: '', reasoning: '', noVision: false })
+const headerRows = ref<HeaderRow[]>([])
+const newHeader = reactive<HeaderRow>({ id: 0, key: '', value: '' })
 
 const reasoningParamStyleOptions = [
   { label: 'reasoning.effort', value: 'reasoning' },
@@ -145,6 +175,10 @@ function resetForm() {
   quickInput.value = ''
   existingApiKeys.value = []
   newApiKeysText.value = ''
+  copiedKeyIndex.value = null
+  localRestoredKeys.value = new Set()
+  modelMappingRows.value = []
+  headerRows.value = []
   error.value = ''
   showAdvanced.value = false
   showProtocolOptions.value = false
@@ -171,6 +205,10 @@ function populateFromChannel(ch: Channel) {
   existingApiKeys.value = [...(ch.apiKeys || [])]
   form.apiKeysText = ''
   newApiKeysText.value = ''
+  copiedKeyIndex.value = null
+  localRestoredKeys.value = new Set()
+  modelMappingRows.value = modelMappingFromChannel(ch)
+  headerRows.value = headerRowsFromChannel(ch)
   form.customHeadersText = stringifyJson(ch.customHeaders)
   form.modelMappingText = stringifyJson(ch.modelMapping)
   form.reasoningMappingText = stringifyJson(ch.reasoningMapping)
@@ -299,49 +337,44 @@ async function handleSubmit() {
   error.value = ''
 
   try {
-    const customHeaders = parseJsonObject<Record<string, string>>(form.customHeadersText, 'Custom headers')
-    const modelMapping = parseJsonObject<Record<string, string>>(form.modelMappingText, 'Model mapping')
-    const reasoningMapping = parseJsonObject<Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>>(
-      form.reasoningMappingText,
-      'Reasoning mapping',
-    )
-
-    const payload = buildChannelPayload({
-      name: form.name,
-      serviceType: form.serviceType,
-      baseUrl: form.baseUrl,
-      baseUrls: parseLines(form.baseUrlsText),
-      website: form.website,
-      insecureSkipVerify: form.insecureSkipVerify,
-      lowQuality: form.lowQuality,
-      injectDummyThoughtSignature: form.injectDummyThoughtSignature,
-      stripThoughtSignature: form.stripThoughtSignature,
-      passbackReasoningContent: form.passbackReasoningContent,
-      passbackThinkingBlocks: form.passbackThinkingBlocks,
-      description: form.description,
-      apiKeys: getSubmitApiKeys(),
-      modelMapping,
-      reasoningMapping,
-      reasoningParamStyle: form.reasoningParamStyle,
-      textVerbosity: form.textVerbosity,
-      fastMode: form.fastMode,
-      customHeaders,
-      proxyUrl: form.proxyUrl,
-      requestTimeoutMs: form.requestTimeoutMs,
-      routePrefix: form.routePrefix,
-      supportedModels: parseLines(form.supportedModelsText),
-      autoBlacklistBalance: form.autoBlacklistBalance,
-      normalizeMetadataUserId: form.normalizeMetadataUserId,
-      stripEmptyTextBlocks: form.stripEmptyTextBlocks,
-      normalizeSystemRoleToTopLevel: form.normalizeSystemRoleToTopLevel,
-      codexNativeToolPassthrough: form.codexNativeToolPassthrough,
-      codexToolCompat: form.codexToolCompat,
-      normalizeNonstandardChatRoles: form.normalizeNonstandardChatRoles,
-      stripCodexClientTools: form.stripCodexClientTools,
-      noVision: form.noVision,
-      noVisionModels: parseLines(form.noVisionModelsText),
-      visionFallbackModel: form.visionFallbackModel,
-    })
+    const payload = isEditMode.value
+      ? buildCurrentPayload()
+      : buildChannelPayload({
+          name: form.name,
+          serviceType: form.serviceType,
+          baseUrl: form.baseUrl,
+          baseUrls: parseLines(form.baseUrlsText),
+          website: form.website,
+          insecureSkipVerify: form.insecureSkipVerify,
+          lowQuality: form.lowQuality,
+          injectDummyThoughtSignature: form.injectDummyThoughtSignature,
+          stripThoughtSignature: form.stripThoughtSignature,
+          passbackReasoningContent: form.passbackReasoningContent,
+          passbackThinkingBlocks: form.passbackThinkingBlocks,
+          description: form.description,
+          apiKeys: getSubmitApiKeys(),
+          modelMapping: parseJsonObject<Record<string, string>>(form.modelMappingText, 'Model mapping'),
+          reasoningMapping: parseJsonObject<Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>>(form.reasoningMappingText, 'Reasoning mapping'),
+          reasoningParamStyle: form.reasoningParamStyle,
+          textVerbosity: form.textVerbosity,
+          fastMode: form.fastMode,
+          customHeaders: parseJsonObject<Record<string, string>>(form.customHeadersText, 'Custom headers'),
+          proxyUrl: form.proxyUrl,
+          requestTimeoutMs: form.requestTimeoutMs,
+          routePrefix: form.routePrefix,
+          supportedModels: parseLines(form.supportedModelsText),
+          autoBlacklistBalance: form.autoBlacklistBalance,
+          normalizeMetadataUserId: form.normalizeMetadataUserId,
+          stripEmptyTextBlocks: form.stripEmptyTextBlocks,
+          normalizeSystemRoleToTopLevel: form.normalizeSystemRoleToTopLevel,
+          codexNativeToolPassthrough: form.codexNativeToolPassthrough,
+          codexToolCompat: form.codexToolCompat,
+          normalizeNonstandardChatRoles: form.normalizeNonstandardChatRoles,
+          stripCodexClientTools: form.stripCodexClientTools,
+          noVision: form.noVision,
+          noVisionModels: parseLines(form.noVisionModelsText),
+          visionFallbackModel: form.visionFallbackModel,
+        })
 
     if (isEditMode.value && props.channel?.requestTimeoutMs && !String(form.requestTimeoutMs ?? '').trim()) {
       payload.requestTimeoutMs = 0
@@ -390,6 +423,226 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
 })
+
+// ── API Key 操作 ──
+
+function findDuplicateKeyIndex(newKey: string): number {
+  return existingApiKeys.value.findIndex(k => k === newKey)
+}
+
+async function addNewApiKeys() {
+  const lines = parseLines(newApiKeysText.value)
+  const errors: string[] = []
+  for (const k of lines) {
+    if (findDuplicateKeyIndex(k) !== -1) {
+      errors.push(maskApiKey(k))
+    } else {
+      existingApiKeys.value.push(k)
+    }
+  }
+  if (errors.length) {
+    error.value = `重复 key: ${errors.join(', ')}`
+  }
+  newApiKeysText.value = ''
+}
+
+async function copyApiKey(key: string, index: number) {
+  try {
+    await navigator.clipboard.writeText(key)
+    copiedKeyIndex.value = index
+    setTimeout(() => { copiedKeyIndex.value = null }, 1200)
+  } catch {
+    // clipboard 不可用时静默
+  }
+}
+
+function moveApiKeyToTop(index: number) {
+  if (index <= 0 || index >= existingApiKeys.value.length) return
+  const [key] = existingApiKeys.value.splice(index, 1)
+  existingApiKeys.value.unshift(key)
+}
+
+function moveApiKeyToBottom(index: number) {
+  if (index < 0 || index >= existingApiKeys.value.length - 1) return
+  const [key] = existingApiKeys.value.splice(index, 1)
+  existingApiKeys.value.push(key)
+}
+
+const visibleDisabledKeys = computed(() => {
+  if (!isEditMode.value) return []
+  return disabledApiKeys.value.filter(dk => !localRestoredKeys.value.has(dk.key))
+})
+
+const hasDisabledKeys = computed(() => visibleDisabledKeys.value.length > 0)
+
+async function handleDisabledKeyRestore(key: string) {
+  if (!props.channel) return
+  restoringKey.value = key
+  error.value = ''
+  try {
+    await restoreApiKey(props.channel.index, key)
+    localRestoredKeys.value.add(key)
+    existingApiKeys.value.push(key)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    restoringKey.value = ''
+  }
+}
+
+// ── Model Mapping 行操作 ──
+
+function modelMappingFromChannel(ch: Channel) {
+  const mapping = ch.modelMapping || {}
+  const reasoning = ch.reasoningMapping || {}
+  const noVision = new Set(ch.noVisionModels || [])
+  return Object.entries(mapping).map(([source, target]) => ({
+    id: ++rowId,
+    source,
+    target,
+    reasoning: (reasoning[source] || '') as ModelMappingRow['reasoning'],
+    noVision: noVision.has(target),
+  }))
+}
+
+function addModelMappingRow() {
+  if (!newModelMapping.source.trim() || !newModelMapping.target.trim()) return
+  modelMappingRows.value.push({
+    id: ++rowId,
+    source: newModelMapping.source.trim(),
+    target: newModelMapping.target.trim(),
+    reasoning: newModelMapping.reasoning || '',
+    noVision: newModelMapping.noVision,
+  })
+  newModelMapping.source = ''
+  newModelMapping.target = ''
+  newModelMapping.reasoning = ''
+  newModelMapping.noVision = false
+}
+
+function removeModelMappingRow(index: number) {
+  modelMappingRows.value.splice(index, 1)
+}
+
+function getModelMappingAsObject(): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const row of modelMappingRows.value) {
+    if (row.source && row.target) result[row.source] = row.target
+  }
+  return result
+}
+
+function getReasoningMappingAsObject(): Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'> {
+  const result: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'> = {}
+  for (const row of modelMappingRows.value) {
+    if (row.source && row.target && row.reasoning) {
+      result[row.source] = row.reasoning as 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    }
+  }
+  return result
+}
+
+function getNoVisionModelsFromRows(): string[] {
+  const set = new Set<string>()
+  for (const row of modelMappingRows.value) {
+    if (row.noVision && row.target) set.add(row.target)
+  }
+  return [...set]
+}
+
+// ── Custom Headers 行操作 ──
+
+function headerRowsFromChannel(ch: Channel) {
+  const headers = ch.customHeaders || {}
+  return Object.entries(headers).map(([k, v]) => ({ id: ++rowId, key: k, value: v }))
+}
+
+function addHeaderRow() {
+  if (!newHeader.key.trim()) return
+  headerRows.value.push({ id: ++rowId, key: newHeader.key.trim(), value: newHeader.value })
+  newHeader.key = ''
+  newHeader.value = ''
+}
+
+function removeHeaderRow(index: number) {
+  headerRows.value.splice(index, 1)
+}
+
+function getHeadersAsObject(): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const h of headerRows.value) {
+    if (h.key.trim()) result[h.key.trim()] = h.value
+  }
+  return result
+}
+
+// ── 编辑头部动作：noVision toggle + Test Capability ──
+
+async function handleTestCapability() {
+  if (!props.channel) return
+
+  // 先保存当前编辑内容
+  saving.value = true
+  error.value = ''
+  try {
+    const payload = buildCurrentPayload()
+    await saveChannel(payload, props.channel.index)
+    emit('saved')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+    saving.value = false
+    return
+  }
+  saving.value = false
+
+  emit('test-capability', {
+    ...props.channel,
+    name: form.name || props.channel.name,
+    index: props.channel.index,
+  })
+}
+
+function buildCurrentPayload() {
+  const modelMapping = getModelMappingAsObject()
+  const reasoningMapping = getReasoningMappingAsObject() as Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
+
+  return buildChannelPayload({
+    name: form.name,
+    serviceType: form.serviceType,
+    baseUrl: form.baseUrl,
+    baseUrls: parseLines(form.baseUrlsText),
+    website: form.website,
+    insecureSkipVerify: form.insecureSkipVerify,
+    lowQuality: form.lowQuality,
+    injectDummyThoughtSignature: form.injectDummyThoughtSignature,
+    stripThoughtSignature: form.stripThoughtSignature,
+    passbackReasoningContent: form.passbackReasoningContent,
+    passbackThinkingBlocks: form.passbackThinkingBlocks,
+    description: form.description,
+    apiKeys: getSubmitApiKeys(),
+    modelMapping,
+    reasoningMapping,
+    reasoningParamStyle: form.reasoningParamStyle,
+    textVerbosity: form.textVerbosity,
+    fastMode: form.fastMode,
+    customHeaders: getHeadersAsObject(),
+    proxyUrl: form.proxyUrl,
+    requestTimeoutMs: form.requestTimeoutMs,
+    routePrefix: form.routePrefix,
+    supportedModels: parseLines(form.supportedModelsText),
+    autoBlacklistBalance: form.autoBlacklistBalance,
+    normalizeMetadataUserId: form.normalizeMetadataUserId,
+    stripEmptyTextBlocks: form.stripEmptyTextBlocks,
+    normalizeSystemRoleToTopLevel: form.normalizeSystemRoleToTopLevel,
+    codexNativeToolPassthrough: form.codexNativeToolPassthrough,
+    codexToolCompat: form.codexToolCompat,
+    normalizeNonstandardChatRoles: form.normalizeNonstandardChatRoles,
+    stripCodexClientTools: form.stripCodexClientTools,
+    noVision: form.noVision,
+    noVisionModels: getNoVisionModelsFromRows(),
+    visionFallbackModel: form.visionFallbackModel,
+  })
+}
 </script>
 
 <template>
@@ -414,9 +667,21 @@ onBeforeUnmount(() => {
                 }}
               </h3>
             </div>
-            <Button variant="ghost" size="icon-sm" class="shrink-0" @click="emit('close')">
-              <X class="h-4 w-4" />
-            </Button>
+            <div class="flex shrink-0 items-center gap-1">
+              <template v-if="isEditMode">
+                <Button variant="ghost" size="icon-sm" :title="form.noVision ? tf('console.form.visionDisabled', '视觉已禁用') : tf('console.form.visionEnabled', '视觉已启用')" @click="form.noVision = !form.noVision">
+                  <EyeOff v-if="form.noVision" class="h-4 w-4 text-amber-500" />
+                  <Eye v-else class="h-4 w-4 text-muted-foreground" />
+                </Button>
+                <Button v-if="channelType !== 'images'" variant="outline" size="sm" :disabled="saving" @click="handleTestCapability">
+                  <Zap class="h-3.5 w-3.5" />
+                  {{ tf('console.actions.capability', '能力测试') }}
+                </Button>
+              </template>
+              <Button variant="ghost" size="icon-sm" class="shrink-0" @click="emit('close')">
+                <X class="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           <div class="min-h-0 flex-1 overflow-y-auto">
@@ -567,10 +832,10 @@ onBeforeUnmount(() => {
                   </h4>
                   <div class="space-y-2">
                     <div class="flex items-center justify-between gap-2">
-                      <Label>{{ tf('console.form.apiKeys', 'API Keys（每行一个）') }}</Label>
+                      <Label>{{ tf('console.form.apiKeys', 'API Keys') }}</Label>
                       <span class="text-[10px] text-muted-foreground">{{ existingApiKeys.length }} keys</span>
                     </div>
-                    <div v-if="existingApiKeys.length" class="space-y-2">
+                    <div v-if="existingApiKeys.length" class="space-y-1.5">
                       <div
                         v-for="(key, index) in existingApiKeys"
                         :key="`${index}-${key}`"
@@ -579,29 +844,50 @@ onBeforeUnmount(() => {
                         <div class="flex min-w-0 items-center gap-2">
                           <Key class="h-3.5 w-3.5 shrink-0 text-primary" />
                           <code class="truncate font-mono text-muted-foreground">{{ maskApiKey(key) }}</code>
+                          <span v-if="findDuplicateKeyIndex(key) !== index && existingApiKeys.indexOf(key) !== index" class="text-[10px] text-amber-600">{{ tf('addChannel.duplicateKey', '重复') }}</span>
                         </div>
-                        <Button size="icon-sm" variant="ghost" class="shrink-0 text-destructive" @click="removeExistingApiKey(index)">
-                          <Trash2 class="h-3.5 w-3.5" />
-                        </Button>
+                        <div class="flex shrink-0 items-center gap-0.5">
+                          <Button size="icon-sm" variant="ghost" :class="copiedKeyIndex === index ? 'text-emerald-500' : 'text-muted-foreground'" @click="copyApiKey(key, index)">
+                            <CheckCircle2 v-if="copiedKeyIndex === index" class="h-3.5 w-3.5" />
+                            <Copy v-else class="h-3.5 w-3.5" />
+                          </Button>
+                          <Button v-if="index > 0" size="icon-sm" variant="ghost" class="text-muted-foreground" @click="moveApiKeyToTop(index)">
+                            <ArrowUp class="h-3.5 w-3.5" />
+                          </Button>
+                          <Button v-if="index < existingApiKeys.length - 1" size="icon-sm" variant="ghost" class="text-muted-foreground" @click="moveApiKeyToBottom(index)">
+                            <ArrowDown class="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon-sm" variant="ghost" class="text-destructive" @click="removeExistingApiKey(index)">
+                            <Trash2 class="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                    <div class="space-y-1.5">
-                      <Label class="text-xs text-muted-foreground">{{ tf('addChannel.addNewApiKey', '添加新 API Key') }}</Label>
-                      <Textarea
+                    <div class="flex gap-2">
+                      <Input
                         v-model="newApiKeysText"
-                        rows="3"
-                        placeholder="sk-xxx&#10;sk-yyy"
-                        class="font-mono text-xs"
+                        class="flex-1 font-mono text-xs"
+                        :placeholder="tf('addChannel.addNewApiKeyPlaceholder', '输入新 API Key，回车添加')"
+                        @keydown.enter.prevent="addNewApiKeys"
                       />
+                      <Button type="button" variant="outline" size="sm" :disabled="!newApiKeysText.trim()" @click="addNewApiKeys">
+                        <Plus class="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
-                  <div v-if="disabledApiKeys.length" class="space-y-2 border border-amber-500/20 bg-amber-500/10 p-2">
+                  <div v-if="hasDisabledKeys" class="space-y-2 border border-amber-500/20 bg-amber-500/10 p-2">
                     <div class="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                      {{ tf('console.form.disabledKeys', 'Disabled keys') }}
+                      {{ tf('console.form.disabledKeys', 'Disabled keys') }} ({{ visibleDisabledKeys.length }})
                     </div>
-                    <div v-for="item in disabledApiKeys" :key="item.key" class="flex items-center justify-between gap-2 text-xs">
-                      <span class="min-w-0 truncate font-mono" :title="item.message || item.reason">{{ maskApiKey(item.key) }}</span>
-                      <Button size="sm" variant="outline" :disabled="restoringKey === item.key" @click="handleRestoreKey(item.key)">
+                    <div v-for="item in visibleDisabledKeys" :key="item.key" class="flex items-center justify-between gap-2 text-xs">
+                      <div class="min-w-0 space-y-0.5">
+                        <div class="flex min-w-0 items-center gap-1.5">
+                          <span class="truncate font-mono text-muted-foreground">{{ maskApiKey(item.key) }}</span>
+                          <span v-if="item.reason" class="shrink-0 rounded bg-amber-500/15 px-1 text-[9px] text-amber-700 dark:text-amber-300">{{ item.reason }}</span>
+                        </div>
+                        <div v-if="item.disabledAt" class="text-[10px] text-muted-foreground">{{ item.disabledAt }}</div>
+                      </div>
+                      <Button size="sm" variant="outline" :disabled="restoringKey === item.key" @click="handleDisabledKeyRestore(item.key)">
                         <Loader2 v-if="restoringKey === item.key" class="h-3 w-3 animate-spin" />
                         <RotateCcw v-else class="h-3 w-3" />
                         {{ tf('console.form.restoreKey', 'Restore') }}
@@ -617,13 +903,35 @@ onBeforeUnmount(() => {
                   <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {{ tf('console.form.models', '模型') }}
                   </h4>
-                  <div class="space-y-1.5">
-                    <Label>{{ tf('console.form.modelMapping', '模型映射（JSON）') }}</Label>
-                    <Textarea v-model="form.modelMappingText" rows="4" class="font-mono text-xs" />
-                  </div>
-                  <div class="space-y-1.5">
-                    <Label>Reasoning Mapping（JSON）</Label>
-                    <Textarea v-model="form.reasoningMappingText" rows="3" class="font-mono text-xs" />
+                  <!-- 结构化模型映射行 -->
+                  <div class="space-y-2">
+                    <Label>{{ tf('console.form.modelMapping', '模型映射') }}</Label>
+                    <div v-for="(row, index) in modelMappingRows" :key="row.id" class="flex items-center gap-2 border border-border bg-background/60 px-2 py-1.5 text-xs">
+                      <Input v-model="row.source" class="h-7 flex-1 font-mono text-xs" placeholder="source-model" />
+                      <ArrowRight class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <Input v-model="row.target" class="h-7 flex-1 font-mono text-xs" placeholder="target-model" />
+                      <Select v-model="row.reasoning">
+                        <SelectTrigger class="h-7 w-28 text-xs"><SelectValue :placeholder="'推理'" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem v-for="opt in reasoningParamStyleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" size="icon-sm" variant="ghost" :class="row.noVision ? 'text-amber-500' : 'text-muted-foreground'" :title="tf('console.form.noVision', '禁用视觉')" @click="row.noVision = !row.noVision">
+                        <EyeOff v-if="row.noVision" class="h-3.5 w-3.5" />
+                        <Eye v-else class="h-3.5 w-3.5" />
+                      </Button>
+                      <Button type="button" size="icon-sm" variant="ghost" class="text-destructive" @click="removeModelMappingRow(index)">
+                        <Trash2 class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <Input v-model="newModelMapping.source" class="h-7 flex-1 font-mono text-xs" placeholder="source" @keydown.enter.prevent="addModelMappingRow" />
+                      <ArrowRight class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <Input v-model="newModelMapping.target" class="h-7 flex-1 font-mono text-xs" placeholder="target" @keydown.enter.prevent="addModelMappingRow" />
+                      <Button type="button" variant="outline" size="sm" :disabled="!newModelMapping.source.trim() || !newModelMapping.target.trim()" @click="addModelMappingRow">
+                        <Plus class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   <div class="space-y-1.5">
                     <Label>{{ tf('console.form.supportedModels', '支持的模型（每行一个，留空=全部）') }}</Label>
@@ -715,9 +1023,25 @@ onBeforeUnmount(() => {
 
                 <section class="space-y-3 border border-border bg-background/40 p-4 lg:col-span-2">
                   <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {{ tf('console.form.customHeaders', '自定义 Headers（JSON）') }}
+                    {{ tf('console.form.customHeaders', '自定义 Headers') }}
                   </h4>
-                  <Textarea v-model="form.customHeadersText" rows="4" class="font-mono text-xs" />
+                  <div v-if="headerRows.length" class="space-y-1.5">
+                    <div v-for="(h, index) in headerRows" :key="h.id" class="flex items-center gap-2 border border-border bg-background/60 px-2 py-1.5 text-xs">
+                      <code class="shrink-0 font-mono font-semibold text-primary">{{ h.key }}</code>
+                      <span class="shrink-0 text-muted-foreground">:</span>
+                      <Input v-model="h.value" class="flex-1 font-mono text-xs" />
+                      <Button type="button" size="icon-sm" variant="ghost" class="shrink-0 text-destructive" @click="removeHeaderRow(index)">
+                        <Trash2 class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <Input v-model="newHeader.key" class="h-7 w-40 font-mono text-xs" placeholder="Header-Name" @keydown.enter.prevent="addHeaderRow" />
+                    <Input v-model="newHeader.value" class="flex-1 font-mono text-xs" placeholder="value" @keydown.enter.prevent="addHeaderRow" />
+                    <Button type="button" variant="outline" size="sm" :disabled="!newHeader.key.trim()" @click="addHeaderRow">
+                      <Plus class="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </section>
               </template>
             </form>

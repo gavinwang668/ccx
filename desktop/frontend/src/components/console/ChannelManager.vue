@@ -198,6 +198,12 @@ function handleSaved() {
   refreshCurrentChannels()
 }
 
+function handleEditTestCapability(channel: Channel) {
+  showAddDialog.value = false
+  refreshCurrentChannels()
+  capabilityChannel.value = channel
+}
+
 function handleLogs(channel: Channel) {
   logsChannel.value = channel
 }
@@ -399,6 +405,7 @@ onMounted(() => {
       :channel-type="type"
       @close="showAddDialog = false"
       @saved="handleSaved"
+      @test-capability="handleEditTestCapability"
     />
 
     <ChannelLogsDialog
