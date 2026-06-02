@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -351,13 +351,10 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
   }
 }
 
-watch(() => props.channel, (ch) => {
-  if (ch) {
-    window.addEventListener('keydown', handleGlobalKeydown)
-  } else {
-    window.removeEventListener('keydown', handleGlobalKeydown)
-  }
-}, { immediate: true })
+// 组件挂载即注册快捷键（新建和编辑模式都需要）
+onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown)
+})
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
