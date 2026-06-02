@@ -30,6 +30,7 @@ import { useConsoleChannels } from '@/composables/useConsoleChannels'
 import { useLanguage } from '@/composables/useLanguage'
 import { buildChannelPayload } from '@/utils/channel-payload'
 import { getChannelTypeApi, type ManagedChannelType } from '@/utils/channel-type-api'
+import { buildExpectedRequestUrls } from '@/utils/expected-request-urls'
 import { parseQuickInput } from '@/utils/quick-input-parser'
 import type { Channel, DisabledKeyInfo } from '@/services/admin-api'
 
@@ -737,6 +738,16 @@ function toggleSupportedModelFilter(filter: string) {
   form.supportedModelsText = current.join('\n')
 }
 
+// ── Base URL 预期请求预览 ──
+const expectedRequestUrls = computed(() => {
+  return buildExpectedRequestUrls(
+    props.channelType as any,
+    form.serviceType as any,
+    form.baseUrl,
+    parseLines(form.baseUrlsText),
+  )
+})
+
 async function fetchTargetModels() {
   if (!props.channel) return
   if (!form.baseUrl.trim() || getSubmitApiKeys().length === 0) {
@@ -1018,6 +1029,11 @@ function buildCurrentPayload() {
                       :class="{ 'border-destructive': errors.baseUrl }"
                     />
                     <p v-if="errors.baseUrl" class="text-[10px] text-destructive">{{ errors.baseUrl }}</p>
+                    <div v-if="expectedRequestUrls.length" class="space-y-0.5">
+                      <div v-for="(item, index) in expectedRequestUrls" :key="index" class="text-[10px] text-muted-foreground">
+                        {{ tf('addChannel.expectedRequest', '预期请求') }} {{ item.expectedUrl }}
+                      </div>
+                    </div>
                   </div>
                   <div class="space-y-1.5">
                     <Label>{{ tf('console.form.additionalUrls', '额外 URL（每行一个）') }}</Label>
