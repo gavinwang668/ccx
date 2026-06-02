@@ -684,10 +684,6 @@ onBeforeUnmount(() => {
           </ScrollArea>
 
           <div class="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-card p-4">
-            <span class="mr-auto text-[10px] text-muted-foreground">
-              <kbd class="rounded border border-border px-1 py-0.5 font-mono">Esc</kbd> {{ tf('console.form.cancel', '取消') }}
-              <kbd class="ml-2 rounded border border-border px-1 py-0.5 font-mono">Enter</kbd> {{ isEditMode ? tf('console.form.save', '保存') : tf('console.form.create', '创建') }}
-            </span>
             <Button variant="ghost" @click="emit('close')">
               {{ tf('common.cancel', '取消') }} <span class="ml-1.5 text-xs opacity-60">Esc</span>
             </Button>
