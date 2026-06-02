@@ -670,6 +670,23 @@ const codexResponsesPresets: Record<string, {
   },
 }
 
+const serviceTypeOptions = computed(() => {
+  const all = [
+    { label: 'OpenAI Chat', value: 'openai' },
+    { label: 'Claude', value: 'claude' },
+    { label: 'Gemini', value: 'gemini' },
+    { label: 'Responses (Codex)', value: 'responses' },
+  ]
+  const first = props.channelType === 'messages' ? 'claude'
+    : props.channelType === 'responses' ? 'responses'
+    : props.channelType === 'gemini' ? 'gemini'
+    : 'openai'
+  if (props.channelType === 'images') return [{ label: 'OpenAI Images', value: 'openai' }]
+  const primary = all.find(o => o.value === first)
+  const rest = all.filter(o => o.value !== first)
+  return primary ? [primary, ...rest] : all
+})
+
 const supportsOpenAIAdvanced = computed(() => form.serviceType === 'openai' || form.serviceType === 'responses')
 const showModelMappingPresets = computed(() => props.channelType === 'messages' && supportsOpenAIAdvanced.value)
 const showClaudeChannelPresets = computed(() => form.serviceType === 'claude' && ['messages', 'chat', 'responses'].includes(props.channelType))
@@ -998,10 +1015,7 @@ function buildCurrentPayload() {
                           <SelectValue :placeholder="tf('console.form.selectServiceType', '选择服务类型')" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="claude">Claude</SelectItem>
-                          <SelectItem value="openai">OpenAI</SelectItem>
-                          <SelectItem value="gemini">Gemini</SelectItem>
-                          <SelectItem value="responses">Responses</SelectItem>
+                          <SelectItem v-for="opt in serviceTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</SelectItem>
                         </SelectContent>
                       </Select>
                       <p v-if="errors.serviceType" class="text-[10px] text-destructive">{{ errors.serviceType }}</p>
