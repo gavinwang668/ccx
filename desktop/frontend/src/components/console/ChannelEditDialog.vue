@@ -89,22 +89,22 @@ const reasoningParamStyleOptions = [
 // 注意：reka-ui 的 SelectItem 不允许空字符串 value，用 DEFAULT_SELECT_VALUE 哨兵代表"默认/不设置"
 const DEFAULT_SELECT_VALUE = 'default'
 
-const reasoningEffortOptions = [
-  { label: 'Default', value: DEFAULT_SELECT_VALUE },
+const reasoningEffortOptions = computed(() => [
+  { label: tf('console.form.selectDefault', '默认'), value: DEFAULT_SELECT_VALUE },
   { label: 'None', value: 'none' },
   { label: 'Low', value: 'low' },
   { label: 'Medium', value: 'medium' },
   { label: 'High', value: 'high' },
   { label: 'XHigh', value: 'xhigh' },
   { label: 'Max', value: 'max' },
-]
+])
 
-const textVerbosityOptions = [
-  { label: 'Default', value: DEFAULT_SELECT_VALUE },
+const textVerbosityOptions = computed(() => [
+  { label: tf('console.form.selectDefault', '默认'), value: DEFAULT_SELECT_VALUE },
   { label: 'Low', value: 'low' },
   { label: 'Medium', value: 'medium' },
   { label: 'High', value: 'high' },
-]
+])
 
 // 空字符串 ↔ 哨兵值互转：form 内部保持空串语义，Select 层使用哨兵值
 function toSelectValue(value: string) {
@@ -1038,7 +1038,7 @@ function buildCurrentPayload() {
                     <div class="mb-1 flex items-center gap-1.5 font-semibold">
                       <CheckCircle2 v-if="detectedApiKeys.length" class="h-3.5 w-3.5 text-emerald-500" />
                       <AlertCircle v-else class="h-3.5 w-3.5 text-muted-foreground" />
-                      API Keys
+                      {{ tf('console.form.apiKeys', 'API Keys') }}
                     </div>
                     <p class="text-muted-foreground">
                       {{ detectedApiKeys.length ? `${detectedApiKeys.length} ${tf('console.keys.active', 'active keys')}` : tf('addChannel.noneDetected', '未识别') }}
@@ -1110,7 +1110,7 @@ function buildCurrentPayload() {
                   <div class="space-y-2">
                     <div class="flex items-center justify-between gap-2">
                       <Label>{{ tf('console.form.apiKeys', 'API Keys') }}</Label>
-                      <span class="text-[10px] text-muted-foreground">{{ existingApiKeys.length }} keys</span>
+                      <span class="text-[10px] text-muted-foreground">{{ existingApiKeys.length }} {{ tf('console.keys.active', 'active keys') }}</span>
                     </div>
                     <p v-if="errors.apiKeys" class="text-[10px] text-destructive">{{ errors.apiKeys }}</p>
                     <div v-if="existingApiKeys.length" class="space-y-1.5">

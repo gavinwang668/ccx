@@ -480,6 +480,35 @@ export type MessageKey =
   | 'console.form.cancel'
   | 'console.form.create'
   | 'console.form.save'
+  | 'console.form.website'
+  | 'console.form.baseUrlPlaceholder'
+  | 'console.form.modelRedirect'
+  | 'console.form.modelMappingExisting'
+  | 'console.form.modelMappingAdd'
+  | 'console.form.generationParams'
+  | 'console.form.textVerbosityPlaceholder'
+  | 'console.form.modelScope'
+  | 'console.form.selectDefault'
+  | 'console.form.noVisionHint'
+  | 'console.form.passbackReasoningHint'
+  | 'console.form.passbackThinkingHint'
+  | 'console.form.stripThoughtSignatureHint'
+  | 'console.form.injectDummySignatureHint'
+  | 'console.form.reasoningParamStyleHint'
+  | 'console.form.codexNativeToolsHint'
+  | 'console.form.codexCompatHint'
+  | 'console.form.stripEmptyBlocksHint'
+  | 'console.form.normalizeSystemHint'
+  | 'console.form.normalizeUserIdHint'
+  | 'console.form.normalizeChatRolesHint'
+  | 'console.form.lowQualityHint'
+  | 'console.form.autoBlacklistHint'
+  | 'console.form.insecureSkipVerifyHint'
+  | 'console.form.proxyUrlHint'
+  | 'console.form.routePrefixHint'
+  | 'console.form.requestTimeoutMsHint'
+  | 'addChannel.duplicateKey'
+  | 'addChannel.addNewApiKeyPlaceholder'
   | 'addChannel.quickMode'
   | 'addChannel.quickHint'
   | 'addChannel.applyDetected'
@@ -1034,6 +1063,35 @@ export const messages: Record<SupportedLocale, Messages> = {
     'console.form.cancel': 'Cancel',
     'console.form.create': 'Create',
     'console.form.save': 'Save',
+    'console.form.website': 'Website',
+    'console.form.baseUrlPlaceholder': 'One per line, first is primary, the rest are failover\nhttps://api.example.com\nhttps://backup.example.com',
+    'console.form.modelRedirect': 'Model redirect',
+    'console.form.modelMappingExisting': 'Configured',
+    'console.form.modelMappingAdd': 'Add redirect',
+    'console.form.generationParams': 'Generation params',
+    'console.form.textVerbosityPlaceholder': 'Default',
+    'console.form.modelScope': 'Model scope',
+    'console.form.selectDefault': 'Default',
+    'console.form.noVisionHint': 'When enabled, requests containing images skip this channel and failover to the next one.',
+    'console.form.passbackReasoningHint': 'Convert thinking blocks into reasoning_content for passback, compatible with Claude-protocol upstreams that expect OpenAI-style reasoning_content such as MiMo.',
+    'console.form.passbackThinkingHint': 'Project real reasoning_content into Claude content[].thinking, compatible with strict thinking-mode upstreams such as DeepSeek/GLM.',
+    'console.form.stripThoughtSignatureHint': 'Remove the thought_signature field from functionCall, compatible with older Gemini APIs that do not support it.',
+    'console.form.injectDummySignatureHint': 'Inject a dummy signature into functionCall, compatible with third-party APIs that require it (disable for official APIs).',
+    'console.form.reasoningParamStyleHint': 'Choose whether OpenAI-style upstream requests use reasoning.effort or reasoning_effort.',
+    'console.form.codexNativeToolsHint': 'In passthrough mode, convert Codex native tools (apply_patch, namespace, etc.) into OpenAI function format so the upstream model can call them.',
+    'console.form.codexCompatHint': 'Enable Codex CLI compatibility: Responses passthrough upstreams strip client-only tools, while Chat/Claude/Gemini upstreams convert them into function proxy tools.',
+    'console.form.stripEmptyBlocksHint': 'Strip bare empty text content blocks before forwarding, compatible with Claude-protocol upstreams that strictly reject Claude Code tool_use placeholder blocks.',
+    'console.form.normalizeSystemHint': 'For new clients such as Opus 4.8 that send system as a message role: pull it back into the top-level system field before forwarding, compatible with older Claude upstreams that only support user/assistant roles.',
+    'console.form.normalizeUserIdHint': 'Automatically convert JSON-object user_id into a flat string to ensure upstream compatibility.',
+    'console.form.normalizeChatRolesHint': 'Convert non-standard roles such as developer into user before forwarding upstream. Domestic models usually do not support non-standard roles, so enabling this is recommended.',
+    'console.form.lowQualityHint': 'When enabled, force local token estimation; use the local value when the deviation exceeds 5%.',
+    'console.form.autoBlacklistHint': 'When the upstream returns insufficient balance, automatically move that key into the blacklist.',
+    'console.form.insecureSkipVerifyHint': 'Only enable temporarily for self-signed or mismatched domains; disable in production.',
+    'console.form.proxyUrlHint': 'Supports HTTP/HTTPS/SOCKS5 proxies for reaching upstream services through a proxy.',
+    'console.form.routePrefixHint': 'Access this channel via /{prefix}/v1/messages; multiple channels can share the same prefix.',
+    'console.form.requestTimeoutMsHint': 'Applies only to non-streaming upstream requests; leave empty to inherit the global REQUEST_TIMEOUT.',
+    'addChannel.duplicateKey': 'Duplicate',
+    'addChannel.addNewApiKeyPlaceholder': 'Enter a new API Key, press Enter to add',
     'addChannel.quickMode': 'Quick Paste',
     'addChannel.quickHint': 'Paste Base URL, API Key, or full config snippet to auto-detect and fill the form.',
     'addChannel.applyDetected': 'Apply detected',
@@ -1585,6 +1643,35 @@ export const messages: Record<SupportedLocale, Messages> = {
     'console.form.cancel': '取消',
     'console.form.create': '创建',
     'console.form.save': '保存',
+    'console.form.website': '网站',
+    'console.form.baseUrlPlaceholder': '每行一个，第一行为主地址，其余作为故障转移\nhttps://api.example.com\nhttps://backup.example.com',
+    'console.form.modelRedirect': '模型重定向',
+    'console.form.modelMappingExisting': '已配置',
+    'console.form.modelMappingAdd': '添加新重定向',
+    'console.form.generationParams': '生成参数',
+    'console.form.textVerbosityPlaceholder': '默认',
+    'console.form.modelScope': '模型范围',
+    'console.form.selectDefault': '默认',
+    'console.form.noVisionHint': '启用后，包含图片的请求将跳过此渠道并 failover 到下一个渠道',
+    'console.form.passbackReasoningHint': '将 thinking 块转为 reasoning_content 回传，兼容 mimo 等要求 OpenAI 风格 reasoning_content 的 Claude 协议上游',
+    'console.form.passbackThinkingHint': '将真实 reasoning_content 投影为 Claude 的 content[].thinking，兼容 DeepSeek/GLM 等严格 thinking mode 上游',
+    'console.form.stripThoughtSignatureHint': '移除 functionCall 的 thought_signature 字段，兼容不支持该字段的旧版 Gemini API',
+    'console.form.injectDummySignatureHint': '为 functionCall 注入 dummy signature，兼容需要该字段的第三方 API（官方 API 请关闭）',
+    'console.form.reasoningParamStyleHint': '选择 OpenAI 风格上游请求使用 reasoning.effort 还是 reasoning_effort。',
+    'console.form.codexNativeToolsHint': '透传模式下将 Codex 原生工具（apply_patch、namespace 等）转换为 OpenAI function 格式，使上游模型可调用。',
+    'console.form.codexCompatHint': '启用 Codex CLI 兼容：Responses 透传上游会剥离客户端专属工具，Chat/Claude/Gemini 上游会转换为 function 代理工具。',
+    'console.form.stripEmptyBlocksHint': '转发前移除裸空 text content block，兼容严格拒绝 Claude Code tool_use 占位块的 Claude 协议上游',
+    'console.form.normalizeSystemHint': '针对 Opus 4.8 等新客户端将 system 作为消息 role 发送的情况：转发前抽回顶层 system 字段，兼容仅支持 user/assistant role 的旧 Claude 上游',
+    'console.form.normalizeUserIdHint': '自动将 JSON 对象格式的 user_id 转换为扁平字符串，确保上游兼容性。',
+    'console.form.normalizeChatRolesHint': '将 developer 等非标准 role 统一转为 user 后转发给上游。国内模型通常不支持非标准 role，建议开启。',
+    'console.form.lowQualityHint': '启用后强制本地估算 token 数量，偏差超过 5% 时使用本地值',
+    'console.form.autoBlacklistHint': '当上游返回余额不足时，自动将该 Key 移入拉黑列表。',
+    'console.form.insecureSkipVerifyHint': '仅在自签名或域名不匹配时临时启用，生产环境请关闭',
+    'console.form.proxyUrlHint': '支持 HTTP/HTTPS/SOCKS5 代理，用于通过代理访问上游服务',
+    'console.form.routePrefixHint': '通过 /{前缀}/v1/messages 访问此渠道，多个渠道可共享同一前缀',
+    'console.form.requestTimeoutMsHint': '仅作用于非流式上游请求；留空表示继承全局 REQUEST_TIMEOUT。',
+    'addChannel.duplicateKey': '重复',
+    'addChannel.addNewApiKeyPlaceholder': '输入新 API Key，回车添加',
     'addChannel.quickMode': '快速粘贴',
     'addChannel.quickHint': '粘贴 Base URL、API Key 或完整配置片段，自动识别并填入表单。',
     'addChannel.applyDetected': '应用识别结果',
