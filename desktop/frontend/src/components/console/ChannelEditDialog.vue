@@ -364,63 +364,76 @@ async function handleRestoreKey(key: string) {
   }
 }
 
-async function handleSubmit() {
-  if (!isValid.value) return
+function buildSubmitPayload() {
+  const payload = isEditMode.value
+    ? buildCurrentPayload()
+    : buildChannelPayload({
+        name: form.name,
+        serviceType: form.serviceType,
+        baseUrl: form.baseUrl,
+        baseUrls: parseLines(form.baseUrlsText),
+        website: form.website,
+        insecureSkipVerify: form.insecureSkipVerify,
+        lowQuality: form.lowQuality,
+        injectDummyThoughtSignature: form.injectDummyThoughtSignature,
+        stripThoughtSignature: form.stripThoughtSignature,
+        passbackReasoningContent: form.passbackReasoningContent,
+        passbackThinkingBlocks: form.passbackThinkingBlocks,
+        description: form.description,
+        apiKeys: getSubmitApiKeys(),
+        modelMapping: parseJsonObject<Record<string, string>>(form.modelMappingText, 'Model mapping'),
+        reasoningMapping: parseJsonObject<Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>>(form.reasoningMappingText, 'Reasoning mapping'),
+        reasoningParamStyle: form.reasoningParamStyle,
+        textVerbosity: form.textVerbosity,
+        fastMode: form.fastMode,
+        customHeaders: parseJsonObject<Record<string, string>>(form.customHeadersText, 'Custom headers'),
+        proxyUrl: form.proxyUrl,
+        requestTimeoutMs: form.requestTimeoutMs,
+        routePrefix: form.routePrefix,
+        supportedModels: parseLines(form.supportedModelsText),
+        autoBlacklistBalance: form.autoBlacklistBalance,
+        normalizeMetadataUserId: form.normalizeMetadataUserId,
+        stripEmptyTextBlocks: form.stripEmptyTextBlocks,
+        normalizeSystemRoleToTopLevel: form.normalizeSystemRoleToTopLevel,
+        codexNativeToolPassthrough: form.codexNativeToolPassthrough,
+        codexToolCompat: form.codexToolCompat,
+        normalizeNonstandardChatRoles: form.normalizeNonstandardChatRoles,
+        stripCodexClientTools: form.stripCodexClientTools,
+        noVision: form.noVision,
+        noVisionModels: parseLines(form.noVisionModelsText),
+        visionFallbackModel: form.visionFallbackModel,
+      })
+
+  if (isEditMode.value && props.channel?.requestTimeoutMs && !String(form.requestTimeoutMs ?? '').trim()) {
+    payload.requestTimeoutMs = 0
+  }
+
+  return payload
+}
+
+async function persistCurrentDraft(options: { notifyParent?: boolean; close?: boolean } = {}) {
+  if (!isValid.value) {
+    error.value = Object.values(errors.value)[0] || ''
+    return false
+  }
+
   saving.value = true
   error.value = ''
-
   try {
-    const payload = isEditMode.value
-      ? buildCurrentPayload()
-      : buildChannelPayload({
-          name: form.name,
-          serviceType: form.serviceType,
-          baseUrl: form.baseUrl,
-          baseUrls: parseLines(form.baseUrlsText),
-          website: form.website,
-          insecureSkipVerify: form.insecureSkipVerify,
-          lowQuality: form.lowQuality,
-          injectDummyThoughtSignature: form.injectDummyThoughtSignature,
-          stripThoughtSignature: form.stripThoughtSignature,
-          passbackReasoningContent: form.passbackReasoningContent,
-          passbackThinkingBlocks: form.passbackThinkingBlocks,
-          description: form.description,
-          apiKeys: getSubmitApiKeys(),
-          modelMapping: parseJsonObject<Record<string, string>>(form.modelMappingText, 'Model mapping'),
-          reasoningMapping: parseJsonObject<Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>>(form.reasoningMappingText, 'Reasoning mapping'),
-          reasoningParamStyle: form.reasoningParamStyle,
-          textVerbosity: form.textVerbosity,
-          fastMode: form.fastMode,
-          customHeaders: parseJsonObject<Record<string, string>>(form.customHeadersText, 'Custom headers'),
-          proxyUrl: form.proxyUrl,
-          requestTimeoutMs: form.requestTimeoutMs,
-          routePrefix: form.routePrefix,
-          supportedModels: parseLines(form.supportedModelsText),
-          autoBlacklistBalance: form.autoBlacklistBalance,
-          normalizeMetadataUserId: form.normalizeMetadataUserId,
-          stripEmptyTextBlocks: form.stripEmptyTextBlocks,
-          normalizeSystemRoleToTopLevel: form.normalizeSystemRoleToTopLevel,
-          codexNativeToolPassthrough: form.codexNativeToolPassthrough,
-          codexToolCompat: form.codexToolCompat,
-          normalizeNonstandardChatRoles: form.normalizeNonstandardChatRoles,
-          stripCodexClientTools: form.stripCodexClientTools,
-          noVision: form.noVision,
-          noVisionModels: parseLines(form.noVisionModelsText),
-          visionFallbackModel: form.visionFallbackModel,
-        })
-
-    if (isEditMode.value && props.channel?.requestTimeoutMs && !String(form.requestTimeoutMs ?? '').trim()) {
-      payload.requestTimeoutMs = 0
-    }
-
-    await saveChannel(payload, props.channel?.index ?? null)
-    emit('saved')
-    emit('close')
+    await saveChannel(buildSubmitPayload(), props.channel?.index ?? null)
+    if (options.notifyParent) emit('saved')
+    if (options.close) emit('close')
+    return true
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
+    return false
   } finally {
     saving.value = false
   }
+}
+
+async function handleSubmit() {
+  await persistCurrentDraft({ notifyParent: true, close: true })
 }
 
 function shouldSkipEnterSubmit(target: EventTarget | null) {
@@ -815,9 +828,16 @@ async function fetchTargetModels() {
     fetchedModelsError.value = tf('console.form.modelFetchNeedsConfig', '需要 Base URL 和 API Key 才能获取模型列表')
     return
   }
+
   fetchingModels.value = true
   fetchedModelsError.value = ''
   try {
+    const saved = await persistCurrentDraft()
+    if (!saved) {
+      fetchedModelsError.value = error.value
+      return
+    }
+
     const typeApi = getChannelTypeApi(props.channelType as ManagedChannelType)
     const models = await typeApi.getChannelModels(props.channel.index, {
       baseUrl: form.baseUrl,
@@ -890,19 +910,8 @@ function getHeadersAsObject(): Record<string, string> {
 async function handleTestCapability() {
   if (!props.channel) return
 
-  // 先保存当前编辑内容
-  saving.value = true
-  error.value = ''
-  try {
-    const payload = buildCurrentPayload()
-    await saveChannel(payload, props.channel.index)
-    emit('saved')
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-    saving.value = false
-    return
-  }
-  saving.value = false
+  const saved = await persistCurrentDraft({ notifyParent: true })
+  if (!saved) return
 
   emit('test-capability', {
     ...props.channel,
