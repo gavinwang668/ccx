@@ -1042,10 +1042,6 @@ function buildCurrentPayload() {
                     <Label>{{ tf('console.form.description', '描述') }}</Label>
                     <Textarea v-model="form.description" rows="2" />
                   </div>
-                  <div class="space-y-1.5">
-                    <Label>Website</Label>
-                    <Input v-model="form.website" placeholder="https://example.com" />
-                  </div>
                 </section>
 
                 <section class="space-y-3 border border-border bg-background/40 p-4">
@@ -1066,6 +1062,10 @@ function buildCurrentPayload() {
                         {{ tf('addChannel.expectedRequest', '预期请求') }} {{ item.expectedUrl }}
                       </div>
                     </div>
+                  </div>
+                  <div class="space-y-1.5">
+                    <Label>{{ tf('console.form.website', '网站') }}</Label>
+                    <Input v-model="form.website" placeholder="https://example.com" />
                   </div>
                 </section>
 
