@@ -117,9 +117,14 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error, timeou
 	seenUnknownDataType := false
 	unknownEventType := ""
 
-	// 阶段A：首个有效内容等待超时
-	firstContentTimeout := time.NewTimer(time.Duration(max(timeouts.FirstContentTimeoutMs, 0)) * time.Millisecond)
-	defer firstContentTimeout.Stop()
+	// 阶段A：首个有效内容等待超时（0=禁用）
+	var firstContentTimer *time.Timer
+	firstContentChan := (<-chan time.Time)(nil)
+	if timeouts.FirstContentTimeoutMs > 0 {
+		firstContentTimer = time.NewTimer(time.Duration(timeouts.FirstContentTimeoutMs) * time.Millisecond)
+		firstContentChan = firstContentTimer.C
+		defer firstContentTimer.Stop()
+	}
 
 	// 阶段B：首字后不活动超时（初始为 nil，阶段B 时激活）
 	var inactivityTimer *time.Timer
@@ -163,7 +168,9 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error, timeou
 				// 非文本内容：视为首个有效内容，进入阶段B
 				if !hasFirstContent {
 					hasFirstContent = true
-					firstContentTimeout.Stop()
+					if firstContentTimer != nil {
+						firstContentTimer.Stop()
+					}
 					if timeouts.InactivityTimeoutMs > 0 {
 						inactivityTimer = time.NewTimer(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
 						inactivityChan = inactivityTimer.C
@@ -196,7 +203,9 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error, timeou
 				if !hasFirstContent {
 					// 阶段A→阶段B：首次检测到有效文本内容
 					hasFirstContent = true
-					firstContentTimeout.Stop()
+					if firstContentTimer != nil {
+						firstContentTimer.Stop()
+					}
 					if timeouts.InactivityTimeoutMs > 0 {
 						inactivityTimer = time.NewTimer(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
 						inactivityChan = inactivityTimer.C
@@ -246,7 +255,7 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error, timeou
 				return result
 			}
 
-		case <-firstContentTimeout.C:
+		case <-firstContentChan:
 			// 阶段A超时：首个有效内容等待超时
 			if timeouts.FirstContentTimeoutMs > 0 {
 				result.HasError = true

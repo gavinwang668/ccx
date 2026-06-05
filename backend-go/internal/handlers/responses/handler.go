@@ -253,7 +253,7 @@ func handleSingleChannel(
 			}
 			responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstreamCopy.IsCodexToolCompatEnabled() || upstreamCopy.CodexNativeToolPassthrough
 			timeouts := common.ResolveStreamPreflightTimeouts(upstreamCopy, metricsManager.GetCircuitBreakerConfig())
-					return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody, cfgManager.GetFuzzyModeEnabled(), timeouts)
+			return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody, cfgManager.GetFuzzyModeEnabled(), timeouts)
 		},
 		responsesReq.Model,
 		"",
@@ -656,8 +656,13 @@ func handleStreamSuccess(
 	preflightEmpty := false
 	preflightDiagnostic := ""
 	// 阶段A：首个有效内容等待超时
-	firstContentTimeout := time.NewTimer(time.Duration(max(timeouts.FirstContentTimeoutMs, 0)) * time.Millisecond)
-	defer firstContentTimeout.Stop()
+	var firstContentTimer *time.Timer
+	firstContentChan := (<-chan time.Time)(nil)
+	if timeouts.FirstContentTimeoutMs > 0 {
+		firstContentTimer = time.NewTimer(time.Duration(timeouts.FirstContentTimeoutMs) * time.Millisecond)
+		firstContentChan = firstContentTimer.C
+		defer firstContentTimer.Stop()
+	}
 	// 阶段B：首字后不活动超时（初始为 nil，阶段B 时激活）
 	var inactivityTimer *time.Timer
 	inactivityChan := (<-chan time.Time)(nil)
@@ -674,7 +679,9 @@ func handleStreamSuccess(
 	enterPhaseB := func() {
 		if !hasFirstContent {
 			hasFirstContent = true
-			firstContentTimeout.Stop()
+			if firstContentTimer != nil {
+				firstContentTimer.Stop()
+			}
 			if timeouts.InactivityTimeoutMs > 0 {
 				inactivityTimer = time.NewTimer(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
 				inactivityChan = inactivityTimer.C
@@ -823,7 +830,7 @@ func handleStreamSuccess(
 			// 阶段B中重置不活动定时器
 			resetInactivityTimer()
 
-		case <-firstContentTimeout.C:
+		case <-firstContentChan:
 			// 阶段A超时：首个有效内容等待超时
 			if timeouts.FirstContentTimeoutMs > 0 {
 				log.Printf("[Responses-FirstContentTimeout] 流式首字超时: %dms，触发重试", timeouts.FirstContentTimeoutMs)

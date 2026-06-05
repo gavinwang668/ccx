@@ -163,7 +163,7 @@ func handleMultiChannel(
 				},
 				func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
 					timeouts := common.ResolveStreamPreflightTimeouts(upstreamCopy, metricsManager.GetCircuitBreakerConfig())
-						return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream, cfgManager.GetFuzzyModeEnabled(), timeouts)
+					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream, cfgManager.GetFuzzyModeEnabled(), timeouts)
 				},
 				model,
 				"",
@@ -239,7 +239,7 @@ func handleSingleChannel(
 		nil,
 		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
 			timeouts := common.ResolveStreamPreflightTimeouts(upstreamCopy, metricsManager.GetCircuitBreakerConfig())
-						return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream, cfgManager.GetFuzzyModeEnabled(), timeouts)
+			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream, cfgManager.GetFuzzyModeEnabled(), timeouts)
 		},
 		model,
 		"",
@@ -1015,8 +1015,13 @@ func preflightChatStream(resp *http.Response, upstreamType string, timeouts comm
 	}()
 
 	// 阶段A：首个有效内容等待超时
-	firstContentTimeout := time.NewTimer(time.Duration(max(timeouts.FirstContentTimeoutMs, 0)) * time.Millisecond)
-	defer firstContentTimeout.Stop()
+	var firstContentTimer *time.Timer
+	firstContentChan := (<-chan time.Time)(nil)
+	if timeouts.FirstContentTimeoutMs > 0 {
+		firstContentTimer = time.NewTimer(time.Duration(timeouts.FirstContentTimeoutMs) * time.Millisecond)
+		firstContentChan = firstContentTimer.C
+		defer firstContentTimer.Stop()
+	}
 
 	// 阶段B：首字后不活动超时（初始为 nil，阶段B 时激活）
 	var inactivityTimer *time.Timer
@@ -1036,7 +1041,7 @@ func preflightChatStream(resp *http.Response, upstreamType string, timeouts comm
 		case err := <-bodyErrChan:
 			flushRemainder()
 			return result, err
-		case <-firstContentTimeout.C:
+		case <-firstContentChan:
 			// 阶段A超时：首个有效内容等待超时
 			if timeouts.FirstContentTimeoutMs > 0 {
 				flushRemainder()
@@ -1071,7 +1076,9 @@ func preflightChatStream(resp *http.Response, upstreamType string, timeouts comm
 			if !hasFirstContent {
 				// 阶段A→阶段B：首次检测到有效内容
 				hasFirstContent = true
-				firstContentTimeout.Stop()
+				if firstContentTimer != nil {
+					firstContentTimer.Stop()
+				}
 				if timeouts.InactivityTimeoutMs > 0 {
 					inactivityTimer = time.NewTimer(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
 					inactivityChan = inactivityTimer.C

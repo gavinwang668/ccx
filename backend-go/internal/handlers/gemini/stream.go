@@ -2,8 +2,11 @@ package gemini
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -16,6 +19,238 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// preflightGeminiStream Gemini 流式预检测（两阶段：首字等待 + 首字后断流检测）
+func preflightGeminiStream(resp *http.Response, upstreamType string, timeouts common.StreamPreflightTimeouts) (bufferedLines []string, err error) {
+	hasFirstContent := false
+
+	// 启动 goroutine 读取 body chunk
+	chunkChan := make(chan []byte, 16)
+	bodyErrChan := make(chan error, 1)
+	go func() {
+		defer close(chunkChan)
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
+				chunkChan <- chunk
+			}
+			if err != nil {
+				if err != io.EOF {
+					bodyErrChan <- err
+				}
+				return
+			}
+		}
+	}()
+
+	// 阶段A：首个有效内容等待超时
+	var firstContentTimer *time.Timer
+	firstContentChan := (<-chan time.Time)(nil)
+	if timeouts.FirstContentTimeoutMs > 0 {
+		firstContentTimer = time.NewTimer(time.Duration(timeouts.FirstContentTimeoutMs) * time.Millisecond)
+		firstContentChan = firstContentTimer.C
+		defer firstContentTimer.Stop()
+	}
+
+	// 阶段B：首字后不活动超时（初始为 nil，阶段B 时激活）
+	var inactivityTimer *time.Timer
+	inactivityChan := (<-chan time.Time)(nil)
+
+	// 检测内容的辅助函数
+	hasSemanticContent := func(lines []string) bool {
+		for _, line := range lines {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			jsonData := strings.TrimPrefix(line, "data: ")
+			if jsonData == "[DONE]" {
+				continue
+			}
+			// Gemini 原生格式检测
+			if hasGeminiSemanticContent(jsonData) {
+				return true
+			}
+			// 转换后格式检测（Claude/OpenAI/Responses → Gemini）
+			switch upstreamType {
+			case "claude":
+				// Claude SSE 事件检测
+				if hasClaudeSemanticContent(line) {
+					return true
+				}
+			case "openai":
+				// OpenAI Chat chunk 检测
+				if hasOpenAISemanticContent(jsonData) {
+					return true
+				}
+			case "responses":
+				// Responses event 检测
+				if hasResponsesSemanticContent(line) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	var remainder string
+	var allLines []string
+
+	for {
+		var chunk []byte
+		var chunkOk bool
+
+		select {
+		case chunk, chunkOk = <-chunkChan:
+			if !chunkOk {
+				// chunkChan 关闭：body 读取完成
+				if remainder != "" {
+					allLines = append(allLines, remainder)
+				}
+				return allLines, nil
+			}
+		case err := <-bodyErrChan:
+			return nil, err
+		case <-firstContentChan:
+			// 阶段A超时
+			if timeouts.FirstContentTimeoutMs > 0 {
+				return nil, common.ErrStreamFirstContentTimeout
+			}
+			// 超时被禁用（0），保守放行
+			return nil, nil
+		case <-inactivityChan:
+			// 阶段B超时：首字后断流
+			return nil, common.ErrStreamStalled
+		}
+
+		if !chunkOk {
+			continue
+		}
+
+		data := remainder + string(chunk)
+		lines := strings.Split(data, "\n")
+		remainder = lines[len(lines)-1]
+		completeLines := lines[:len(lines)-1]
+		allLines = append(allLines, completeLines...)
+
+		if hasSemanticContent(completeLines) {
+			if !hasFirstContent {
+				// 阶段A→阶段B
+				hasFirstContent = true
+				if firstContentTimer != nil {
+					firstContentTimer.Stop()
+				}
+				if timeouts.InactivityTimeoutMs > 0 {
+					inactivityTimer = time.NewTimer(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
+					inactivityChan = inactivityTimer.C
+					defer inactivityTimer.Stop()
+				} else {
+					// 禁用阶段B，直接放行
+					if remainder != "" {
+						allLines = append(allLines, remainder)
+					}
+					return allLines, nil
+				}
+			} else {
+				// 阶段B中收到第二个有效内容：健康流，放行
+				if remainder != "" {
+					allLines = append(allLines, remainder)
+				}
+				return allLines, nil
+			}
+		}
+
+		// 阶段B中重置不活动定时器
+		if hasFirstContent && inactivityTimer != nil {
+			if !inactivityTimer.Stop() {
+				select {
+				case <-inactivityTimer.C:
+				default:
+				}
+			}
+			inactivityTimer.Reset(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
+		}
+	}
+}
+
+// hasGeminiSemanticContent 检测 Gemini 原生格式的语义内容
+func hasGeminiSemanticContent(jsonData string) bool {
+	var event map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonData), &event); err != nil {
+		return false
+	}
+	// 检测 text content
+	if candidates, ok := event["candidates"].([]interface{}); ok && len(candidates) > 0 {
+		if candidate, ok := candidates[0].(map[string]interface{}); ok {
+			if content, ok := candidate["content"].(map[string]interface{}); ok {
+				if parts, ok := content["parts"].([]interface{}); ok && len(parts) > 0 {
+					for _, part := range parts {
+						if p, ok := part.(map[string]interface{}); ok {
+							if text, ok := p["text"].(string); ok && text != "" {
+								return true
+							}
+							if _, ok := p["functionCall"]; ok {
+								return true
+							}
+							if _, ok := p["thought"]; ok {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// hasClaudeSemanticContent 检测 Claude SSE 事件的语义内容
+func hasClaudeSemanticContent(line string) bool {
+	// Claude 格式: event: xxx\ndata: {...}
+	// 简化检测：查找 text delta 或 tool_use
+	if strings.Contains(line, "content_block_delta") && strings.Contains(line, "text") {
+		return true
+	}
+	if strings.Contains(line, "tool_use") {
+		return true
+	}
+	return false
+}
+
+// hasOpenAISemanticContent 检测 OpenAI Chat chunk 的语义内容
+func hasOpenAISemanticContent(jsonData string) bool {
+	var event map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonData), &event); err != nil {
+		return false
+	}
+	if choices, ok := event["choices"].([]interface{}); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]interface{}); ok {
+			if delta, ok := choice["delta"].(map[string]interface{}); ok {
+				if content, ok := delta["content"].(string); ok && content != "" {
+					return true
+				}
+				if _, ok := delta["tool_calls"]; ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// hasResponsesSemanticContent 检测 Responses event 的语义内容
+func hasResponsesSemanticContent(line string) bool {
+	// Responses 格式: data: {...}
+	if strings.Contains(line, "response.output_text.delta") {
+		return true
+	}
+	if strings.Contains(line, "response.function_call") {
+		return true
+	}
+	return false
+}
+
 // handleStreamSuccess 处理流式响应
 func handleStreamSuccess(
 	c *gin.Context,
@@ -24,7 +259,24 @@ func handleStreamSuccess(
 	envCfg *config.EnvConfig,
 	startTime time.Time,
 	model string,
-) *types.Usage {
+	timeouts common.StreamPreflightTimeouts,
+) (*types.Usage, error) {
+	// Preflight：在发送 HTTP Header 之前检测流是否可用
+	bufferedLines, err := preflightGeminiStream(resp, upstreamType, timeouts)
+	if err != nil {
+		if errors.Is(err, common.ErrStreamFirstContentTimeout) {
+			log.Printf("[Gemini-FirstContentTimeout] 流式首字超时: %dms，触发重试", timeouts.FirstContentTimeoutMs)
+		} else if errors.Is(err, common.ErrStreamStalled) {
+			log.Printf("[Gemini-StreamStalled] 流式断流: 首字后 %dms 无活动，触发重试", timeouts.InactivityTimeoutMs)
+		}
+		return nil, err
+	}
+
+	// 检查是否为空响应
+	if len(bufferedLines) == 0 {
+		return nil, common.ErrEmptyStreamResponse
+	}
+
 	// 设置 SSE 响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -41,6 +293,13 @@ func handleStreamSuccess(
 	streamLoggingEnabled := envCfg.EnableResponseLogs && envCfg.IsDevelopment()
 
 	common.LogUpstreamResponseHeaders(resp, envCfg, "Gemini")
+
+	// 回放缓冲的行，然后继续读取原始上游 body
+	bufferedBody := strings.Join(bufferedLines, "\n")
+	if bufferedBody != "" && !strings.HasSuffix(bufferedBody, "\n") {
+		bufferedBody += "\n"
+	}
+	resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader([]byte(bufferedBody)), resp.Body))
 
 	switch upstreamType {
 	case "gemini":
@@ -64,7 +323,7 @@ func handleStreamSuccess(
 		}
 	}
 
-	return totalUsage
+	return totalUsage, nil
 }
 
 // streamGeminiToGemini Gemini 上游直接透传

@@ -173,7 +173,7 @@ func handleMultiChannel(
 					channelScheduler.MarkURLSuccess(scheduler.ChannelKindGemini, channelIndex, url)
 				},
 				func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream, cfgManager.GetFuzzyModeEnabled())
+					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream, cfgManager.GetFuzzyModeEnabled(), common.ResolveStreamPreflightTimeouts(upstreamCopy, metricsManager.GetCircuitBreakerConfig()))
 				},
 				model,
 				"",
@@ -261,7 +261,7 @@ func handleSingleChannel(
 		nil,
 		nil,
 		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream, cfgManager.GetFuzzyModeEnabled())
+			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream, cfgManager.GetFuzzyModeEnabled(), common.ResolveStreamPreflightTimeouts(upstreamCopy, metricsManager.GetCircuitBreakerConfig()))
 		},
 		model,
 		"",
@@ -493,11 +493,12 @@ func handleSuccess(
 	model string,
 	isStream bool,
 	fuzzyMode bool,
+	timeouts common.StreamPreflightTimeouts,
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
 
 	if isStream {
-		return handleStreamSuccess(c, resp, upstreamType, envCfg, startTime, model), nil
+		return handleStreamSuccess(c, resp, upstreamType, envCfg, startTime, model, timeouts)
 	}
 
 	// 非流式响应处理
