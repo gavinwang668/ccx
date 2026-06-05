@@ -549,6 +549,98 @@ func TestHasClaudeSemanticContent(t *testing.T) {
 	}
 }
 
+func TestHasOpenAIChatSemanticContent(t *testing.T) {
+	tests := []struct {
+		name  string
+		event string
+		want  bool
+	}{
+		{
+			name:  "content delta",
+			event: `data: {"choices":[{"delta":{"content":"hello"}}]}` + "\n\n",
+			want:  true,
+		},
+		{
+			name:  "reasoning delta",
+			event: `data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}` + "\n\n",
+			want:  true,
+		},
+		{
+			name:  "legacy function call name",
+			event: `data: {"choices":[{"delta":{"function_call":{"name":"Read"}}}]}` + "\n\n",
+			want:  true,
+		},
+		{
+			name:  "legacy function call arguments",
+			event: `data: {"choices":[{"delta":{"function_call":{"arguments":"{}"}}}]}` + "\n\n",
+			want:  true,
+		},
+		{
+			name:  "tool calls name",
+			event: `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"Read"}}]}}]}` + "\n\n",
+			want:  true,
+		},
+		{
+			name:  "tool calls arguments",
+			event: `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}` + "\n\n",
+			want:  true,
+		},
+		{
+			name:  "role only",
+			event: `data: {"choices":[{"delta":{"role":"assistant"}}]}` + "\n\n",
+			want:  false,
+		},
+		{
+			name:  "empty delta",
+			event: `data: {"choices":[{"delta":{}}]}` + "\n\n",
+			want:  false,
+		},
+		{
+			name:  "done marker",
+			event: "data: [DONE]\n\n",
+			want:  false,
+		},
+		{
+			name:  "invalid json",
+			event: "data: {\n\n",
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := HasOpenAIChatSemanticContent(tt.event)
+			if got != tt.want {
+				t.Errorf("HasOpenAIChatSemanticContent() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasClaudeSemanticContent_ToolStopReason(t *testing.T) {
+	tests := []struct {
+		name  string
+		event string
+	}{
+		{
+			name:  "tool_use stop reason",
+			event: `data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}` + "\n\n",
+		},
+		{
+			name:  "server_tool_use stop reason",
+			event: `data: {"type":"message_delta","delta":{"stop_reason":"server_tool_use"}}` + "\n\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !HasClaudeSemanticContent(tt.event) {
+				t.Fatal("expected tool stop reason to be treated as semantic content")
+			}
+		})
+	}
+}
+
 func TestEnsureMessageDeltaUsage(t *testing.T) {
 	extractUsage := func(t *testing.T, event string) (int, int) {
 		t.Helper()

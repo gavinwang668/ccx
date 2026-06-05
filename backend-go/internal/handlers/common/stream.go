@@ -671,6 +671,41 @@ func HasResponsesSemanticContent(event string) bool {
 	return false
 }
 
+// HasOpenAIChatSemanticContent 判断 OpenAI Chat 风格 SSE 是否包含有效语义内容
+
+func HasOpenAIChatSemanticContent(event string) bool {
+	for _, line := range strings.Split(event, "\n") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok || strings.TrimSpace(jsonStr) == "[DONE]" {
+			continue
+		}
+
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		choices, _ := data["choices"].([]interface{})
+		for _, rawChoice := range choices {
+			choice, _ := rawChoice.(map[string]interface{})
+			delta, _ := choice["delta"].(map[string]interface{})
+			if content, _ := delta["content"].(string); !IsEffectivelyEmptyStreamText(content) {
+				return true
+			}
+			if reasoning, _ := delta["reasoning_content"].(string); !IsEffectivelyEmptyStreamText(reasoning) {
+				return true
+			}
+			if functionCall, ok := delta["function_call"].(map[string]interface{}); ok && len(functionCall) > 0 {
+				return true
+			}
+			if calls, ok := delta["tool_calls"].([]interface{}); ok && len(calls) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // drainChannels 排空 eventChan 和 errChan，防止 provider goroutine 泄漏
 // 使用超时保护，避免在 channel 未关闭时永久阻塞
 func drainChannels(eventChan <-chan string, errChan <-chan error) {

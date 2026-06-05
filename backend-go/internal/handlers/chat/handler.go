@@ -1009,6 +1009,53 @@ func preflightChatStream(resp *http.Response, upstreamType string, timeouts comm
 	// 阶段B：首字后不活动超时（初始为 nil，阶段B 时激活）
 	var inactivityTimer *time.Timer
 	inactivityChan := (<-chan time.Time)(nil)
+	defer func() {
+		if inactivityTimer != nil {
+			inactivityTimer.Stop()
+		}
+	}()
+
+	stopFirstContentTimer := func() {
+		if firstContentTimer == nil {
+			return
+		}
+		if !firstContentTimer.Stop() {
+			select {
+			case <-firstContentTimer.C:
+			default:
+			}
+		}
+		firstContentChan = nil
+	}
+
+	enterPhaseB := func() {
+		if hasFirstContent {
+			return
+		}
+		hasFirstContent = true
+		stopFirstContentTimer()
+		if timeouts.InactivityTimeoutMs > 0 {
+			inactivityTimer = time.NewTimer(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
+			inactivityChan = inactivityTimer.C
+		}
+	}
+
+	resetInactivityTimer := func() {
+		if !hasFirstContent || inactivityTimer == nil {
+			return
+		}
+		if !inactivityTimer.Stop() {
+			select {
+			case <-inactivityTimer.C:
+			default:
+			}
+		}
+		inactivityTimer.Reset(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
+	}
+
+	hasPendingToolCall := func() bool {
+		return tracker.HasPendingToolCall() || chatTracker.HasPendingToolCall()
+	}
 
 	for result.malformedToolName == "" && len(result.buffered) < maxPreflightBytes {
 		var chunk []byte
@@ -1049,45 +1096,39 @@ func preflightChatStream(resp *http.Response, upstreamType string, timeouts comm
 		remainder = lines[len(lines)-1]
 		completeLines := lines[:len(lines)-1]
 
-		if malformed, name := detectMalformedChatStreamLines(completeLines, upstreamType, tracker, chatTracker); malformed {
-			result.malformedToolName = name
-			flushRemainder()
-			break
-		}
+		for _, line := range completeLines {
+			wasInPhaseB := hasFirstContent
+			lineSet := []string{line}
+			if malformed, name := detectMalformedChatStreamLines(lineSet, upstreamType, tracker, chatTracker); malformed {
+				result.malformedToolName = name
+				flushRemainder()
+				break
+			}
 
-		if chatStreamHasTextContent(completeLines, upstreamType) && !tracker.HasPendingToolCall() && !chatTracker.HasPendingToolCall() {
-			if !hasFirstContent {
-				// 阶段A→阶段B：首次检测到有效内容
-				hasFirstContent = true
-				if firstContentTimer != nil {
-					firstContentTimer.Stop()
-				}
-				if timeouts.InactivityTimeoutMs > 0 {
-					inactivityTimer = time.NewTimer(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
-					inactivityChan = inactivityTimer.C
-					defer inactivityTimer.Stop()
-				} else {
-					// 禁用阶段B，直接放行
+			hasSemanticContent := chatStreamHasSemanticContent(lineSet, upstreamType)
+			hasDataActivity := chatStreamHasDataActivity(lineSet)
+
+			if !hasFirstContent && hasSemanticContent {
+				// 阶段A→阶段B：首次检测到有效语义内容。工具调用参数未完成也算首内容，但不能提前放行。
+				enterPhaseB()
+				if timeouts.InactivityTimeoutMs <= 0 && !hasPendingToolCall() {
 					flushRemainder()
 					return result, chunkChan, bodyErrChan, nil
 				}
-			} else {
-				// 阶段B中收到第二个有效内容：健康流，放行
+			}
+
+			if wasInPhaseB && hasDataActivity && !hasPendingToolCall() {
+				// 阶段B中收到后续 SSE 活动且没有未完成工具调用：健康流，放行
 				flushRemainder()
 				return result, chunkChan, bodyErrChan, nil
 			}
 		}
-
-		// 阶段B中重置不活动定时器
-		if hasFirstContent && inactivityTimer != nil {
-			if !inactivityTimer.Stop() {
-				select {
-				case <-inactivityTimer.C:
-				default:
-				}
-			}
-			inactivityTimer.Reset(time.Duration(timeouts.InactivityTimeoutMs) * time.Millisecond)
+		if result.malformedToolName != "" {
+			break
 		}
+
+		// 阶段B中收到任何 chunk 都重置不活动定时器，避免持续分片输出被误判断流。
+		resetInactivityTimer()
 	}
 
 	flushRemainder()
@@ -1096,11 +1137,12 @@ func preflightChatStream(resp *http.Response, upstreamType string, timeouts comm
 
 func detectMalformedChatStreamLines(lines []string, upstreamType string, tracker chatToolTracker, chatTracker *openAIChatToolCallTracker) (bool, string) {
 	for _, line := range lines {
-		if !strings.HasPrefix(line, "data: ") {
+		if !strings.HasPrefix(line, "data:") {
 			continue
 		}
-		jsonData := strings.TrimPrefix(line, "data: ")
-		if jsonData == "[DONE]" {
+		jsonData := strings.TrimPrefix(line, "data:")
+		jsonData = strings.TrimPrefix(jsonData, " ")
+		if strings.TrimSpace(jsonData) == "[DONE]" {
 			continue
 		}
 		event := "data: " + jsonData + "\n\n"
@@ -1221,20 +1263,25 @@ func fallbackChatToolName(name string, index int) string {
 	return fmt.Sprintf("tool_%d", index)
 }
 
-func chatStreamHasTextContent(lines []string, upstreamType string) bool {
+func chatStreamHasSemanticContent(lines []string, upstreamType string) bool {
 	for _, line := range lines {
-		if !strings.HasPrefix(line, "data: ") {
+		if !strings.HasPrefix(line, "data:") {
 			continue
 		}
-		jsonData := strings.TrimPrefix(line, "data: ")
-		if jsonData == "[DONE]" {
+		jsonData := strings.TrimPrefix(line, "data:")
+		jsonData = strings.TrimPrefix(jsonData, " ")
+		if strings.TrimSpace(jsonData) == "[DONE]" {
 			continue
 		}
-		var data map[string]interface{}
-		if err := json.Unmarshal([]byte(jsonData), &data); err != nil {
-			continue
-		}
+		event := "data: " + jsonData + "\n\n"
 		if upstreamType == "claude" {
+			if common.HasClaudeSemanticContent(event) {
+				return true
+			}
+			var data map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonData), &data); err != nil {
+				continue
+			}
 			if eventType, _ := data["type"].(string); eventType == "content_block_delta" {
 				delta, _ := data["delta"].(map[string]interface{})
 				if text, _ := delta["text"].(string); !common.IsEffectivelyEmptyStreamText(text) {
@@ -1244,6 +1291,13 @@ func chatStreamHasTextContent(lines []string, upstreamType string) bool {
 			continue
 		}
 		if upstreamType == "responses" {
+			if common.HasResponsesSemanticContent(event) {
+				return true
+			}
+			var data map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonData), &data); err != nil {
+				continue
+			}
 			if eventType, _ := data["type"].(string); eventType == "response.output_text.delta" {
 				if text, _ := data["delta"].(string); !common.IsEffectivelyEmptyStreamText(text) {
 					return true
@@ -1251,16 +1305,21 @@ func chatStreamHasTextContent(lines []string, upstreamType string) bool {
 			}
 			continue
 		}
-		choices, _ := data["choices"].([]interface{})
-		for _, rawChoice := range choices {
-			choice, _ := rawChoice.(map[string]interface{})
-			delta, _ := choice["delta"].(map[string]interface{})
-			if content, _ := delta["content"].(string); !common.IsEffectivelyEmptyStreamText(content) {
-				return true
-			}
-			if reasoning, _ := delta["reasoning_content"].(string); !common.IsEffectivelyEmptyStreamText(reasoning) {
-				return true
-			}
+		if common.HasOpenAIChatSemanticContent(event) {
+			return true
+		}
+	}
+	return false
+}
+
+func chatStreamHasDataActivity(lines []string) bool {
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		jsonData := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if jsonData != "" && jsonData != "[DONE]" {
+			return true
 		}
 	}
 	return false
