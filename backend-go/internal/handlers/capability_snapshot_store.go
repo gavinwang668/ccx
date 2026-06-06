@@ -447,18 +447,20 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 			// 获取 sourceTab 协议的探测模型
 			probeModels, err := getCapabilityProbeModels(sourceTab)
 			if err == nil {
-				// 检查是否至少有一个模型被重定向
-				hasRedirect := false
-				for _, m := range probeModels {
-					actual := config.RedirectModel(m, channel)
-					if actual != m {
-						hasRedirect = true
-						break
+				// 跨协议转换与模型重定向是两个独立触发条件。
+				needsVirtualProtocol := sourceTab != channelServiceType
+				if !needsVirtualProtocol {
+					for _, m := range probeModels {
+						actual := config.RedirectModel(m, channel)
+						if actual != m {
+							needsVirtualProtocol = true
+							break
+						}
 					}
 				}
 
-				// 只要有模型被重定向就生成虚拟协议占位符；同源场景表示纯模型重定向测试。
-				if hasRedirect {
+				// 跨协议转换或同源模型重定向都需要生成虚拟协议占位符。
+				if needsVirtualProtocol {
 					virtualProtocol := sourceTab + "->" + channelServiceType
 					// 检查快照中是否已经有这个虚拟协议
 					foundIndex := -1

@@ -83,13 +83,13 @@ func hasModelMapping(channel *config.UpstreamConfig) bool {
 // 当 ModelMapping 非空时，在 protocols 前插入一条复合协议行 {channelKind}->{serviceType}。
 // 复合协议行始终排在第一位；同协议也保留，用于验证实际 ModelMapping 后的用户使用路径。
 func expandCapabilityProtocolsForChannel(channelKind string, channel *config.UpstreamConfig, protocols []string) []string {
-	if !hasModelMapping(channel) {
-		return protocols
-	}
-
 	from := CapabilityBaseProtocol(channelKind)
 	to, ok := normalizeServiceTypeToProtocol(channel.ServiceType)
 	if !ok {
+		return protocols
+	}
+
+	if from == to && !hasModelMapping(channel) {
 		return protocols
 	}
 
