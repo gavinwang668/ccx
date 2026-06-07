@@ -1,6 +1,6 @@
 # Codex CLI / Codex App 接入 CCX
 
-如果你正在使用 **CCX Desktop**，可先在 [Agent Config](/guide/desktop/#Agent配置) 中写入 Codex 配置，再回到本页确认 Responses 入口和 Base URL 规则。
+如果你正在使用 **CCX Desktop**，可先在 [Agent Config](/guide/desktop/#agent-配置) 中写入 Codex 配置，再回到本页确认 Responses 入口和 Base URL 规则。
 
 ## 工作方式
 

@@ -1,6 +1,6 @@
 # Claude Code 接入 CCX
 
-如果你正在使用 **CCX Desktop**，可先在 [Agent Config](/guide/desktop/#Agent配置) 中写入本地 CCX 配置，再回到本页确认 Claude Code 的协议细节。
+如果你正在使用 **CCX Desktop**，可先在 [Agent Config](/guide/desktop/#agent-配置) 中写入本地 CCX 配置，再回到本页确认 Claude Code 的协议细节。
 
 ## 工作方式
 
