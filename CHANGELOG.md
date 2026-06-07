@@ -1,3 +1,79 @@
+## [v2.8.25] - 2026-06-07
+
+### 新增
+
+- **Responses 添加 tool_search 工具类型识别与兼容处理** - 新增 tool_search 工具类型的识别与兼容处理逻辑
+- **新增 stripImageGenerationTool 渠道开关** - 渠道配置新增 stripImageGenerationTool 开关，支持过滤图片生成工具
+- **桌面端同步 stripImageGenerationTool 渠道开关** - 桌面端编辑渠道界面同步支持 stripImageGenerationTool 开关
+- **上游版本每日自动检查 skill 与脚本** - 添加上游版本每日自动检查 skill 与脚本
+- **渠道管理界面增强与国际化完善** - Web UI 渠道管理界面增强与国际化完善
+- **新增流式响应观察者模式** - 流式响应新增观察者模式，支持可插拔的流式处理逻辑
+- **上游请求日志接入请求上下文标签** - 为上游请求日志接入 session/round 请求上下文标签
+- **新增请求日志上下文模块** - 新增请求日志上下文模块支持 session/round 标签
+- **流式响应 TPS 进度记录** - 记录流式响应 TPS 进度
+- **流式 200 伪成功检测与 failover 机制** - 新增流式 200 伪成功检测与 failover 机制
+- **Desktop 前端熔断器配置新增流式超时滑块** - 桌面端熔断器配置界面新增流式超时滑块
+- **Web 前端熔断器配置新增流式超时滑块** - Web 前端熔断器配置界面新增流式超时滑块
+- **Gemini/Images 流式 preflight 适配** - 完成 Gemini/Images 流式 preflight 适配
+- **Gemini handler 初步接入流式 preflight 检测** - Gemini handler 初步接入流式 preflight 检测
+- **Responses handler 流式两阶段 preflight 检测** - Responses handler 接入流式两阶段 preflight 检测
+- **Chat handler 流式两阶段 preflight 检测** - Chat handler 接入流式两阶段 preflight 检测
+- **Minimax 2.7 思考标签处理升级** - 升级 Minimax 2.7 思考标签处理为协议级提取与原生推理字段转换
+
+### 修复
+
+- **桌面端切换渠道时清除成功提示与错误状态** - 修复切换渠道时旧的成功提示和错误状态残留的问题
+- **修复三个疑似 bug (#162 #187 #188)** - 修复三个疑似 bug
+- **延长流式空闲超时限制** - 延长 stream idle timeout limits
+- **保留流式 preflight 诊断信息** - 保留 stream preflight diagnostics
+- **修复 Windows 图标透明度并补全 Codex 预设模板** - 修复桌面端 Windows 图标透明度并补全 Codex 预设模板
+- **添加 guide/ 重定向文件修复 GitHub 链接 404** - 修复 docs/guide 重定向导致的 GitHub 链接 404
+- **将完整工具调用视为非空流** - 修复完整工具调用被误判为空流的问题
+- **修复 JSON 日志截断破坏 Unicode 字符** - 修复 JSON 日志截断时破坏 Unicode 字符的问题
+- **修复跨协议能力测试虚拟协议检测** - 修复跨协议能力测试中虚拟协议检测逻辑
+- **修正 MSIX 数据目录显示路径** - 修正桌面端 MSIX 数据目录显示路径
+- **流式工具调用使用 idle timeout** - 修复流式工具调用使用正确的 idle timeout
+- **分离工具调用流式超时** - 将工具调用流式超时与普通流式超时分离
+- **修复 compact 流式转换状态 panic** - 修复 Responses compact 流式转换状态 panic
+- **捕捉已提交流式响应断流** - 修复已提交流式响应断流未被捕捉的问题
+- **移除流式超时 off 档并为渠道新增超时覆盖开关** - 移除流式超时 off 档并为渠道新增超时覆盖开关
+- **修复工具调用流式 preflight 误判** - 修复 Chat 工具调用流式 preflight 误判
+- **修复 restoreApiKey 接口请求路径** - 修复桌面端 restoreApiKey 接口请求路径
+- **修复编辑渠道对话框拉黑密钥恢复按钮不可点击** - 修复桌面端编辑渠道对话框拉黑密钥恢复按钮不可点击
+- **修复编辑渠道对话框拉黑密钥恢复按钮不可点击 (Web)** - 修复 Web 端编辑渠道对话框拉黑密钥恢复按钮不可点击
+- **规范化 compact reasoning 输出** - 修复 Responses compact reasoning 输出格式
+- **修复频道菜单缺失 i18n** - 修复桌面端频道菜单缺失 i18n 翻译
+- **对齐管理面板协议显示名** - 修复桌面端管理面板协议显示名不一致
+- **修复 Minimax 2.7 模型 think 标签问题** - 修复 minimax 2.7 模型有 `<think>` 标签的问题
+
+### 重构
+
+- **按语言拆分 i18n 消息文件** - 前端 i18n 消息文件按语言拆分
+- **拆分 API 服务层类型和工具** - 前端 API 服务层类型和工具拆分
+- **移除 Wails v3 系统通知服务** - 桌面端移除 Wails v3 系统通知服务
+
+### 测试
+
+- **GPT 类渠道探测模型覆盖 codex-auto-review** - GPT 类渠道探测模型新增 codex-auto-review 覆盖
+- **覆盖无模型映射的协议转换测试组** - 新增无模型映射的协议转换测试组覆盖
+- **拆分 chat_to_responses 测试文件** - 拆分 converters chat_to_responses 测试文件
+- **拆分 configservice 测试文件** - 拆分桌面端 configservice 测试文件
+- **拆分 failover 测试文件** - 拆分 common failover 测试文件
+
+### 文档
+
+- **更新 TODO 格式规范与疑似 bug 修复记录** - 更新 TODO 格式规范与疑似 bug 修复记录
+- **更新 TODO 完成状态与关键提交记录** - 更新 TODO 完成状态与关键提交记录
+- **添加 GPT 类渠道模型测试覆盖待办** - 添加 GPT 类渠道模型测试覆盖待办
+- **新增桌面端渠道成功提示清理待办** - 新增桌面端渠道成功提示清理待办
+- **精简历史版本记录** - 精简 CHANGELOG 历史版本记录
+
+### 其他
+
+- **新增 Serena MCP 配置与项目记忆** - 新增 Serena MCP 配置与项目记忆
+- **升级 Vite 和 Vitest** - 前端升级 Vite 和 Vitest 依赖
+- **合并 guide/ 重定向文件修复** - 合并 guide/ 重定向文件修复分支
+
 ## [v2.8.24] - 2026-06-04
 
 ### 修复
