@@ -11,6 +11,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/conversation"
 	"github.com/BenedictKing/ccx/internal/metrics"
+	"github.com/BenedictKing/ccx/internal/ratelimit"
 	"github.com/BenedictKing/ccx/internal/session"
 	"github.com/BenedictKing/ccx/internal/transitions"
 	"github.com/BenedictKing/ccx/internal/types"
@@ -36,6 +37,7 @@ type ChannelScheduler struct {
 	imagesChannelLogStore    *metrics.ChannelLogStore // Images 渠道请求日志
 	conversationTracker      *conversation.ConversationTracker
 	overrideManager          *conversation.OverrideManager
+	rateLimitManager         *ratelimit.Manager
 }
 
 // ChannelKind 标识调度器所处理的渠道类型
@@ -93,6 +95,16 @@ func (s *ChannelScheduler) GetConversationTracker() *conversation.ConversationTr
 // GetOverrideManager 获取覆盖管理器
 func (s *ChannelScheduler) GetOverrideManager() *conversation.OverrideManager {
 	return s.overrideManager
+}
+
+// SetRateLimitManager 设置主动限速管理器
+func (s *ChannelScheduler) SetRateLimitManager(m *ratelimit.Manager) {
+	s.rateLimitManager = m
+}
+
+// GetRateLimitManager 获取主动限速管理器
+func (s *ChannelScheduler) GetRateLimitManager() *ratelimit.Manager {
+	return s.rateLimitManager
 }
 
 // getMetricsManager 根据类型获取对应的指标管理器
@@ -565,6 +577,13 @@ func (s *ChannelScheduler) SelectChannel(
 			continue
 		}
 
+		// 跳过主动限速 cooldown 中的渠道（429 Retry-After 触发的临时冷却）
+		if s.channelInRateLimitCooldown(kind, ch.Index) {
+			prefix := kindSchedulerLogPrefix(kind)
+			log.Printf("[%s-Channel] 跳过限速 cooldown 中的渠道: [%d] %s", prefix, ch.Index, ch.Name)
+			continue
+		}
+
 		prefix := kindSchedulerLogPrefix(kind)
 		log.Printf("[%s-Channel] 选择渠道: [%d] %s (优先级: %d)", prefix, ch.Index, upstream.Name, ch.Priority)
 		return &SelectionResult{
@@ -583,6 +602,19 @@ func (s *ChannelScheduler) channelCircuitState(upstream *config.UpstreamConfig, 
 		return metrics.CircuitStateClosed
 	}
 	return s.getMetricsManager(kind).GetChannelCircuitStateMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, NormalizedMetricsServiceType(kind, upstream.ServiceType))
+}
+
+// channelInRateLimitCooldown 判断渠道是否处于主动限速 cooldown（如 429 Retry-After 触发）。
+func (s *ChannelScheduler) channelInRateLimitCooldown(kind ChannelKind, channelIndex int) bool {
+	if s.rateLimitManager == nil {
+		return false
+	}
+	limiter := s.rateLimitManager.Get(kindAPIType(kind), channelIndex)
+	if limiter == nil {
+		return false
+	}
+	inCooldown, _ := limiter.InCooldown(time.Now())
+	return inCooldown
 }
 
 func (s *ChannelScheduler) channelFailureRate(upstream *config.UpstreamConfig, kind ChannelKind) float64 {

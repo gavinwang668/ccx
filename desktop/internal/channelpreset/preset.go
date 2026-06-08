@@ -112,6 +112,10 @@ type ChannelPayload struct {
 	StripCodexClientTools         bool              `json:"stripCodexClientTools,omitempty"`
 	StripImageGenerationTool      bool              `json:"stripImageGenerationTool,omitempty"`
 	NormalizeNonstandardChatRoles bool              `json:"normalizeNonstandardChatRoles,omitempty"`
+	RateLimitRPM                  int               `json:"rateLimitRpm,omitempty"`
+	RateLimitBurst                int               `json:"rateLimitBurst,omitempty"`
+	RateLimitMaxConcurrent        int               `json:"rateLimitMaxConcurrent,omitempty"`
+	RateLimitAutoFromHeaders      bool              `json:"rateLimitAutoFromHeaders,omitempty"`
 	Priority                      int               `json:"priority,omitempty"`
 	Status                        string            `json:"status,omitempty"`
 }
@@ -620,6 +624,7 @@ type channelTargetConfig struct {
 	CodexToolCompat               *bool
 	StripCodexClientTools         *bool
 	NormalizeNonstandardChatRoles bool
+	RateLimitRPM                  int // 主动限速默认 RPM（0=不设默认）
 }
 
 var channelTargetConfigs = map[string]map[string]channelTargetConfig{
@@ -645,6 +650,7 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 			PassbackReasoningContent: true,
 			NoVisionModels:           []string{"mimo-v2.5-pro"},
 			VisionFallbackModel:      "mimo-v2.5",
+			RateLimitRPM:             80, // MiMo 官方 RPM=100（账号级、跨 key 共享），留 20% 余量
 		},
 		ProviderCompshare: {
 			ModelMapping: map[string]string{
@@ -711,6 +717,7 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 			ReasoningParamStyle: "reasoning",
 			NoVisionModels:      []string{"mimo-v2.5-pro"},
 			VisionFallbackModel: "mimo-v2.5",
+			RateLimitRPM:        80,
 		},
 		ProviderCompshare: {
 			ReasoningParamStyle: "reasoning",
@@ -745,6 +752,7 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 			StripCodexClientTools: boolRef(false),
 			NoVisionModels:        []string{"mimo-v2.5-pro"},
 			VisionFallbackModel:   "mimo-v2.5",
+			RateLimitRPM:          80,
 		},
 		ProviderCompshare: {
 			ModelMapping: map[string]string{
@@ -820,6 +828,9 @@ func applyChannelTargetConfig(payload *ChannelPayload, config channelTargetConfi
 	}
 	if config.StripCodexClientTools != nil {
 		payload.StripCodexClientTools = *config.StripCodexClientTools
+	}
+	if config.RateLimitRPM > 0 {
+		payload.RateLimitRPM = config.RateLimitRPM
 	}
 }
 

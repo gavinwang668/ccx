@@ -1212,6 +1212,71 @@
               </v-card>
             </v-col>
 
+            <!-- 主动限速 -->
+            <v-col cols="12">
+              <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-2">
+                <span class="section-title">{{ t('addChannel.rateLimitSectionLabel') }}</span>
+                <span class="text-caption text-medium-emphasis">{{ t('addChannel.rateLimitSectionHint') }}</span>
+              </div>
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field
+                v-model="form.rateLimitRpm"
+                :label="t('addChannel.rateLimitRpmLabel')"
+                :placeholder="t('addChannel.rateLimitRpmPlaceholder')"
+                prepend-inner-icon="mdi-speedometer"
+                :hint="t('addChannel.rateLimitRpmHint')"
+                persistent-hint
+                clearable
+                variant="outlined"
+                density="comfortable"
+                type="number"
+                min="1"
+              />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field
+                v-model="form.rateLimitBurst"
+                :label="t('addChannel.rateLimitBurstLabel')"
+                :placeholder="t('addChannel.rateLimitBurstPlaceholder')"
+                prepend-inner-icon="mdi-lightning-bolt"
+                :hint="t('addChannel.rateLimitBurstHint')"
+                persistent-hint
+                clearable
+                variant="outlined"
+                density="comfortable"
+                type="number"
+                min="1"
+              />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field
+                v-model="form.rateLimitMaxConcurrent"
+                :label="t('addChannel.rateLimitMaxConcurrentLabel')"
+                :placeholder="t('addChannel.rateLimitMaxConcurrentPlaceholder')"
+                prepend-inner-icon="mdi-server-network"
+                :hint="t('addChannel.rateLimitMaxConcurrentHint')"
+                persistent-hint
+                clearable
+                variant="outlined"
+                density="comfortable"
+                type="number"
+                min="1"
+              />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-card variant="tonal" class="pa-4 h-100 d-flex flex-column justify-center">
+                <v-switch
+                  v-model="form.rateLimitAutoFromHeaders"
+                  :label="t('addChannel.rateLimitAutoFromHeadersLabel')"
+                  :hint="t('addChannel.rateLimitAutoFromHeadersHint')"
+                  persistent-hint
+                  color="secondary"
+                  density="comfortable"
+                />
+              </v-card>
+            </v-col>
+
             <!-- 路由前缀 -->
             <v-col cols="12">
               <v-text-field
@@ -2105,6 +2170,10 @@ const form = reactive({
   streamInactivityTimeoutMs: defaultStreamTimeouts.inactivityMs as number,
   streamToolCallIdleTimeoutEnabled: false,
   streamToolCallIdleTimeoutMs: defaultStreamTimeouts.toolCallIdleMs as number,
+  rateLimitRpm: null as string | number | null,
+  rateLimitBurst: null as string | number | null,
+  rateLimitMaxConcurrent: null as string | number | null,
+  rateLimitAutoFromHeaders: false,
   routePrefix: '',
   supportedModels: [] as string[],
   autoBlacklistBalance: true,
@@ -2447,7 +2516,11 @@ const normalizeComparablePayload = (payload: Partial<Channel>) => ({
   requestTimeoutMs: payload.requestTimeoutMs || undefined,
   streamFirstContentTimeoutMs: payload.streamFirstContentTimeoutMs || undefined,
   streamInactivityTimeoutMs: payload.streamInactivityTimeoutMs || undefined,
-  streamToolCallIdleTimeoutMs: payload.streamToolCallIdleTimeoutMs || undefined
+  streamToolCallIdleTimeoutMs: payload.streamToolCallIdleTimeoutMs || undefined,
+  rateLimitRpm: payload.rateLimitRpm || undefined,
+  rateLimitBurst: payload.rateLimitBurst || undefined,
+  rateLimitMaxConcurrent: payload.rateLimitMaxConcurrent || undefined,
+  rateLimitAutoFromHeaders: !!payload.rateLimitAutoFromHeaders,
 })
 
 const buildSubmitPayload = () => {
@@ -2472,6 +2545,15 @@ const buildSubmitPayload = () => {
   }
   if (isEditing.value && props.channel?.requestTimeoutMs && !payload.requestTimeoutMs) {
     payload.requestTimeoutMs = 0
+  }
+  if (isEditing.value && props.channel?.rateLimitRpm && !payload.rateLimitRpm) {
+    payload.rateLimitRpm = 0
+  }
+  if (isEditing.value && props.channel?.rateLimitBurst && !payload.rateLimitBurst) {
+    payload.rateLimitBurst = 0
+  }
+  if (isEditing.value && props.channel?.rateLimitMaxConcurrent && !payload.rateLimitMaxConcurrent) {
+    payload.rateLimitMaxConcurrent = 0
   }
   return payload
 }
@@ -2505,6 +2587,11 @@ const hasEditableDraftChanges = computed(() => {
     requestTimeoutMs: props.channel.requestTimeoutMs || undefined,
     streamFirstContentTimeoutMs: props.channel.streamFirstContentTimeoutMs || undefined,
     streamInactivityTimeoutMs: props.channel.streamInactivityTimeoutMs || undefined,
+    streamToolCallIdleTimeoutMs: props.channel.streamToolCallIdleTimeoutMs || undefined,
+    rateLimitRpm: props.channel.rateLimitRpm || undefined,
+    rateLimitBurst: props.channel.rateLimitBurst || undefined,
+    rateLimitMaxConcurrent: props.channel.rateLimitMaxConcurrent || undefined,
+    rateLimitAutoFromHeaders: !!props.channel.rateLimitAutoFromHeaders,
     routePrefix: props.channel.routePrefix || '',
     supportedModels: normalizeStringArray(props.channel.supportedModels || []),
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
@@ -2591,6 +2678,10 @@ const resetForm = () => {
   form.streamInactivityTimeoutMs = defaultStreamTimeouts.inactivityMs
   form.streamToolCallIdleTimeoutEnabled = false
   form.streamToolCallIdleTimeoutMs = defaultStreamTimeouts.toolCallIdleMs
+  form.rateLimitRpm = null
+  form.rateLimitBurst = null
+  form.rateLimitMaxConcurrent = null
+  form.rateLimitAutoFromHeaders = false
   form.routePrefix = ''
   form.supportedModels = []
   supportedModelsError.value = ''
@@ -2671,6 +2762,10 @@ const loadChannelData = (channel: Channel) => {
   form.streamInactivityTimeoutMs = channel.streamInactivityTimeoutMs && channel.streamInactivityTimeoutMs > 0 ? channel.streamInactivityTimeoutMs : defaultStreamTimeouts.inactivityMs
   form.streamToolCallIdleTimeoutEnabled = !!(channel.streamToolCallIdleTimeoutMs && channel.streamToolCallIdleTimeoutMs >= 30000)
   form.streamToolCallIdleTimeoutMs = channel.streamToolCallIdleTimeoutMs && channel.streamToolCallIdleTimeoutMs >= 30000 ? channel.streamToolCallIdleTimeoutMs : defaultStreamTimeouts.toolCallIdleMs
+  form.rateLimitRpm = channel.rateLimitRpm || null
+  form.rateLimitBurst = channel.rateLimitBurst || null
+  form.rateLimitMaxConcurrent = channel.rateLimitMaxConcurrent || null
+  form.rateLimitAutoFromHeaders = !!channel.rateLimitAutoFromHeaders
   form.routePrefix = channel.routePrefix || ''
   const { validPatterns, hasInvalidPatterns } = filterValidSupportedModelPatterns(channel.supportedModels || [])
   form.supportedModels = validPatterns
@@ -3071,6 +3166,7 @@ const PAYLOAD_KEYS = [
   'lowQuality', 'injectDummyThoughtSignature', 'stripThoughtSignature', 'description',
   'apiKeys', 'modelMapping', 'reasoningMapping', 'reasoningParamStyle', 'textVerbosity',
   'fastMode', 'customHeaders', 'proxyUrl', 'requestTimeoutMs', 'streamFirstContentTimeoutMs', 'streamInactivityTimeoutMs', 'streamToolCallIdleTimeoutMs', 'routePrefix', 'supportedModels',
+  'rateLimitRpm', 'rateLimitBurst', 'rateLimitMaxConcurrent', 'rateLimitAutoFromHeaders',
   'autoBlacklistBalance', 'normalizeMetadataUserId', 'passbackThinkingBlocks', 'stripEmptyTextBlocks', 'normalizeSystemRoleToTopLevel', 'codexNativeToolPassthrough',
   'codexToolCompat', 'normalizeNonstandardChatRoles', 'stripCodexClientTools', 'stripImageGenerationTool'
 ] as const

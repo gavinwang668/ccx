@@ -87,9 +87,19 @@ Web 端与后端已支持渠道级「去除 image_generation 工具」开关（R
 **关键提交：**
 - `48c17606` fix: 修复三个疑似 bug (#162 #187 #188)
 
-## [] 新特性
+## [x] 上游主动限速与动态调速 (#190)
 
-#190
+支持渠道级主动限速（每分钟请求数 RPM 令牌桶 + 最大并发信号量），在请求发往上游前主动限流，规避免费/低额度上游（如 MiMo）触发 429。可选「自动学习上游限流头」开关：解析上游 `Retry-After` / `anthropic-ratelimit-*` / `x-ratelimit-*` 响应头，命中限流时对该渠道动态冷却（cooldown），到期自动恢复；调度器选择渠道时跳过 cooldown 中的渠道。限速作用域为渠道级（同渠道多 Key 共享令牌桶）。桌面端一键添加 MiMo 渠道内置保守默认 RPM=80（官方 RPM=100 的 80%）。
+
+**关键变更：**
+- `backend-go/internal/ratelimit/`: 新增限速器包（`limiter.go` 令牌桶+并发信号量+cooldown、`manager.go` 渠道级管理、`hints.go` 限流头解析）+ 单测
+- `backend-go/internal/config/config.go`: `UpstreamConfig` / `UpstreamUpdate` 新增 `rateLimitRpm` / `rateLimitBurst` / `rateLimitMaxConcurrent` / `rateLimitAutoFromHeaders`，五类渠道 Add/Update 函数同步赋值与校验，`Clone` 深拷贝
+- `backend-go/main.go`: 初始化 `ratelimit.Manager` + 配置热重载回调，传入 scheduler
+- `backend-go/internal/handlers/common/upstream_failover.go`: 发请求前 `Acquire`、resp 后 `ApplyUpstreamHints`、并发信号量释放
+- `backend-go/internal/scheduler/channel_scheduler.go`: `SelectChannel` 跳过 cooldown 渠道
+- `frontend/`、`desktop/frontend/`: 渠道编辑表单 + 字段贯穿 + 三语 i18n
+- `desktop/internal/channelpreset/preset.go`: MiMo 预设默认 `rateLimitRpm=80`
+- `docs/guide/environment.md`: 渠道级限速字段说明
 
 ## [] 用户体验提升
 

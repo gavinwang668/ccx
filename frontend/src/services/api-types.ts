@@ -100,6 +100,11 @@ export interface Channel {
   noVision?: boolean                       // 整个渠道不支持图片输入
   noVisionModels?: string[]                // 不支持图片输入的模型列表（匹配 modelMapping 后的实际模型名）
   visionFallbackModel?: string               // 含图请求命中 noVisionModels 时使用的替代模型
+  // 主动限速（渠道级生产代理限速，区别于能力测试的 rpm）
+  rateLimitRpm?: number                      // 每分钟请求数上限（0/空=不限）
+  rateLimitBurst?: number                    // 令牌桶突发容量（0/空=自动取 RPM）
+  rateLimitMaxConcurrent?: number            // 最大并发上游请求数（0/空=不限）
+  rateLimitAutoFromHeaders?: boolean         // 自动从上游响应头解析限流信息并动态调速（默认 false）
   rpm?: number                // 能力测试发送速率（仅影响能力测试）
 }
 

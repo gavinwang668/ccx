@@ -257,6 +257,10 @@ func (u *UpstreamConfig) Clone() *UpstreamConfig {
 		v := *u.CodexToolCompat
 		cloned.CodexToolCompat = &v
 	}
+	if u.RateLimitAutoFromHeaders != nil {
+		v := *u.RateLimitAutoFromHeaders
+		cloned.RateLimitAutoFromHeaders = &v
+	}
 	if u.NoVisionModels != nil {
 		cloned.NoVisionModels = make([]string, len(u.NoVisionModels))
 		copy(cloned.NoVisionModels, u.NoVisionModels)

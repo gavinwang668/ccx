@@ -26,6 +26,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/logger"
 	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/middleware"
+	"github.com/BenedictKing/ccx/internal/ratelimit"
 	"github.com/BenedictKing/ccx/internal/scheduler"
 	"github.com/BenedictKing/ccx/internal/session"
 	"github.com/BenedictKing/ccx/internal/warmup"
@@ -365,11 +366,41 @@ func main() {
 	applyCircuitBreakerConfig(cfgManager.GetConfig())
 	cfgManager.RegisterOnConfigChange(applyCircuitBreakerConfig)
 
+	// 初始化主动限速管理器（渠道级令牌桶 + 并发控制 + 429 动态 cooldown）
+	rateLimitManager := ratelimit.NewManager()
+	applyRateLimitConfig := func(cfg config.Config) {
+		channelTypes := []struct {
+			apiType   string
+			upstreams []config.UpstreamConfig
+		}{
+			{"Messages", cfg.Upstream},
+			{"Chat", cfg.ChatUpstream},
+			{"Responses", cfg.ResponsesUpstream},
+			{"Gemini", cfg.GeminiUpstream},
+			{"Images", cfg.ImagesUpstream},
+		}
+		for _, ct := range channelTypes {
+			for idx, upstream := range ct.upstreams {
+				autoFromHeaders := upstream.RateLimitAutoFromHeaders != nil && *upstream.RateLimitAutoFromHeaders
+				rateLimitManager.GetOrCreate(ct.apiType, idx, ratelimit.Config{
+					RPM:             upstream.RateLimitRPM,
+					Burst:           upstream.RateLimitBurst,
+					MaxConcurrent:   upstream.RateLimitMaxConcurrent,
+					AutoFromHeaders: autoFromHeaders,
+				})
+			}
+		}
+	}
+	applyRateLimitConfig(cfgManager.GetConfig())
+	cfgManager.RegisterOnConfigChange(applyRateLimitConfig)
+	log.Printf("[RateLimit-Init] 主动限速管理器已初始化")
+
 	// 初始化 URL 管理器（非阻塞，动态排序）
 	urlManager := warmup.NewURLManager(30*time.Second, 3) // 30秒冷却期，连续3次失败后移到末尾
 	log.Printf("[URLManager-Init] URL管理器已初始化 (冷却期: 30秒, 最大连续失败: 3)")
 
 	channelScheduler := scheduler.NewChannelScheduler(cfgManager, messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager, traceAffinityManager, urlManager)
+	channelScheduler.SetRateLimitManager(rateLimitManager)
 	log.Printf("[Scheduler-Init] 多渠道调度器已初始化 (失败率阈值: %.0f%%, 滑动窗口: %d, 连续失败阈值: %d)",
 		messagesMetricsManager.GetFailureThreshold()*100, messagesMetricsManager.GetWindowSize(), messagesMetricsManager.GetConsecutiveRetryableFailuresThreshold())
 

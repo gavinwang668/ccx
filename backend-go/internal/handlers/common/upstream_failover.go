@@ -103,7 +103,12 @@ func TryUpstreamWithAllKeys(
 	var lastFailoverError *FailoverError
 	deprioritizeCandidates := make(map[string]bool)
 	probeAcquired := make(map[string]bool)
+	// 当前持有的限速并发信号量释放函数（兜底：函数任意路径返回时释放，避免泄漏）
+	var activeRateLimitRelease func()
 	defer func() {
+		if activeRateLimitRelease != nil {
+			activeRateLimitRelease()
+		}
 		for key := range probeAcquired {
 			parts := strings.SplitN(key, "|", 2)
 			if len(parts) == 2 {
@@ -148,6 +153,11 @@ func TryUpstreamWithAllKeys(
 		maxRetries := len(upstream.APIKeys)
 
 		for attempt := 0; attempt < maxRetries; attempt++ {
+			// 释放上一轮 attempt 的并发信号量（首次为空操作）
+			if activeRateLimitRelease != nil {
+				activeRateLimitRelease()
+				activeRateLimitRelease = nil
+			}
 			attemptBody := requestBody
 			if shouldNormalizeMetadataUserID(kind, upstream) {
 				attemptBody = NormalizeMetadataUserID(attemptBody)
@@ -193,6 +203,22 @@ func TryUpstreamWithAllKeys(
 			// 使用深拷贝避免并发修改问题
 			upstreamCopy := upstream.Clone()
 			upstreamCopy.BaseURL = currentBaseURL
+
+			// 主动限速：在构建/发送请求前获取许可（令牌桶 + 并发信号量）
+			if rateLimitMgr := channelScheduler.GetRateLimitManager(); rateLimitMgr != nil {
+				limiter := rateLimitMgr.Get(apiType, channelIndex)
+				if limiter != nil {
+					const maxRateLimitWait = 10 * time.Second
+					release, rlErr := limiter.Acquire(c.Request.Context(), maxRateLimitWait, time.Now())
+					if rlErr != nil {
+						lastError = rlErr
+						RequestLogf(c, "[%s-RateLimit] 请求被限速器拦截: %v，尝试下一个 Key/渠道", apiType, rlErr)
+						failedKeys[apiKey] = true
+						continue
+					}
+					activeRateLimitRelease = release
+				}
+			}
 
 			req, err := buildRequest(c, upstreamCopy, apiKey)
 			if err != nil {
@@ -249,6 +275,13 @@ func TryUpstreamWithAllKeys(
 				CompleteLog(channelLogStore, metricsKey, logRequestID, 0, false, err.Error(), attempt > 0 || urlIdx > 0)
 				RequestLogf(c, "[%s-Key] 警告: API密钥失败: %v", apiType, err)
 				continue
+			}
+
+			// 学习上游限流头：动态调整限速器状态（cooldown 等）
+			if rateLimitMgr := channelScheduler.GetRateLimitManager(); rateLimitMgr != nil {
+				if limiter := rateLimitMgr.Get(apiType, channelIndex); limiter != nil {
+					limiter.ApplyUpstreamHints(resp.Header, resp.StatusCode, time.Now())
+				}
 			}
 
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {

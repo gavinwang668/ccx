@@ -73,6 +73,9 @@ func (cm *ConfigManager) AddGeminiUpstream(upstream UpstreamConfig) error {
 	if upstream.RequestTimeoutMs < 0 {
 		return fmt.Errorf("请求超时时间不能为负数")
 	}
+	if upstream.RateLimitRPM < 0 || upstream.RateLimitBurst < 0 || upstream.RateLimitMaxConcurrent < 0 {
+		return fmt.Errorf("限速参数不能为负数")
+	}
 	if err := validateStreamTimeouts(upstream.StreamFirstContentTimeoutMs, upstream.StreamInactivityTimeoutMs, upstream.StreamToolCallIdleTimeoutMs); err != nil {
 		return err
 	}
@@ -281,6 +284,28 @@ func (cm *ConfigManager) UpdateGeminiUpstream(index int, updates UpstreamUpdate)
 	}
 	if updates.VisionFallbackModel != nil {
 		upstream.VisionFallbackModel = *updates.VisionFallbackModel
+	}
+	if updates.RateLimitRPM != nil {
+		if *updates.RateLimitRPM < 0 {
+			return false, fmt.Errorf("rateLimitRpm 不能为负数")
+		}
+		upstream.RateLimitRPM = *updates.RateLimitRPM
+	}
+	if updates.RateLimitBurst != nil {
+		if *updates.RateLimitBurst < 0 {
+			return false, fmt.Errorf("rateLimitBurst 不能为负数")
+		}
+		upstream.RateLimitBurst = *updates.RateLimitBurst
+	}
+	if updates.RateLimitMaxConcurrent != nil {
+		if *updates.RateLimitMaxConcurrent < 0 {
+			return false, fmt.Errorf("rateLimitMaxConcurrent 不能为负数")
+		}
+		upstream.RateLimitMaxConcurrent = *updates.RateLimitMaxConcurrent
+	}
+	if updates.RateLimitAutoFromHeaders != nil {
+		v := *updates.RateLimitAutoFromHeaders
+		upstream.RateLimitAutoFromHeaders = &v
 	}
 
 	// 检测配置是否真的发生了变化

@@ -80,6 +80,19 @@ METRICS_FAILURE_THRESHOLD=0.5          # 失败率阈值（0-1，默认 0.5 即 
 
 `streamToolCallIdleTimeoutMs` 是破坏性字段名，旧 `streamToolCallTimeoutMs` 不再使用。该字段不是工具调用总耗时上限。
 
+#### 渠道级主动限速
+
+每个上游渠道可配置主动限速字段，在请求发往上游前主动限流，规避免费/低额度上游（如 MiMo）的 RPM 限制导致的 429。这些字段位于渠道配置（`config.json` 的各 `*Upstream[]` 项）中，可通过 Web / 桌面端的渠道编辑表单设置：
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `rateLimitRpm` | `0` | 每分钟请求数上限（令牌桶填充速率 = RPM/60）。`0` 或留空表示不限速。 |
+| `rateLimitBurst` | `0` | 令牌桶突发容量，允许的瞬时突发请求数。`0` 时自动取 `rateLimitRpm` 的值。 |
+| `rateLimitMaxConcurrent` | `0` | 同时进行的上游请求数上限（信号量）。`0` 表示不限并发。 |
+| `rateLimitAutoFromHeaders` | `false` | 启用后解析上游 `Retry-After` / `anthropic-ratelimit-*` / `x-ratelimit-*` 响应头，命中限流时对该渠道动态冷却（cooldown），进一步规避 429。 |
+
+限速作用域是**渠道级**（同渠道下所有 API Key 共享同一令牌桶），符合「单账号跨 Key 共享额度」的常见上游计费模型。请求被限速拦截（cooldown / 超出 maxWait 排队上限）时会自动 failover 到其它可用渠道；调度器在选择渠道时会跳过处于 cooldown 的渠道。桌面端一键添加 MiMo 渠道时会内置保守默认 `rateLimitRpm`（官方 RPM 上限的约 80%）。
+
 #### 命令行运行时路径
 
 命令行版支持用参数覆盖运行时路径，不传参数时仍保持默认行为：

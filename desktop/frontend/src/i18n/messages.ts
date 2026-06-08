@@ -550,6 +550,16 @@ export type MessageKey =
   | 'console.form.proxyUrlHint'
   | 'console.form.routePrefixHint'
   | 'console.form.requestTimeoutMsHint'
+  | 'console.form.rateLimitSectionLabel'
+  | 'console.form.rateLimitSectionHint'
+  | 'console.form.rateLimitRpmLabel'
+  | 'console.form.rateLimitRpmHint'
+  | 'console.form.rateLimitBurstLabel'
+  | 'console.form.rateLimitBurstHint'
+  | 'console.form.rateLimitMaxConcurrentLabel'
+  | 'console.form.rateLimitMaxConcurrentHint'
+  | 'console.form.rateLimitAutoFromHeadersLabel'
+  | 'console.form.rateLimitAutoFromHeadersHint'
   | 'addChannel.duplicateKey'
   | 'addChannel.addNewApiKeyPlaceholder'
   | 'addChannel.quickMode'
@@ -1192,6 +1202,16 @@ export const messages: Record<SupportedLocale, Messages> = {
     'console.form.proxyUrlHint': 'Supports HTTP/HTTPS/SOCKS5 proxies for reaching upstream services through a proxy.',
     'console.form.routePrefixHint': 'Access this channel via /{prefix}/v1/messages; multiple channels can share the same prefix.',
     'console.form.requestTimeoutMsHint': 'Applies only to non-streaming upstream requests; leave empty to inherit the global REQUEST_TIMEOUT.',
+    'console.form.rateLimitSectionLabel': 'Rate limiting',
+    'console.form.rateLimitSectionHint': 'Proactively throttle requests before they reach the upstream to avoid 429 errors.',
+    'console.form.rateLimitRpmLabel': 'RPM',
+    'console.form.rateLimitRpmHint': 'Max requests/min upstream. 0 or empty = no limit.',
+    'console.form.rateLimitBurstLabel': 'Burst',
+    'console.form.rateLimitBurstHint': 'Token bucket burst capacity. Auto if empty.',
+    'console.form.rateLimitMaxConcurrentLabel': 'Max concurrent',
+    'console.form.rateLimitMaxConcurrentHint': 'Max in-flight upstream requests. 0 or empty = no limit.',
+    'console.form.rateLimitAutoFromHeadersLabel': 'Auto-learn rate limits',
+    'console.form.rateLimitAutoFromHeadersHint': 'Parse Retry-After / x-ratelimit-* headers for dynamic cooldown.',
     'addChannel.duplicateKey': 'Duplicate',
     'addChannel.addNewApiKeyPlaceholder': 'Enter a new API Key, press Enter to add',
     'addChannel.quickMode': 'Quick Paste',
@@ -1826,6 +1846,16 @@ export const messages: Record<SupportedLocale, Messages> = {
     'console.form.proxyUrlHint': '支持 HTTP/HTTPS/SOCKS5 代理，用于通过代理访问上游服务',
     'console.form.routePrefixHint': '通过 /{前缀}/v1/messages 访问此渠道，多个渠道可共享同一前缀',
     'console.form.requestTimeoutMsHint': '仅作用于非流式上游请求；留空表示继承全局 REQUEST_TIMEOUT。',
+    'console.form.rateLimitSectionLabel': '主动限速',
+    'console.form.rateLimitSectionHint': '在请求发往上游前主动限流，避免触发上游 429。',
+    'console.form.rateLimitRpmLabel': '每分钟请求数',
+    'console.form.rateLimitRpmHint': '渠道每分钟最多发往上游的请求数；留空或 0 表示不限。',
+    'console.form.rateLimitBurstLabel': '突发容量',
+    'console.form.rateLimitBurstHint': '令牌桶容量；留空时自动取每分钟请求数。',
+    'console.form.rateLimitMaxConcurrentLabel': '最大并发数',
+    'console.form.rateLimitMaxConcurrentHint': '同时进行的上游请求数上限；留空或 0 表示不限。',
+    'console.form.rateLimitAutoFromHeadersLabel': '自动学习限流头',
+    'console.form.rateLimitAutoFromHeadersHint': '解析上游 Retry-After / x-ratelimit-* 响应头，动态冷却。',
     'addChannel.duplicateKey': '重复',
     'addChannel.addNewApiKeyPlaceholder': '输入新 API Key，回车添加',
     'addChannel.quickMode': '快速粘贴',

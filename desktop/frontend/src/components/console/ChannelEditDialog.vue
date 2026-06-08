@@ -130,6 +130,10 @@ const form = reactive({
   streamInactivityTimeoutMs: 20000,
   streamToolCallIdleTimeoutEnabled: false,
   streamToolCallIdleTimeoutMs: 30000,
+  rateLimitRpm: '' as string | number,
+  rateLimitBurst: '' as string | number,
+  rateLimitMaxConcurrent: '' as string | number,
+  rateLimitAutoFromHeaders: false,
   routePrefix: '',
   insecureSkipVerify: false,
   apiKeysText: '',
@@ -181,6 +185,10 @@ function resetForm() {
   form.streamInactivityTimeoutMs = 20000
   form.streamToolCallIdleTimeoutEnabled = false
   form.streamToolCallIdleTimeoutMs = 30000
+  form.rateLimitRpm = ''
+  form.rateLimitBurst = ''
+  form.rateLimitMaxConcurrent = ''
+  form.rateLimitAutoFromHeaders = false
   form.routePrefix = ''
   form.insecureSkipVerify = false
   form.apiKeysText = ''
@@ -240,6 +248,10 @@ function populateFromChannel(ch: Channel) {
   form.streamInactivityTimeoutMs = ch.streamInactivityTimeoutMs && ch.streamInactivityTimeoutMs > 0 ? ch.streamInactivityTimeoutMs : 20000
   form.streamToolCallIdleTimeoutEnabled = !!(ch.streamToolCallIdleTimeoutMs && ch.streamToolCallIdleTimeoutMs > 0)
   form.streamToolCallIdleTimeoutMs = ch.streamToolCallIdleTimeoutMs && ch.streamToolCallIdleTimeoutMs > 0 ? ch.streamToolCallIdleTimeoutMs : 30000
+  form.rateLimitRpm = ch.rateLimitRpm || ''
+  form.rateLimitBurst = ch.rateLimitBurst || ''
+  form.rateLimitMaxConcurrent = ch.rateLimitMaxConcurrent || ''
+  form.rateLimitAutoFromHeaders = !!ch.rateLimitAutoFromHeaders
   form.routePrefix = ch.routePrefix || ''
   form.insecureSkipVerify = ch.insecureSkipVerify ?? false
   existingApiKeys.value = [...(ch.apiKeys || [])]
@@ -420,6 +432,15 @@ function buildSubmitPayload() {
   }
   if (isEditMode.value && props.channel?.streamToolCallIdleTimeoutMs && !form.streamToolCallIdleTimeoutEnabled) {
     payload.streamToolCallIdleTimeoutMs = 0
+  }
+  if (isEditMode.value && props.channel?.rateLimitRpm && !payload.rateLimitRpm) {
+    payload.rateLimitRpm = 0
+  }
+  if (isEditMode.value && props.channel?.rateLimitBurst && !payload.rateLimitBurst) {
+    payload.rateLimitBurst = 0
+  }
+  if (isEditMode.value && props.channel?.rateLimitMaxConcurrent && !payload.rateLimitMaxConcurrent) {
+    payload.rateLimitMaxConcurrent = 0
   }
 
   return payload
@@ -1079,6 +1100,10 @@ function buildCurrentPayload() {
     streamFirstContentTimeoutMs: form.streamFirstContentTimeoutEnabled ? form.streamFirstContentTimeoutMs : undefined,
     streamInactivityTimeoutMs: form.streamInactivityTimeoutEnabled ? form.streamInactivityTimeoutMs : undefined,
     streamToolCallIdleTimeoutMs: form.streamToolCallIdleTimeoutEnabled ? form.streamToolCallIdleTimeoutMs : undefined,
+    rateLimitRpm: form.rateLimitRpm,
+    rateLimitBurst: form.rateLimitBurst,
+    rateLimitMaxConcurrent: form.rateLimitMaxConcurrent,
+    rateLimitAutoFromHeaders: form.rateLimitAutoFromHeaders,
     routePrefix: form.routePrefix,
     supportedModels: parseLines(form.supportedModelsText),
     autoBlacklistBalance: form.autoBlacklistBalance,
@@ -1648,6 +1673,34 @@ function buildCurrentPayload() {
                           <Input v-model="form.requestTimeoutMs" type="number" class="h-7 text-xs" placeholder="60000" :class="{ 'border-destructive': errors.requestTimeoutMs }" />
                           <p v-if="errors.requestTimeoutMs" class="text-[10px] text-destructive">{{ errors.requestTimeoutMs }}</p>
                           <p v-else class="text-[10px] leading-4 text-muted-foreground">{{ tf('console.form.requestTimeoutMsHint', '仅作用于非流式上游请求；留空表示继承全局 REQUEST_TIMEOUT。') }}</p>
+                        </div>
+                        <div class="space-y-1">
+                          <p class="text-[10px] font-medium text-foreground">{{ tf('console.form.rateLimitSectionLabel', '主动限速') }}</p>
+                          <p class="text-[10px] leading-4 text-muted-foreground mb-2">{{ tf('console.form.rateLimitSectionHint', '在请求发往上游前主动限流，避免触发上游 429。') }}</p>
+                          <div class="grid grid-cols-2 gap-2">
+                            <div class="space-y-1">
+                              <Label class="text-[10px]">{{ tf('console.form.rateLimitRpmLabel', 'RPM') }}</Label>
+                              <Input v-model="form.rateLimitRpm" type="number" class="h-7 text-xs" placeholder="留空=不限" />
+                              <p class="text-[10px] leading-4 text-muted-foreground">{{ tf('console.form.rateLimitRpmHint', '每分钟请求数上限') }}</p>
+                            </div>
+                            <div class="space-y-1">
+                              <Label class="text-[10px]">{{ tf('console.form.rateLimitBurstLabel', '突发容量') }}</Label>
+                              <Input v-model="form.rateLimitBurst" type="number" class="h-7 text-xs" placeholder="留空=自动" />
+                              <p class="text-[10px] leading-4 text-muted-foreground">{{ tf('console.form.rateLimitBurstHint', '令牌桶容量') }}</p>
+                            </div>
+                            <div class="space-y-1">
+                              <Label class="text-[10px]">{{ tf('console.form.rateLimitMaxConcurrentLabel', '最大并发') }}</Label>
+                              <Input v-model="form.rateLimitMaxConcurrent" type="number" class="h-7 text-xs" placeholder="留空=不限" />
+                              <p class="text-[10px] leading-4 text-muted-foreground">{{ tf('console.form.rateLimitMaxConcurrentHint', '并发上限') }}</p>
+                            </div>
+                            <div class="flex items-center gap-2 pt-4">
+                              <Switch v-model="form.rateLimitAutoFromHeaders" />
+                              <div class="space-y-0.5">
+                                <Label class="text-[10px]">{{ tf('console.form.rateLimitAutoFromHeadersLabel', '自动学习') }}</Label>
+                                <p class="text-[10px] leading-4 text-muted-foreground">{{ tf('console.form.rateLimitAutoFromHeadersHint', '解析上游限流头') }}</p>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

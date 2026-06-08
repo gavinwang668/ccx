@@ -75,6 +75,12 @@ type UpstreamConfig struct {
 	SupportedModels []string `json:"supportedModels,omitempty"` // 支持的模型白名单（空=全部）；支持精确匹配，以及 prefix* / *suffix / *contains* 形式的包含与排除规则（排除用 ! 前缀）
 	// 路由前缀
 	RoutePrefix string `json:"routePrefix,omitempty"` // 路由前缀（如 "kimi"），客户端可通过 /:routePrefix/v1/messages 访问
+	// 主动限速配置（渠道级，默认 0=不限）
+	RateLimitRPM             int   `json:"rateLimitRpm,omitempty"`             // 每分钟请求数上限（0=不限）
+	RateLimitBurst           int   `json:"rateLimitBurst,omitempty"`           // 令牌桶突发容量（0=自动取 RPM 值）
+	RateLimitMaxConcurrent   int   `json:"rateLimitMaxConcurrent,omitempty"`   // 最大并发上游请求数（0=不限）
+	RateLimitAutoFromHeaders *bool `json:"rateLimitAutoFromHeaders,omitempty"` // 自动从上游响应头解析限流信息并动态调速（默认 false）
+
 	// Vision 能力配置
 	NoVision            bool     `json:"noVision,omitempty"`            // 整个渠道不支持图片输入
 	NoVisionModels      []string `json:"noVisionModels,omitempty"`      // 不支持图片输入的模型列表（匹配 modelMapping 后的实际模型名）
@@ -188,6 +194,12 @@ type UpstreamUpdate struct {
 	SupportedModels []string `json:"supportedModels"` // 支持的模型白名单（空=全部）；支持精确匹配，以及 prefix* / *suffix / *contains* 形式的包含与排除规则（排除用 ! 前缀）
 	// 路由前缀
 	RoutePrefix *string `json:"routePrefix"` // 路由前缀（如 "kimi"）
+	// 主动限速配置（渠道级，默认 0=不限）
+	RateLimitRPM             *int  `json:"rateLimitRpm"`
+	RateLimitBurst           *int  `json:"rateLimitBurst"`
+	RateLimitMaxConcurrent   *int  `json:"rateLimitMaxConcurrent"`
+	RateLimitAutoFromHeaders *bool `json:"rateLimitAutoFromHeaders"`
+
 	// Vision 能力配置
 	NoVision            *bool    `json:"noVision"`
 	NoVisionModels      []string `json:"noVisionModels"`
