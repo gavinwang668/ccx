@@ -28,7 +28,7 @@ const codexTroubleshootingLoading = ref(false)
 let refreshPromise: Promise<void> | null = null
 
 export function useResponsesDiagnostics() {
-  const { agentStatuses } = useAgentConfig()
+  const { agentStatuses, codexMode } = useAgentConfig()
   const { status } = useStatus()
   const { t } = useLanguage()
   const api = useAdminApi()
@@ -139,8 +139,28 @@ export function useResponsesDiagnostics() {
     return codexTroubleshootingRequested.value && !!codexStatus.value
   })
 
+  // 磁盘上实际的模式：plugin 或 quick（新式 openai_base_url 的 status.mode 为空串，视为 quick）
+  const currentCodexMode = computed<'quick' | 'plugin'>(() =>
+    codexStatus.value?.mode === 'plugin' ? 'plugin' : 'quick',
+  )
+
+  // 模式不一致：磁盘配置和 UI 选择的模式不匹配
+  const codexModeMismatch = computed(() => {
+    const status = codexStatus.value
+    if (!status) return false
+    // 仅当 provider 是 CCX 或支持模式切换的第三方时检查
+    const provider = status.provider
+    const hasMode = provider === 'ccx' || provider === 'dashscope' || provider === 'runapi'
+      || provider === 'opencode-zen' || provider === 'opencode-go'
+    if (!hasMode) return false
+    return currentCodexMode.value !== codexMode.value
+  })
+
+  const modeLabel = (mode: 'quick' | 'plugin') => mode === 'plugin' ? t('agent.codexPluginMode') : t('agent.codexQuickMode')
+
   const codexDiagnosticSeverity = computed<'ok' | 'warn'>(() => {
     const current = codexStatus.value
+    if (codexModeMismatch.value) return 'warn'
     if (!current || current.configConsistent !== false) return 'ok'
     return 'warn'
   })
@@ -148,6 +168,13 @@ export function useResponsesDiagnostics() {
   const codexDiagnosticSummary = computed(() => {
     const current = codexStatus.value
     if (!current) return ''
+    // 模式不一致优先于文件自洽性检查
+    if (codexModeMismatch.value) {
+      return t('agent.codexDiagnosticCodeModeMismatch', {
+        currentMode: modeLabel(currentCodexMode.value),
+        targetMode: modeLabel(codexMode.value),
+      })
+    }
     if (current.configConsistent === false) {
       const key = current.diagnosticCode ? diagnosticMessageKeyMap[current.diagnosticCode] : undefined
       if (key) {
@@ -160,6 +187,10 @@ export function useResponsesDiagnostics() {
 
   const codexDiagnosticSuggestions = computed(() => {
     const current = codexStatus.value
+    // mode mismatch 时给出应用建议
+    if (codexModeMismatch.value) {
+      return [t('agent.codexDiagnosticSuggestedApply')]
+    }
     if (!current || current.configConsistent !== false) return [] as string[]
 
     const suggestions = [t('agent.codexDiagnosticSuggestedApply')]

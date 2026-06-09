@@ -329,6 +329,7 @@ export type MessageKey =
   | 'agent.codexDiagnosticCodeLegacyIncomplete'
   | 'agent.codexDiagnosticCodeConfigPolluted'
   | 'agent.codexDiagnosticCodeAuthUnreadable'
+  | 'agent.codexDiagnosticCodeModeMismatch'
   | 'agent.responsesDiagnosticTitle'
   | 'agent.responsesDiagnosticHealthy'
   | 'agent.responsesDiagnosticNoChannel'
@@ -1030,6 +1031,7 @@ export const messages: Record<SupportedLocale, Messages> = {
     'agent.codexDiagnosticCodeLegacyIncomplete': 'Legacy ccx provider config is incomplete.',
     'agent.codexDiagnosticCodeConfigPolluted': 'config.toml may have been polluted by another tool and no longer matches CCX expectations.',
     'agent.codexDiagnosticCodeAuthUnreadable': 'auth.json cannot be parsed and may be corrupted.',
+    'agent.codexDiagnosticCodeModeMismatch': 'Current Codex config is {currentMode} mode, but you selected {targetMode} mode. Please re-apply the config.',
     'agent.responsesDiagnosticTitle': 'Responses channel diagnostic',
     'agent.responsesDiagnosticHealthy': 'Responses channels look available.',
     'agent.responsesDiagnosticNoChannel': 'No Responses channel is configured in CCX.',
@@ -1728,6 +1730,7 @@ export const messages: Record<SupportedLocale, Messages> = {
     'agent.codexDiagnosticCodeLegacyIncomplete': '旧式 ccx provider 配置不完整。',
     'agent.codexDiagnosticCodeConfigPolluted': 'config.toml 可能被其他工具污染，已不符合 CCX 预期。',
     'agent.codexDiagnosticCodeAuthUnreadable': 'auth.json 无法解析，可能已经损坏。',
+    'agent.codexDiagnosticCodeModeMismatch': '当前 Codex 配置是{currentMode}模式，但你选择了{targetMode}模式。请重新应用配置。',
     'agent.responsesDiagnosticTitle': 'Responses 渠道诊断',
     'agent.responsesDiagnosticHealthy': 'Responses 渠道当前看起来可用。',
     'agent.responsesDiagnosticNoChannel': 'CCX 当前没有配置任何 Responses 渠道。',

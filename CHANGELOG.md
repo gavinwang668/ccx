@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### 修复
+
+- **桌面端 Codex 排障忽略 UI 选择的目标模式** - 排障诊断只检查 config.toml / auth.json 文件自洽性，未考虑用户在 UI 上选择的 Codex 模式（快捷/插件），导致选了快捷模式但磁盘仍是插件模式时误报"配置一致"。修复后前端排障会比较 `status.mode`（磁盘实际模式）与 `codexMode`（UI 目标模式），不一致时优先报模式冲突并提示重新应用。涉及 `desktop/frontend/src/composables/useResponsesDiagnostics.ts`、`desktop/frontend/src/i18n/messages.ts`
+
 ### 新增
 
 - **桌面端 Codex/Responses 分层排障诊断** - 在桌面 Agent 页 Codex 卡片新增分层排障，按顺序检查“Codex 配置一致性 → Responses 渠道可用性 → 最近失败请求”，帮助定位 #156 类“本地网关可达但请求失败”的问题。后端扩展 `AgentConfigStatus`（新增 `authMode`/`configConsistent`/`diagnosticCode`/`diagnosticMessage`），在 `getCodexStatus` 中识别 CCS 等工具导致的 `config.toml` 与 `auth.json` 不一致（缺 key、auth_mode 不匹配、插件模式缺 bearer token、旧式配置残缺、配置污染等）；前端新增 `useResponsesDiagnostics` composable，聚合 Codex 配置层、Responses 渠道层（无渠道/全禁用/无 key/熔断/协议错配）与最近失败日志层（401/403、429、5xx、超时）的诊断结论，并在状态页提供最高优先级问题摘要。第一版仅给出诊断与手动修复建议，不做自动修复。涉及 `desktop/internal/configservice/service.go`、`desktop/frontend/src/composables/useResponsesDiagnostics.ts`、`desktop/frontend/src/components/agent/*`、`desktop/frontend/src/components/status/StatusTab.vue`、`desktop/frontend/src/i18n/messages.ts`、`desktop/frontend/src/types/index.ts`
