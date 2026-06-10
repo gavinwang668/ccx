@@ -1340,6 +1340,17 @@ func extractResponsesTextFromEvent(event string, buf *bytes.Buffer) {
 			if delta, ok := data["delta"].(string); ok {
 				buf.WriteString(delta)
 			}
+		default:
+			// 未知事件类型兜底：上游新增 response.*.delta / response.*.done 事件时，
+			// 尝试提取通用 delta/text 字段，避免文本提取不到被 preflight 误判为空流
+			if strings.HasPrefix(eventType, "response.") &&
+				(strings.HasSuffix(eventType, ".delta") || strings.HasSuffix(eventType, ".done")) {
+				if delta, ok := data["delta"].(string); ok {
+					buf.WriteString(delta)
+				} else if text, ok := data["text"].(string); ok {
+					buf.WriteString(text)
+				}
+			}
 		}
 	}
 }

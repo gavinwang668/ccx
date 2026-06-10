@@ -1007,7 +1007,8 @@ func responseItemCarriesSemanticContent(item map[string]interface{}) bool {
 	case "function_call", "reasoning", "tool_search_call", "tool_search_output":
 		return true
 	}
-	return strings.HasSuffix(itemType, "_call")
+	// 形态规则：覆盖上游新增的 xxx_call / xxx_output 工具类 item 类型
+	return strings.HasSuffix(itemType, "_call") || strings.HasSuffix(itemType, "_output")
 }
 
 // HasResponsesSemanticContent 判断 Responses 风格 SSE 是否包含有效语义内容
@@ -1043,6 +1044,19 @@ func HasResponsesSemanticContent(event string) bool {
 						}
 					}
 				}
+			}
+		default:
+			// 未知事件类型兜底：上游新增事件按形态识别语义内容，
+			// 避免 preflight 把携带工具调用/输出的新事件误判为空流
+			eventType, _ := data["type"].(string)
+			if !strings.HasPrefix(eventType, "response.") {
+				continue
+			}
+			if item, ok := data["item"].(map[string]interface{}); ok && responseItemCarriesSemanticContent(item) {
+				return true
+			}
+			if callID, _ := data["call_id"].(string); callID != "" {
+				return true
 			}
 		}
 	}

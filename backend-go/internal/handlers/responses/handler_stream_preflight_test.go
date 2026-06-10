@@ -1,6 +1,7 @@
 package responses
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/BenedictKing/ccx/internal/handlers/common"
@@ -41,6 +42,73 @@ func TestHasResponsesSemanticContent(t *testing.T) {
 			t.Fatal("did not expect empty completed event to be treated as non-text content")
 		}
 	})
+
+	t.Run("unknown event type with semantic item", func(t *testing.T) {
+		event := "event: response.web_search_item.added\ndata: {\"type\":\"response.web_search_item.added\",\"item\":{\"type\":\"web_search_call\",\"id\":\"ws_1\",\"status\":\"in_progress\"}}\n\n"
+		if !common.HasResponsesSemanticContent(event) {
+			t.Fatal("expected unknown event carrying _call item to be treated as semantic content")
+		}
+	})
+
+	t.Run("unknown event type with call_id", func(t *testing.T) {
+		event := "event: response.custom_tool.invoked\ndata: {\"type\":\"response.custom_tool.invoked\",\"call_id\":\"call_9\"}\n\n"
+		if !common.HasResponsesSemanticContent(event) {
+			t.Fatal("expected unknown event carrying call_id to be treated as semantic content")
+		}
+	})
+
+	t.Run("unknown event type without content", func(t *testing.T) {
+		event := "event: response.heartbeat\ndata: {\"type\":\"response.heartbeat\"}\n\n"
+		if common.HasResponsesSemanticContent(event) {
+			t.Fatal("did not expect content-free unknown event to be treated as semantic content")
+		}
+	})
+
+	t.Run("output item done with _output suffix", func(t *testing.T) {
+		event := "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"web_search_output\",\"id\":\"wso_1\"}}\n\n"
+		if !common.HasResponsesSemanticContent(event) {
+			t.Fatal("expected _output suffixed item to be treated as semantic content")
+		}
+	})
+}
+
+func TestExtractResponsesTextFromEventUnknownTypes(t *testing.T) {
+	cases := []struct {
+		name  string
+		event string
+		want  string
+	}{
+		{
+			name:  "unknown delta type with delta field",
+			event: "event: response.web_search_text.delta\ndata: {\"type\":\"response.web_search_text.delta\",\"delta\":\"search result\"}\n\n",
+			want:  "search result",
+		},
+		{
+			name:  "unknown done type with text field",
+			event: "event: response.custom_summary.done\ndata: {\"type\":\"response.custom_summary.done\",\"text\":\"summary text\"}\n\n",
+			want:  "summary text",
+		},
+		{
+			name:  "unknown non delta/done type ignored",
+			event: "event: response.heartbeat\ndata: {\"type\":\"response.heartbeat\",\"text\":\"should not extract\"}\n\n",
+			want:  "",
+		},
+		{
+			name:  "non response prefix ignored",
+			event: "event: custom.delta\ndata: {\"type\":\"custom.delta\",\"delta\":\"should not extract\"}\n\n",
+			want:  "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			extractResponsesTextFromEvent(tc.event, &buf)
+			if got := buf.String(); got != tc.want {
+				t.Fatalf("extractResponsesTextFromEvent() buf = %q, want %q", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestIsResponsesEmptyContent(t *testing.T) {

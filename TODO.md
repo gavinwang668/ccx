@@ -123,19 +123,32 @@ Web 端与后端已支持渠道级「去除 image_generation 工具」开关（R
 
 > **上游版本变更**
 
-## [ ] Claude Code v2.1.169 上游协议/工具变更评估
+## [x] Claude Code v2.1.169 上游协议/工具变更评估
 
 发现协议/工具/用法变更：stream。请评估对 ccx Messages 渠道的影响。
 
-## [ ] Codex rust-v0.138.0 上游协议/工具变更评估
+**评估结论：** 无需改动。Messages 主链路按完整 SSE 事件透传，已有 preflight 空流/断流/首字超时检测覆盖 stream 协议变化场景。
+
+## [x] Codex rust-v0.138.0 上游协议/工具变更评估
 
 发现协议/工具/用法变更：code mode, code-mode, compact, effort, environment, goal extension, image generation, multi-agent, permission, plugin, Plugin, reasoning, Reasoning, remote control, remote-control, sandbox, Sandbox, session, skill。请评估对 ccx Responses 渠道的影响。
 
-## [ ] Claude Code v2.1.170 上游协议/工具变更评估
+**评估结论：** 变更项均为 Codex CLI 客户端侧能力（code mode/sandbox/plugin/multi-agent/environment 等），不构成 Responses API 协议破坏。compact、image_generation 剥离、reasoning 转换、permission 拉黑、session 管理均已有覆盖。针对唯一低风险点（上游新增 SSE 事件类型可能被 preflight 误判空流）补充兜底加固：未知 `response.*.delta/.done` 事件提取通用 delta/text 字段；未知事件按 `_call`/`_output` item 形态与 `call_id` 识别语义内容；无内容的未知事件仍保留空流保护。
+
+**关键变更：**
+- `backend-go/internal/handlers/responses/handler.go`: `extractResponsesTextFromEvent` 新增未知 delta/done 事件类型的通用字段提取兜底
+- `backend-go/internal/handlers/common/stream.go`: `HasResponsesSemanticContent` 新增未知事件形态识别；`responseItemCarriesSemanticContent` 形态规则扩展 `_output` 后缀
+- `backend-go/internal/handlers/responses/handler_stream_preflight_test.go`: 新增未知事件类型放行/拦截单测
+
+## [x] Claude Code v2.1.170 上游协议/工具变更评估
 
 有新版本 v2.1.170 可用（本地: 2.1.168）。非紧急，可在方便时升级。主要内容：新增 Claude Fable 5 模型支持；修复 VS Code 集成终端启动时会话未保存问题。
 
-## [ ] Codex rust-v0.139.0 上游协议/工具变更评估
+**评估结论：** 无需改动。Fable 5 已纳入 Messages 能力探测模型，并复用 Opus 4.8/Fable 5 的 system role 顶层归一化兼容路径；VS Code 会话保存属客户端侧修复，与代理无关。
+
+## [x] Codex rust-v0.139.0 上游协议/工具变更评估
 
 发现协议/工具/用法变更：code mode, Code mode, compact, environment, multi-agent, permission, plugin, Plugin, remote-control, sandbox, Sandbox, session, skill, web search。请评估对 ccx Responses 渠道的影响。主要变更：Code mode 支持独立 web search 调用；工具与连接器输入 schema 保留 oneOf/allOf 并优化大 schema compact 结构；codex doctor 新增编辑器与 pager 环境信息；Plugin marketplace 列表增强。
+
+**评估结论：** 无需协议层改动。web_search 已作为 CodexCustomToolBuiltIn 处理（转换或剥离）；oneOf/allOf schema 经工具透传路径原样保留，不会被 CCX 破坏；其余为客户端侧能力。新增 web search 相关流式事件由 v0.138.0 条目中的未知事件兜底加固覆盖。
 
