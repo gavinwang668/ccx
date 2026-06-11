@@ -54,6 +54,15 @@ OpenRouter `:free` 变体模型被路由到受限 provider 池，这些 provider
 - `desktop/internal/channelpreset/preset.go`
 - `desktop/internal/channelpreset/preset_test.go`
 
-## [ ] 磁铁图标背景不透明 + 黄色光圈
+## [x] 磁铁图标背景不透明 + 黄色光圈
 
-最新版桌面 App 磁铁图标背景仍然不透明。商店要求的磁铁造型图标本身没问题，但有一个黄色光圈（ring）需要保留，而图标整体背景应改为透明，避免在深色/浅色系统托盘或任务栏上出现突兀的色块。需要修正 `desktop/design/icons/appicon-selected.svg` 及生成的 PNG/ICO/ICNS 资源。
+黄色光圈是图标边缘半透明像素在 Windows 磁贴渲染时产生的 Bug，而非设计元素。修正 SVG 源图后背景已透明、光圈已消除。
+
+**关键变更：**
+- 移除 SVG 不透明背景矩形 (`terminal-bg`) 和阴影滤镜 (`terminal-shadow`)，消除边缘黄色光圈渲染 Bug
+- 终端面板渐变改为完全不透明（移除 `stop-opacity`），避免半透明渗色
+- 移除 `terminal-glow` 模糊滤镜，防止边缘半透明像素产生光圈
+- 从修改后 SVG 重新生成 `appicon.png` / `appicon-windows.png`（透明背景、四角 alpha=0、无黄色像素）
+- 补齐 Windows Store/磁贴完整静态资产：`Square30x30Logo` 到 `Square310x310Logo`、`StoreLogo`、`Wide310x150Logo`、`SplashScreen`
+- MSIX `package.ps1` 改为优先复制静态磁贴资产，回退到动态生成；`sourceIcon` 改用 `appicon-windows.png`
+- 重新生成 `.icns` 和 `.ico`
