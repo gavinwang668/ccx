@@ -218,7 +218,7 @@ type UpstreamUpdate struct {
 	RoutePrefix *string `json:"routePrefix"` // 路由前缀（如 "kimi"）
 	// 主动限速配置（渠道级，默认 0=不限）
 	RateLimitRPM             *int  `json:"rateLimitRpm"`
-	RateLimitWindowMinutes   *int  `json:"rateLimitWindowSeconds"`
+	RateLimitWindowMinutes   *int  `json:"rateLimitWindowMinutes"`
 	RateLimitBurst           *int  `json:"rateLimitBurst"`
 	RateLimitMaxConcurrent   *int  `json:"rateLimitMaxConcurrent"`
 	RateLimitAutoFromHeaders *bool `json:"rateLimitAutoFromHeaders"`
