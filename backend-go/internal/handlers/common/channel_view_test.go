@@ -53,7 +53,7 @@ func TestBuildChannelView_TuningBenchFields(t *testing.T) {
 }
 
 func TestBuildChannelView_RateLimitDefaults(t *testing.T) {
-	// 当 RateLimitAutoFromHeaders 为 nil（未设置），应返回 false
+	// 当 RateLimitAutoFromHeaders 为 nil（未设置），默认值为 true（自动学习上游限速）
 	up := config.UpstreamConfig{
 		Name:        "test-channel",
 		ServiceType: "openai",
@@ -61,8 +61,8 @@ func TestBuildChannelView_RateLimitDefaults(t *testing.T) {
 
 	view := BuildChannelView(up, 0)
 
-	if v, ok := view["rateLimitAutoFromHeaders"]; !ok || v != false {
-		t.Errorf("expected rateLimitAutoFromHeaders=false when nil, got %v", v)
+	if v, ok := view["rateLimitAutoFromHeaders"]; !ok || v != true {
+		t.Errorf("expected rateLimitAutoFromHeaders=true when nil (default enabled), got %v", v)
 	}
 	if v, ok := view["rateLimitRpm"]; !ok || v != 0 {
 		t.Errorf("expected rateLimitRpm=0 when unset, got %v", v)
