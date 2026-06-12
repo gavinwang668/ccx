@@ -1015,10 +1015,10 @@ async function fetchTargetModels() {
   }
 }
 
-// target 框首次聚焦时自动拉取真实模型（仅编辑模式、配置齐全、未拉取过）
+// target 框首次聚焦时自动拉取真实模型（配置齐全时自动触发，新增/编辑均可）
 function handleTargetFocus() {
   if (hasTriedFetchModels.value || fetchingModels.value) return
-  if (!props.channel || !form.baseUrl.trim() || getSubmitApiKeys().length === 0) return
+  if (!form.baseUrl.trim() || getSubmitApiKeys().length === 0) return
   hasTriedFetchModels.value = true
   void fetchTargetModels()
 }
