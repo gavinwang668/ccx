@@ -106,12 +106,12 @@ const fuzzyLoadError = ref(false)
 const showCbDialog = ref(false)
 
 // 用量统计
-const statsData = ref<GlobalStatsHistoryResponse | null>(null)
+const globalStatsChartRef = ref<InstanceType<typeof GlobalStatsChart> | null>(null)
 const statsLoading = ref(false)
-const statsDuration = ref('6h')
 
-async function loadGlobalStats() {
+async function loadGlobalStats(duration?: string) {
   statsLoading.value = true
+  globalStatsChartRef.value?.setLoading(true)
   try {
     const adminApi = useAdminApi()
     const typeMap: Record<ManagedChannelType, string> = {
@@ -122,11 +122,14 @@ async function loadGlobalStats() {
       images: 'images'
     }
     const apiPath = typeMap[props.type]
-    statsData.value = await adminApi.get<GlobalStatsHistoryResponse>(`/api/${apiPath}/global/stats/history?duration=${statsDuration.value}`)
+    const dur = duration || '6h'
+    const data = await adminApi.get<GlobalStatsHistoryResponse>(`/api/${apiPath}/global/stats/history?duration=${dur}`)
+    globalStatsChartRef.value?.updateData(data.dataPoints, data.summary, data.modelDataPoints)
   } catch {
-    statsData.value = null
+    // Silently fail
   } finally {
     statsLoading.value = false
+    globalStatsChartRef.value?.setLoading(false)
   }
 }
 
@@ -455,17 +458,13 @@ watch(() => props.type, () => {
       </div>
 
       <!-- 用量统计图表 -->
-      <div v-if="statsData && !statsLoading" class="mt-3 border border-border bg-background/60">
+      <div class="mt-3 border border-border bg-background/60">
         <GlobalStatsChart
-          :data="statsData.dataPoints"
-          :summary="statsData.summary"
-          :model-data-points="statsData.modelDataPoints"
-          :duration="statsDuration"
+          ref="globalStatsChartRef"
+          :api-type="props.type"
           compact
+          @refresh="loadGlobalStats"
         />
-      </div>
-      <div v-else-if="statsLoading" class="mt-3 border border-border bg-background/60 p-4 flex items-center justify-center">
-        <Loader2 class="h-4 w-4 animate-spin text-muted-foreground" />
       </div>
     </div>
 

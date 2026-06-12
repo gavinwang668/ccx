@@ -1,13 +1,67 @@
 <template>
   <div class="global-stats-chart">
+    <!-- Header: Duration selector + View switcher -->
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div class="flex items-center gap-2">
+        <!-- Duration selector -->
+        <div class="inline-flex rounded-md border border-border divide-x divide-border">
+          <button
+            v-for="opt in durationOptions"
+            :key="opt.value"
+            type="button"
+            class="px-2 py-1 text-[11px] font-semibold transition-colors hover:bg-accent/40 disabled:opacity-50"
+            :class="{ 'bg-accent text-accent-foreground': selectedDuration === opt.value }"
+            :disabled="isLoading"
+            @click="selectedDuration = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          class="p-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          :disabled="isLoading"
+          @click="refreshData"
+        >
+          <svg v-if="!isLoading" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- View switcher -->
+      <div class="inline-flex rounded-md border border-border divide-x divide-border">
+        <button
+          v-for="view in viewOptions"
+          :key="view.value"
+          type="button"
+          class="px-2 py-1 text-[11px] font-semibold transition-colors hover:bg-accent/40 disabled:opacity-50 flex items-center gap-1"
+          :class="{ 'bg-accent text-accent-foreground': selectedView === view.value }"
+          :disabled="isLoading"
+          @click="selectedView = view.value"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path v-if="view.value === 'traffic'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+            <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          {{ view.label }}
+        </button>
+      </div>
+    </div>
+
     <!-- Summary cards -->
-    <div v-if="summary" class="flex flex-wrap gap-2 mb-3">
+    <div v-if="summary && !compact" class="flex flex-wrap gap-2 mb-3">
       <div class="flex-1 min-w-[80px] p-2 rounded-lg text-center bg-secondary/30 dark:bg-secondary/20">
-        <div class="text-xs text-muted-foreground font-medium mb-1">{{ t('chart.totalRequests') }}</div>
+        <div class="text-xs text-muted-foreground font-medium mb-1">总请求数</div>
         <div class="text-sm font-semibold">{{ formatNumber(summary.totalRequests) }}</div>
       </div>
       <div class="flex-1 min-w-[80px] p-2 rounded-lg text-center bg-secondary/30 dark:bg-secondary/20">
-        <div class="text-xs text-muted-foreground font-medium mb-1">{{ t('chart.successRate') }}</div>
+        <div class="text-xs text-muted-foreground font-medium mb-1">成功率</div>
         <div
           class="text-sm font-semibold"
           :class="{
@@ -20,32 +74,60 @@
         </div>
       </div>
       <div class="flex-1 min-w-[80px] p-2 rounded-lg text-center bg-secondary/30 dark:bg-secondary/20">
-        <div class="text-xs text-muted-foreground font-medium mb-1">{{ t('chart.inputTokens') }}</div>
+        <div class="text-xs text-muted-foreground font-medium mb-1">输入 Token</div>
         <div class="text-sm font-semibold">{{ formatNumber(summary.totalInputTokens) }}</div>
       </div>
       <div class="flex-1 min-w-[80px] p-2 rounded-lg text-center bg-secondary/30 dark:bg-secondary/20">
-        <div class="text-xs text-muted-foreground font-medium mb-1">{{ t('chart.outputTokens') }}</div>
+        <div class="text-xs text-muted-foreground font-medium mb-1">输出 Token</div>
         <div class="text-sm font-semibold">{{ formatNumber(summary.totalOutputTokens) }}</div>
       </div>
       <div
         v-if="summary.totalCacheReadTokens > 0 || summary.totalCacheCreationTokens > 0"
         class="flex-1 min-w-[80px] p-2 rounded-lg text-center bg-secondary/30 dark:bg-secondary/20"
       >
-        <div class="text-xs text-muted-foreground font-medium mb-1">{{ t('chart.cacheRw') }}</div>
+        <div class="text-xs text-muted-foreground font-medium mb-1">Cache R/W</div>
         <div class="text-sm font-semibold">
           {{ formatNumber(summary.totalCacheReadTokens) }} / {{ formatNumber(summary.totalCacheCreationTokens) }}
         </div>
       </div>
     </div>
 
+    <!-- Compact summary (single line) -->
+    <div v-if="summary && compact" class="flex items-center gap-3 mb-2 text-xs">
+      <span><strong>{{ formatNumber(summary.totalRequests) }}</strong> 请求</span>
+      <span
+        :class="{
+          'text-accent': summary.avgSuccessRate >= 95,
+          'text-warning': summary.avgSuccessRate >= 80 && summary.avgSuccessRate < 95,
+          'text-destructive': summary.avgSuccessRate < 80,
+        }"
+      >
+        <strong>{{ summary.avgSuccessRate.toFixed(1) }}%</strong> 成功率
+      </span>
+      <span><strong>{{ formatNumber(summary.totalInputTokens) }}</strong> 输入</span>
+      <span><strong>{{ formatNumber(summary.totalOutputTokens) }}</strong> 输出</span>
+      <span v-if="summary.totalCacheReadTokens > 0 || summary.totalCacheCreationTokens > 0">
+        <strong>{{ formatNumber(summary.totalCacheReadTokens) }}/{{ formatNumber(summary.totalCacheCreationTokens) }}</strong> Cache R/W
+      </span>
+    </div>
+
+    <!-- Loading state -->
+    <div
+      v-if="isLoading"
+      class="flex items-center justify-center"
+      :style="{ height: chartHeight + 'px' }"
+    >
+      <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+
     <!-- Empty state -->
     <div
-      v-if="!hasData"
+      v-else-if="!hasData"
       class="flex flex-col items-center justify-center text-muted-foreground"
       :style="{ height: chartHeight + 'px' }"
     >
       <div class="text-2xl mb-2 opacity-40">&#x1F4C8;</div>
-      <div class="text-xs">{{ t('chart.noData') }}</div>
+      <div class="text-xs">暂无请求数据</div>
     </div>
 
     <!-- Chart -->
@@ -62,29 +144,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import VueApexCharts from 'vue3-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import { useTheme } from '@/composables/useTheme'
-import { useI18n } from '@/i18n'
 import type { GlobalHistoryDataPoint, GlobalStatsSummary, ModelHistoryDataPoint } from '@/services/admin-api'
 
-const { t } = useI18n()
 const props = withDefaults(
   defineProps<{
-    data: GlobalHistoryDataPoint[]
-    duration?: string
-    summary?: GlobalStatsSummary | null
-    modelDataPoints?: Record<string, ModelHistoryDataPoint[]>
+    apiType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
     compact?: boolean
   }>(),
   {
-    duration: '6h',
-    summary: null,
-    modelDataPoints: undefined,
     compact: false,
   },
 )
+
+const emit = defineEmits<{
+  refresh: [duration: string]
+}>()
+
+type ViewMode = 'traffic' | 'tokens'
+type Duration = '1h' | '6h' | '24h' | 'today' | '7d' | '30d'
+
+// LocalStorage keys for preferences (per apiType)
+const getStorageKey = (apiType: string, key: string) => `globalStats:${apiType}:${key}`
+
+// Load saved preferences from localStorage (per apiType)
+const loadSavedPreferences = (apiType: string) => {
+  const savedView = localStorage.getItem(getStorageKey(apiType, 'viewMode')) as ViewMode | null
+  const savedDuration = localStorage.getItem(getStorageKey(apiType, 'duration')) as Duration | null
+  return {
+    view: savedView && ['traffic', 'tokens'].includes(savedView) ? savedView : 'traffic',
+    duration: savedDuration && ['1h', '6h', '24h', 'today', '7d', '30d'].includes(savedDuration) ? savedDuration : '6h'
+  }
+}
+
+// Save preference to localStorage
+const savePreference = (apiType: string, key: string, value: string) => {
+  localStorage.setItem(getStorageKey(apiType, key), value)
+}
 
 const { theme } = useTheme()
 const chartRef = ref<InstanceType<typeof VueApexCharts> | null>(null)
@@ -95,57 +194,139 @@ const isDark = computed(() => {
   return false
 })
 
+// Load saved preferences for current apiType
+const savedPrefs = loadSavedPreferences(props.apiType)
+
+// State (initialized from saved preferences)
+const selectedView = ref<ViewMode>(savedPrefs.view)
+const selectedDuration = ref<Duration>(savedPrefs.duration)
+const isLoading = ref(false)
+const historyData = ref<{ dataPoints: GlobalHistoryDataPoint[], summary: GlobalStatsSummary | null, modelDataPoints?: Record<string, ModelHistoryDataPoint[]> } | null>(null)
+
 const chartHeight = computed(() => (props.compact ? 180 : 260))
 
-// Colors - using the desktop theme palette
-const COLORS = {
-  primary: '#3b82f6',
-  input: '#8b5cf6',
-  output: '#f97316',
-  cacheRead: '#10b981',
-  cacheWrite: '#06b6d4',
-}
-
-const MODEL_COLORS = [
-  '#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ef4444',
-  '#06b6d4', '#ec4899', '#84cc16', '#f59e0b', '#6366f1',
+const durationOptions = [
+  { label: '1h', value: '1h' as Duration },
+  { label: '6h', value: '6h' as Duration },
+  { label: '24h', value: '24h' as Duration },
+  { label: '今日', value: 'today' as Duration },
+  { label: '7d', value: '7d' as Duration },
+  { label: '30d', value: '30d' as Duration },
 ]
 
+const viewOptions = [
+  { label: '流量', value: 'traffic' as ViewMode },
+  { label: 'Token', value: 'tokens' as ViewMode },
+]
+
+// Expose data for parent to update
+const updateData = (data: GlobalHistoryDataPoint[], summary: GlobalStatsSummary | null, modelDataPoints?: Record<string, ModelHistoryDataPoint[]>) => {
+  historyData.value = { dataPoints: data, summary, modelDataPoints }
+}
+
+const refreshData = () => {
+  emit('refresh', selectedDuration.value)
+}
+
+const setLoading = (loading: boolean) => {
+  isLoading.value = loading
+}
+
+// Watchers
+watch(selectedDuration, (newVal) => {
+  savePreference(props.apiType, 'duration', newVal)
+  refreshData()
+})
+
+watch(selectedView, (newVal) => {
+  savePreference(props.apiType, 'viewMode', newVal)
+})
+
+watch(() => props.apiType, (newApiType) => {
+  // Load preferences for the new apiType
+  const prefs = loadSavedPreferences(newApiType)
+  selectedView.value = prefs.view
+  selectedDuration.value = prefs.duration
+  refreshData()
+})
+
+defineExpose({
+  updateData,
+  setLoading,
+  refreshData,
+})
+
+// Chart colors
+const chartColors = {
+  traffic: {
+    primary: '#3b82f6',    // Blue for requests
+  },
+  tokens: {
+    input: '#8b5cf6',      // Purple for input
+    output: '#f97316',     // Orange for output
+    cacheRead: '#10b981',  // Green for cache read
+    cacheWrite: '#06b6d4'  // Cyan for cache write
+  }
+}
+
+// Model color palette
+const modelColors = [
+  '#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ef4444',
+  '#06b6d4', '#ec4899', '#84cc16', '#f59e0b', '#6366f1'
+]
+
+const summary = computed<GlobalStatsSummary | null>(() => historyData.value?.summary || null)
+
 const hasData = computed(() => {
-  if (!props.data?.length) return false
-  return props.data.some(dp => dp.requestCount > 0)
+  if (!historyData.value?.dataPoints) return false
+  return historyData.value.dataPoints.length > 0 &&
+    historyData.value.dataPoints.some(dp => dp.requestCount > 0)
 })
 
 const hasCacheData = computed(() => {
-  if (!props.data?.length) return false
-  return props.data.some(dp => (dp.cacheReadTokens || 0) > 0 || (dp.cacheCreationTokens || 0) > 0)
+  if (!historyData.value?.dataPoints) return false
+  return historyData.value.dataPoints.some(dp => (dp.cacheReadTokens || 0) > 0 || (dp.cacheCreationTokens || 0) > 0)
 })
 
 const sortedModels = computed(() => {
-  if (!props.modelDataPoints) return []
-  return Object.entries(props.modelDataPoints)
-    .map(([name, points]) => ({
-      name,
-      points,
-      total: points.reduce((s: number, p: ModelHistoryDataPoint) => s + p.requestCount, 0),
-    }))
+  const models = historyData.value?.modelDataPoints
+  if (!models) return []
+  return Object.entries(models)
+    .map(([name, points]) => ({ name, points, total: points.reduce((s: number, p: ModelHistoryDataPoint) => s + p.requestCount, 0) }))
     .sort((a, b) => b.total - a.total)
 })
 
 const hasMultiModel = computed(() => sortedModels.value.length > 0)
 
-// Failure rate background bands
-const FAILURE_RATE_THRESHOLD = 0.1
+// Failure rate threshold: show red background when exceeded
+const FAILURE_RATE_THRESHOLD = 0.1 // 10%
 
-const AGGREGATION_INTERVALS: Record<string, number> = {
-  '1h': 60000,
-  '6h': 300000,
-  '24h': 900000,
-  'today': 300000,
-  '7d': 3600000,
-  '30d': 14400000,
+// Aggregation interval settings (kept consistent with the backend)
+const AGGREGATION_INTERVALS: Record<Duration, number> = {
+  '1h': 60000,      // 1 minute
+  '6h': 300000,     // 5 minutes
+  '24h': 900000,    // 15 minutes
+  'today': 300000,  // 5 minutes
+  '7d': 3600000,    // 1 hour
+  '30d': 14400000   // 4 hours
 }
 
+const getAggregationInterval = (duration: Duration): number => {
+  return AGGREGATION_INTERVALS[duration] || 60000
+}
+
+// Calculate the failure rate for each time point
+const timePointFailureRates = computed(() => {
+  if (!historyData.value?.dataPoints?.length) return []
+  return historyData.value.dataPoints
+    .filter(dp => dp.requestCount > 0)
+    .map(dp => ({
+      timestamp: new Date(dp.timestamp).getTime(),
+      failureRate: dp.requestCount > 0 ? dp.failureCount / dp.requestCount : 0
+    }))
+})
+
+// Calculate opacity based on failure rate
 const getFailureOpacity = (failureRate: number): number => {
   const minOpacity = 0.08
   const maxOpacity = 0.65
@@ -153,45 +334,60 @@ const getFailureOpacity = (failureRate: number): number => {
   return minOpacity + normalizedRate * (maxOpacity - minOpacity)
 }
 
+// Generate failure-rate background band annotations
 const failureAnnotations = computed(() => {
-  if (!props.data?.length) return []
-  const interval = AGGREGATION_INTERVALS[props.duration] || 60000
+  if (selectedView.value !== 'traffic') return []
+  const rates = timePointFailureRates.value
+  if (rates.length === 0) return []
 
-  return props.data
-    .filter(dp => dp.requestCount > 0 && dp.failureCount / dp.requestCount >= FAILURE_RATE_THRESHOLD)
-    .map((dp, index, arr) => {
-      const ts = new Date(dp.timestamp).getTime()
+  const interval = getAggregationInterval(selectedDuration.value)
+  const annotations: any[] = []
+
+  rates.forEach((point, index) => {
+    if (point.failureRate >= FAILURE_RATE_THRESHOLD) {
       let pointInterval = interval
-      if (arr.length > 1) {
+      if (rates.length > 1) {
         if (index > 0) {
-          pointInterval = ts - new Date(arr[index - 1].timestamp).getTime()
-        } else if (index < arr.length - 1) {
-          pointInterval = new Date(arr[index + 1].timestamp).getTime() - ts
+          pointInterval = point.timestamp - rates[index - 1].timestamp
+        } else if (index < rates.length - 1) {
+          pointInterval = rates[index + 1].timestamp - point.timestamp
         }
       }
       pointInterval = Math.min(pointInterval, interval * 2)
-      const failureRate = dp.failureCount / dp.requestCount
 
-      return {
-        x: ts - pointInterval / 2,
-        x2: ts + pointInterval / 2,
+      annotations.push({
+        x: point.timestamp - pointInterval / 2,
+        x2: point.timestamp + pointInterval / 2,
         fillColor: '#ef4444',
-        opacity: getFailureOpacity(failureRate),
-        label: { text: '' },
-      }
-    })
+        opacity: getFailureOpacity(point.failureRate),
+        label: { text: '' }
+      })
+    }
+  })
+
+  return annotations
 })
 
+// Format number for display
+function formatNumber(num: number): string {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
+  return num.toFixed(0)
+}
+
+// Chart options
 const chartOptions = computed<ApexOptions>(() => {
-  const isMultiModel = hasMultiModel.value
-  const trafficColors = isMultiModel
-    ? sortedModels.value.map((_, i) => MODEL_COLORS[i % MODEL_COLORS.length])
-    : [COLORS.primary]
+  const mode = selectedView.value
+  const isTrafficMultiModel = mode === 'traffic' && hasMultiModel.value
+
+  // Traffic mode colors: assign by model in multi-model mode, otherwise use a single color
+  const trafficColors = isTrafficMultiModel
+    ? sortedModels.value.map((_, i) => modelColors[i % modelColors.length])
+    : [chartColors.traffic.primary]
 
   const textColor = isDark.value ? '#94a3b8' : '#64748b'
   const gridBorder = isDark.value ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
-
-  const xLabelFormat = props.duration === '7d' || props.duration === '30d' ? 'MM-dd HH:mm' : 'HH:mm'
+  const xLabelFormat = selectedDuration.value === '7d' || selectedDuration.value === '30d' ? 'MM-dd HH:mm' : 'HH:mm'
 
   return {
     chart: {
@@ -199,84 +395,242 @@ const chartOptions = computed<ApexOptions>(() => {
       zoom: { enabled: false },
       background: 'transparent',
       fontFamily: 'inherit',
-      defaultLocale: 'en',
-      stacked: isMultiModel,
-      animations: { enabled: true, speed: 400 },
+      stacked: isTrafficMultiModel,
+      animations: {
+        enabled: true,
+        speed: 400,
+        animateGradually: { enabled: true, delay: 150 },
+        dynamicAnimation: { enabled: true, speed: 350 }
+      }
     },
-    theme: { mode: isDark.value ? 'dark' : 'light' },
-    colors: hasCacheData.value
-      ? [COLORS.input, COLORS.output, COLORS.cacheRead, COLORS.cacheWrite]
-      : trafficColors,
+    theme: {
+      mode: isDark.value ? 'dark' : 'light'
+    },
+    colors: mode === 'traffic'
+      ? trafficColors
+      : hasCacheData.value
+        ? [chartColors.tokens.input, chartColors.tokens.output, chartColors.tokens.cacheRead, chartColors.tokens.cacheWrite]
+        : [chartColors.tokens.input, chartColors.tokens.output],
     fill: {
-      type: 'gradient',
-      gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.08, stops: [0, 90, 100] },
+      type: 'gradient' as const,
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.4,
+        opacityTo: 0.08,
+        stops: [0, 90, 100]
+      }
     },
-    dataLabels: { enabled: false },
-    stroke: { curve: 'smooth', width: 2 },
-    grid: { borderColor: gridBorder, padding: { left: 10, right: 10 } },
+    dataLabels: {
+      enabled: false
+    },
+    stroke: {
+      curve: 'smooth' as const,
+      width: 2,
+      dashArray: mode === 'tokens' ? (hasCacheData.value ? [0, 5, 0, 5] : [0, 5]) : 0
+    },
+    grid: {
+      borderColor: gridBorder,
+      padding: { left: 10, right: 10 }
+    },
     xaxis: {
       type: 'datetime',
       labels: {
         datetimeUTC: false,
         format: xLabelFormat,
-        style: { fontSize: '11px', colors: textColor },
+        style: { fontSize: '11px', colors: textColor }
       },
       axisBorder: { show: false },
-      axisTicks: { show: false },
+      axisTicks: { show: false }
     },
-    yaxis: {
+    yaxis: mode === 'tokens' ? (() => {
+      const axes: any[] = [
+        {
+          seriesName: '输入 Token',
+          labels: {
+            formatter: (val: number) => formatNumber(val),
+            style: { fontSize: '11px', colors: textColor }
+          },
+          min: 0
+        },
+        {
+          seriesName: '输出 Token',
+          opposite: true,
+          labels: {
+            formatter: (val: number) => formatNumber(val),
+            style: { fontSize: '11px', colors: textColor }
+          },
+          min: 0
+        }
+      ]
+      if (hasCacheData.value) {
+        axes.push(
+          { seriesName: 'Cache Read', show: false, min: 0 },
+          { seriesName: 'Cache Write', show: false, min: 0 }
+        )
+      }
+      return axes
+    })() : {
       labels: {
         formatter: (val: number) => Math.round(val).toString(),
-        style: { fontSize: '11px', colors: textColor },
+        style: { fontSize: '11px', colors: textColor }
       },
-      min: 0,
+      min: 0
     },
     tooltip: {
-      x: { format: 'MM-dd HH:mm' },
-      y: { formatter: (val: number) => `${Math.round(val)} 次` },
+      x: {
+        format: 'MM-dd HH:mm'
+      },
+      y: {
+        formatter: (val: number) => mode === 'traffic'
+          ? `${Math.round(val)} 次`
+          : formatNumber(val)
+      },
+      custom: mode === 'traffic' ? buildTrafficTooltip : undefined
     },
-    annotations: { xaxis: failureAnnotations.value },
+    annotations: {
+      xaxis: failureAnnotations.value
+    },
     legend: {
-      show: isMultiModel,
-      position: 'top',
-      horizontalAlign: 'right',
+      show: mode === 'tokens' || isTrafficMultiModel,
+      position: 'top' as const,
+      horizontalAlign: 'right' as const,
       fontSize: '11px',
       markers: { size: 4 },
-      labels: { colors: textColor },
-    },
+      labels: { colors: textColor }
+    }
   }
 })
 
-const chartSeries = computed(() => {
-  if (!props.data?.length) return []
+// Build a custom tooltip for traffic mode
+const buildTrafficTooltip = ({ dataPointIndex }: any): string => {
+  if (!historyData.value?.dataPoints) return ''
+  const dp = historyData.value.dataPoints[dataPointIndex]
+  if (!dp) return ''
+
+  const date = new Date(dp.timestamp)
+  const timeStr = date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const hasFailure = dp.failureCount > 0
+
+  // HTML escaping helper
+  const escapeHtml = (str: string): string => {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  let html = `<div style="padding: 8px 12px; font-size: 13px; line-height: 1.6;">`
+  html += `<div style="font-weight: 600; margin-bottom: 6px; color: ${hasFailure ? '#ef4444' : 'inherit'};">${timeStr}</div>`
 
   const models = sortedModels.value
   if (models.length > 0) {
-    return models.map(model => ({
-      name: model.name,
-      data: model.points.map((p: ModelHistoryDataPoint) => ({
-        x: new Date(p.timestamp).getTime(),
-        y: p.requestCount,
-      })),
-    }))
+    // Multi-model mode: show request and failure counts for each model
+    models.forEach((model, idx) => {
+      const mdp = model.points[dataPointIndex]
+      if (!mdp || mdp.requestCount === 0) return
+      const color = modelColors[idx % modelColors.length]
+      const hasModelFailure = mdp.failureCount > 0
+      const failRate = mdp.requestCount > 0 ? (mdp.failureCount / mdp.requestCount * 100).toFixed(0) : '0'
+      html += `<div style="display: flex; align-items: center; margin: 4px 0;">`
+      html += `<span style="width: 10px; height: 10px; border-radius: 50%; background: ${color}; margin-right: 6px;"></span>`
+      html += `<span style="flex: 1;">${escapeHtml(model.name)}</span>`
+      html += `<span style="margin-left: 12px; font-weight: 500;">${mdp.requestCount}</span>`
+      if (hasModelFailure) {
+        html += `<span style="margin-left: 6px; color: #ef4444; font-size: 12px;">(${mdp.failureCount} 失败, ${failRate}%)</span>`
+      }
+      html += `</div>`
+    })
+    // Totals row
+    const grandFailureRate = dp.requestCount > 0 ? (dp.failureCount / dp.requestCount * 100).toFixed(1) : '0'
+    html += `<div style="border-top: 1px solid rgba(128,128,128,0.3); margin-top: 6px; padding-top: 6px; font-weight: 600;">`
+    html += `<span>总计: ${dp.requestCount} 次</span>`
+    if (hasFailure) {
+      html += `<span style="color: #ef4444; margin-left: 8px;">${dp.failureCount} 失败 (${grandFailureRate}%)</span>`
+    }
+    html += `</div>`
+  } else {
+    // Single-series fallback mode
+    const failureRate = dp.requestCount > 0 ? (dp.failureCount / dp.requestCount * 100).toFixed(1) : '0'
+    html += `<div style="display: flex; align-items: center; margin: 4px 0;">`
+    html += `<span style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; margin-right: 6px;"></span>`
+    html += `<span style="flex: 1;">总请求数</span>`
+    html += `<span style="margin-left: 12px; font-weight: 500;">${dp.requestCount}</span>`
+    html += `</div>`
+    if (hasFailure) {
+      html += `<div style="color: #ef4444; font-size: 12px; margin-top: 4px;">${dp.failureCount} 失败 (${failureRate}%)</div>`
+    }
   }
 
-  return [
-    {
-      name: '请求数',
-      data: props.data.map(dp => ({
-        x: new Date(dp.timestamp).getTime(),
-        y: dp.requestCount,
-      })),
-    },
-  ]
-})
-
-function formatNumber(num: number): string {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
-  return num.toFixed(0)
+  html += `</div>`
+  return html
 }
 
-defineExpose({ chartRef })
+// Build chart series
+const chartSeries = computed(() => {
+  if (!historyData.value?.dataPoints) return []
+
+  const dataPoints = historyData.value.dataPoints
+  const mode = selectedView.value
+
+  if (mode === 'traffic') {
+    // Generate multiple series by model when model data exists; otherwise fall back to a single series
+    const models = sortedModels.value
+    if (models.length > 0) {
+      return models.map(model => ({
+        name: model.name,
+        data: model.points.map((p: ModelHistoryDataPoint) => ({
+          x: new Date(p.timestamp).getTime(),
+          y: p.requestCount
+        }))
+      }))
+    }
+    return [
+      {
+        name: '请求数',
+        data: dataPoints.map(dp => ({
+          x: new Date(dp.timestamp).getTime(),
+          y: dp.requestCount
+        }))
+      }
+    ]
+  } else {
+    const series = [
+      {
+        name: '输入 Token',
+        data: dataPoints.map(dp => ({
+          x: new Date(dp.timestamp).getTime(),
+          y: dp.inputTokens
+        }))
+      },
+      {
+        name: '输出 Token',
+        data: dataPoints.map(dp => ({
+          x: new Date(dp.timestamp).getTime(),
+          y: dp.outputTokens
+        }))
+      }
+    ]
+    const hasCacheData = dataPoints.some(dp => (dp.cacheReadTokens || 0) > 0 || (dp.cacheCreationTokens || 0) > 0)
+    if (hasCacheData) {
+      series.push(
+        {
+          name: 'Cache Read',
+          data: dataPoints.map(dp => ({
+            x: new Date(dp.timestamp).getTime(),
+            y: dp.cacheReadTokens || 0
+          }))
+        },
+        {
+          name: 'Cache Write',
+          data: dataPoints.map(dp => ({
+            x: new Date(dp.timestamp).getTime(),
+            y: dp.cacheCreationTokens || 0
+          }))
+        }
+      )
+    }
+    return series
+  }
+})
+
+onMounted(() => {
+  refreshData()
+})
 </script>
