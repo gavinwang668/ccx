@@ -328,121 +328,92 @@
                   </div>
 
                   <!-- 现有映射列表 -->
-                  <div v-if="Object.keys(form.modelMapping).length" class="mb-4">
+                  <div v-if="modelMappingRows.length" class="mb-4">
                     <v-list density="compact" class="bg-transparent">
-                      <template v-for="[source, target] in Object.entries(form.modelMapping)" :key="source">
                       <v-list-item
-                        class="mb-2"
+                        v-for="(row, index) in modelMappingRows"
+                        :key="row.id"
+                        class="mb-2 pa-2"
                         rounded="lg"
                         variant="tonal"
                         color="surface-variant"
                       >
-                        <template #prepend>
+                        <div class="d-flex align-center ga-2 flex-wrap">
+                          <!-- 源模型输入 -->
+                          <v-combobox
+                            v-model="row.source"
+                            :items="sourceModelOptions"
+                            density="compact"
+                            variant="outlined"
+                            hide-details
+                            placeholder="source-model"
+                            class="text-caption"
+                            style="max-width: 200px; font-family: monospace;"
+                          />
+
                           <v-icon size="small" color="primary">mdi-arrow-right</v-icon>
-                        </template>
 
-                      <v-list-item-title>
-                          <div class="d-flex align-center ga-2 flex-wrap">
-                            <code class="text-caption">{{ source }}</code>
-                            <v-icon size="small" color="primary">mdi-arrow-right</v-icon>
-                            <code class="text-caption">{{ target }}</code>
-                            <v-chip
-                              v-if="supportsOpenAIAdvancedOptions && form.reasoningMapping[source]"
-                              size="x-small"
-                              color="secondary"
-                              variant="tonal"
-                            >
-                              reasoning: {{ form.reasoningMapping[source] }}
-                            </v-chip>
-                          </div>
-                        </v-list-item-title>
+                          <!-- 目标模型输入 -->
+                          <v-combobox
+                            v-model="row.target"
+                            :items="targetModelOptions"
+                            density="compact"
+                            variant="outlined"
+                            hide-details
+                            placeholder="target-model"
+                            class="text-caption"
+                            style="max-width: 200px; font-family: monospace;"
+                          />
 
-                        <template #append>
-                          <div class="d-flex align-center ga-1">
-                            <v-tooltip :text="isModelNoVision(target) ? t('addChannel.visionDisabled') : t('addChannel.visionEnabled')" location="top" :open-delay="150" content-class="key-tooltip">
-                              <template #activator="{ props: tip }">
-                                <v-btn
-                                  v-bind="tip"
-                                  size="small"
-                                  :color="isModelNoVision(target) ? 'warning' : undefined"
-                                  icon
-                                  variant="text"
-                                  @click="toggleModelVision(target)"
-                                >
-                                  <v-icon size="small">{{ isModelNoVision(target) ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
-                                </v-btn>
-                              </template>
-                            </v-tooltip>
-                            <v-tooltip text="编辑映射" location="top" :open-delay="150" content-class="key-tooltip">
-                              <template #activator="{ props: tip }">
-                                <v-btn
-                                  v-bind="tip"
-                                  size="small"
-                                  icon
-                                  variant="text"
-                                  @click="startEditMapping(source)"
-                                >
-                                  <v-icon size="small">mdi-pencil</v-icon>
-                                </v-btn>
-                              </template>
-                            </v-tooltip>
-                            <v-btn size="small" color="error" icon variant="text" @click="removeModelMapping(source)">
-                              <v-icon size="small" color="error">mdi-close</v-icon>
-                            </v-btn>
-                          </div>
-                        </template>
-                      </v-list-item>
+                          <!-- Reasoning 级别选择 -->
+                          <v-select
+                            v-if="supportsOpenAIAdvancedOptions"
+                            v-model="row.reasoning"
+                            :items="[
+                              { title: '无', value: '' },
+                              { title: 'None', value: 'none' },
+                              { title: 'Low', value: 'low' },
+                              { title: 'Medium', value: 'medium' },
+                              { title: 'High', value: 'high' },
+                              { title: 'XHigh', value: 'xhigh' },
+                              { title: 'Max', value: 'max' }
+                            ]"
+                            density="compact"
+                            variant="outlined"
+                            hide-details
+                            placeholder="reasoning"
+                            class="text-caption"
+                            style="max-width: 120px;"
+                          />
 
-                      <!-- 编辑面板 -->
-                      <v-expand-transition>
-                        <div v-if="editingMapping === source" class="mb-2 pa-3" style="background: rgba(var(--v-theme-surface-variant), 0.5); border-radius: 12px;">
-                          <div class="d-flex flex-column ga-3">
-                            <v-combobox
-                              v-model="editMappingForm.targetModel"
-                              :items="targetModelOptions"
-                              label="目标模型"
-                              density="compact"
-                              variant="outlined"
-                              hide-details
-                            />
-                            <v-select
-                              v-if="supportsOpenAIAdvancedOptions"
-                              v-model="editMappingForm.reasoning"
-                              :items="[
-                                { title: '无', value: '' },
-                                { title: 'Off', value: 'off' },
-                                { title: 'Low', value: 'low' },
-                                { title: 'Medium', value: 'medium' },
-                                { title: 'High', value: 'high' },
-                                { title: 'X-High', value: 'xhigh' }
-                              ]"
-                              label="Reasoning 级别"
-                              density="compact"
-                              variant="outlined"
-                              hide-details
-                            />
-                            <div class="d-flex ga-2 justify-end">
+                          <!-- Vision 切换按钮 -->
+                          <v-tooltip :text="row.noVision ? t('addChannel.visionDisabled') : t('addChannel.visionEnabled')" location="top" :open-delay="150" content-class="key-tooltip">
+                            <template #activator="{ props: tip }">
                               <v-btn
+                                v-bind="tip"
                                 size="small"
+                                :color="row.noVision ? 'warning' : undefined"
+                                icon
                                 variant="text"
-                                @click="cancelEditMapping"
+                                @click="toggleRowVision(row)"
                               >
-                                取消
+                                <v-icon size="small">{{ row.noVision ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
                               </v-btn>
-                              <v-btn
-                                size="small"
-                                color="primary"
-                                variant="flat"
-                                :disabled="!editMappingForm.targetModel"
-                                @click="saveEditMapping"
-                              >
-                                保存
-                              </v-btn>
-                            </div>
-                          </div>
+                            </template>
+                          </v-tooltip>
+
+                          <!-- 删除按钮 -->
+                          <v-btn
+                            size="small"
+                            color="error"
+                            icon
+                            variant="text"
+                            @click="removeModelMappingRow(index)"
+                          >
+                            <v-icon size="small" color="error">mdi-close</v-icon>
+                          </v-btn>
                         </div>
-                      </v-expand-transition>
-                      </template>
+                      </v-list-item>
                     </v-list>
                   </div>
 
@@ -2333,8 +2304,20 @@ const newMapping = reactive({
   reasoningEffort: '' as 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | ''
 })
 
-// 模型映射编辑状态
-const editingMapping = ref<string | null>(null) // 当前正在编辑的 source pattern
+// 模型映射行数据结构（改用数组存储，支持直接编辑）
+interface ModelMappingRow {
+  id: number
+  source: string
+  target: string
+  reasoning: '' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  noVision: boolean
+}
+
+let rowIdCounter = 0
+const modelMappingRows = ref<ModelMappingRow[]>([])
+
+// 模型映射编辑状态（已废弃，保留以防需要恢复）
+const editingMapping = ref<string | null>(null)
 const editMappingForm = reactive({
   targetModel: '',
   reasoning: '' as '' | 'off' | 'low' | 'medium' | 'high' | 'xhigh'
@@ -2779,6 +2762,10 @@ const resetForm = () => {
   form.apiKeys = []
   form.modelMapping = {}
   form.reasoningMapping = {}
+
+  // 清空模型映射行
+  modelMappingRows.value = []
+
   form.reasoningParamStyle = 'reasoning'
   form.textVerbosity = ''
   form.fastMode = false
@@ -2865,6 +2852,10 @@ const loadChannelData = (channel: Channel) => {
 
   form.modelMapping = { ...(channel.modelMapping || {}) }
   form.reasoningMapping = { ...(channel.reasoningMapping || {}) }
+
+  // 加载模型映射行
+  loadModelMappingRows(channel)
+
   form.reasoningParamStyle = channel.reasoningParamStyle || 'reasoning'
   form.textVerbosity = channel.textVerbosity || ''
   form.fastMode = !!channel.fastMode
@@ -3066,112 +3057,87 @@ const addModelMapping = () => {
   }
   sourceMappingError.value = ''
 
-  if (source && target && !form.modelMapping[source]) {
-    form.modelMapping[source] = target
-    if (supportsOpenAIAdvancedOptions.value && newMapping.reasoningEffort) {
-      form.reasoningMapping[source] = newMapping.reasoningEffort
-    } else {
-      delete form.reasoningMapping[source]
+  if (source && target) {
+    // 检查是否已存在
+    const exists = modelMappingRows.value.some(row => row.source === source)
+    if (exists) {
+      sourceMappingError.value = '该源模型已存在映射'
+      return
     }
+
+    modelMappingRows.value.push({
+      id: ++rowIdCounter,
+      source,
+      target,
+      reasoning: newMapping.reasoningEffort || '',
+      noVision: false
+    })
+
     newMapping.source = ''
     newMapping.target = ''
     newMapping.reasoningEffort = ''
   }
 }
 
-const removeModelMapping = (source: string) => {
-  const target = form.modelMapping[source]
-  delete form.modelMapping[source]
-  delete form.reasoningMapping[source]
-  if (target) {
-    const idx = form.noVisionModels.indexOf(target)
-    if (idx >= 0) form.noVisionModels.splice(idx, 1)
-  }
+const removeModelMappingRow = (index: number) => {
+  modelMappingRows.value.splice(index, 1)
 }
 
-// 开始编辑模型映射
+const toggleRowVision = (row: ModelMappingRow) => {
+  row.noVision = !row.noVision
+}
+
+// 将 modelMappingRows 转换为 form.modelMapping 对象（保存时使用）
+const syncModelMappingToForm = () => {
+  form.modelMapping = {}
+  form.reasoningMapping = {}
+  form.noVisionModels = []
+
+  modelMappingRows.value.forEach(row => {
+    if (row.source && row.target) {
+      form.modelMapping[row.source] = row.target
+      if (row.reasoning) {
+        form.reasoningMapping[row.source] = row.reasoning
+      }
+      if (row.noVision) {
+        form.noVisionModels.push(row.target)
+      }
+    }
+  })
+}
+
+// 从渠道数据初始化 modelMappingRows
+const loadModelMappingRows = (channel: Channel) => {
+  const mapping = channel.modelMapping || {}
+  const reasoning = channel.reasoningMapping || {}
+  const noVisionSet = new Set(channel.noVisionModels || [])
+
+  modelMappingRows.value = Object.entries(mapping).map(([source, target]) => ({
+    id: ++rowIdCounter,
+    source,
+    target,
+    reasoning: (reasoning[source] || '') as ModelMappingRow['reasoning'],
+    noVision: noVisionSet.has(target)
+  }))
+}
+
+// 开始编辑模型映射（已废弃）
 const startEditMapping = (source: string) => {
   editingMapping.value = source
   editMappingForm.targetModel = form.modelMapping[source] || ''
   editMappingForm.reasoning = (form.reasoningMapping[source] || '') as '' | 'off' | 'low' | 'medium' | 'high' | 'xhigh'
 }
 
-// 取消编辑模型映射
+// 取消编辑模型映射（已废弃）
 const cancelEditMapping = () => {
   editingMapping.value = null
   editMappingForm.targetModel = ''
   editMappingForm.reasoning = ''
 }
 
-// 保存编辑的模型映射（调用后端 API）
-const saveEditMapping = async () => {
-  if (!editingMapping.value || !editMappingForm.targetModel) return
-
-  try {
-    const channelId = props.channel?.index
-    if (channelId === undefined) {
-      // 如果是新建渠道，直接更新本地状态
-      form.modelMapping[editingMapping.value] = editMappingForm.targetModel
-      if (editMappingForm.reasoning) {
-        form.reasoningMapping[editingMapping.value] = editMappingForm.reasoning
-      } else {
-        delete form.reasoningMapping[editingMapping.value]
-      }
-      cancelEditMapping()
-      return
-    }
-
-    // 编辑模式：调用后端 API
-    const apiService = new ApiService()
-    const updateMethod = {
-      messages: apiService.updateChannelModelMapping.bind(apiService),
-      responses: apiService.updateResponsesChannelModelMapping.bind(apiService),
-      chat: apiService.updateChatChannelModelMapping.bind(apiService),
-      gemini: apiService.updateGeminiChannelModelMapping.bind(apiService),
-      images: apiService.updateImagesChannelModelMapping.bind(apiService)
-    }[props.channelType]
-
-    if (!updateMethod) {
-      throw new Error('Unsupported channel type')
-    }
-
-    await updateMethod(
-      channelId,
-      editingMapping.value,
-      editMappingForm.targetModel,
-      editMappingForm.reasoning
-    )
-
-    // 更新本地状态
-    form.modelMapping[editingMapping.value] = editMappingForm.targetModel
-    if (editMappingForm.reasoning) {
-      form.reasoningMapping[editingMapping.value] = editMappingForm.reasoning
-    } else {
-      delete form.reasoningMapping[editingMapping.value]
-    }
-
-    cancelEditMapping()
-
-    // 触发刷新
-    emit('refresh')
-  } catch (error) {
-    console.error('Failed to update model mapping:', error)
-    alert(error instanceof Error ? error.message : 'Failed to update model mapping')
-  }
-}
-
-const isModelNoVision = (model: string): boolean => {
-  return form.noVisionModels.includes(model)
-}
-
-const toggleModelVision = (model: string) => {
-  const idx = form.noVisionModels.indexOf(model)
-  if (idx >= 0) {
-    form.noVisionModels.splice(idx, 1)
-  } else {
-    form.noVisionModels.push(model)
-  }
-}
+// 保存编辑的模型映射（已废弃，保留以防需要恢复）
+// saveEditMapping - 已废弃，改用直接编辑模式
+// const saveEditMapping = async () => { ... }
 
 const isSupportedModelSelected = (filter: string): boolean => {
   return selectedSupportedModelSet.value.has(filter)
@@ -3338,6 +3304,9 @@ const handleSubmit = async () => {
 
   const { valid } = await formRef.value.validate()
   if (!valid) return
+
+  // 将模型映射行同步到 form 对象
+  syncModelMappingToForm()
 
   const channelData = buildSubmitPayload()
 
