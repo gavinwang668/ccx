@@ -204,6 +204,7 @@ export const enMessages: Record<MessageKey, string> = {
     'addChannel.oneClickSetup': 'One-click setup',
     'addChannel.modelHint': 'Configure source model to target model mapping here.',
     'addChannel.modelHintTip': 'Click a target model field to load supported upstream models. Detection status for each API key appears in the key list.',
+    'addChannel.addNewMapping': 'Add New Mapping',
     'addChannel.sourceModelLabel': 'Source model',
     'addChannel.sourceModelPlaceholder': 'Select or enter a source model',
     'addChannel.targetModelLabel': 'Target model',

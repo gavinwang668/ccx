@@ -204,6 +204,7 @@ export const idMessages: Record<MessageKey, string> = {
     'addChannel.oneClickSetup': 'Setup sekali klik',
     'addChannel.modelHint': 'Atur pemetaan model sumber ke model target di sini.',
     'addChannel.modelHintTip': 'Klik field model target untuk memuat model upstream yang didukung. Status deteksi tiap API key akan tampil di daftar key.',
+    'addChannel.addNewMapping': 'Tambah Pemetaan Baru',
     'addChannel.sourceModelLabel': 'Model sumber',
     'addChannel.sourceModelPlaceholder': 'Pilih atau masukkan model sumber',
     'addChannel.targetModelLabel': 'Model target',

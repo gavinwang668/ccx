@@ -329,38 +329,39 @@
 
                   <!-- 现有映射列表 -->
                   <div v-if="modelMappingRows.length" class="mb-4">
-                    <div class="text-caption text-medium-emphasis mb-2 d-flex align-center justify-space-between">
-                      <span>{{ t('addChannel.configuredMappings') }}</span>
-                      <v-chip size="x-small" variant="tonal" color="primary">{{ modelMappingRows.length }}</v-chip>
+                    <div class="text-caption text-medium-emphasis mb-3 d-flex align-center justify-space-between">
+                      <span style="font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;">{{ t('addChannel.configuredMappings') }}</span>
+                      <v-chip size="x-small" variant="flat" color="primary" style="font-weight: 600; font-family: monospace;">{{ modelMappingRows.length }}</v-chip>
                     </div>
                     <v-list density="compact" class="bg-transparent">
                       <v-list-item
                         v-for="(row, index) in modelMappingRows"
                         :key="row.id"
-                        class="mb-2 pa-3"
-                        rounded="lg"
-                        variant="tonal"
-                        color="surface-variant"
+                        class="mb-3 pa-3"
+                        rounded="xl"
+                        variant="flat"
+                        style="border: 1px solid rgba(var(--v-border-color), 0.2); background: rgba(var(--v-theme-surface), 0.5); backdrop-filter: blur(8px);"
                       >
-                        <div class="d-flex align-center ga-2 flex-wrap">
+                        <div class="d-flex align-center ga-3 flex-wrap">
                           <!-- 源模型只读展示 -->
                           <v-sheet
                             rounded="lg"
                             color="surface"
+                            elevation="0"
                             class="pa-2"
-                            style="min-width: 140px; max-width: 180px;"
+                            style="min-width: 120px; max-width: 160px; border: 1px solid rgba(var(--v-border-color), 0.15);"
                           >
-                            <div class="text-caption text-medium-emphasis mb-1" style="font-size: 9px; font-weight: 600; letter-spacing: 0.16em;">SOURCE</div>
-                            <div class="text-caption text-truncate" style="font-family: monospace; font-size: 11px;" :title="row.source">
+                            <div class="text-caption text-medium-emphasis mb-1" style="font-size: 8px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;">Source</div>
+                            <div class="text-caption text-truncate" style="font-family: monospace; font-size: 12px; font-weight: 500;" :title="row.source">
                               {{ row.source || 'source-model' }}
                             </div>
                           </v-sheet>
 
-                          <v-icon size="small" color="primary">mdi-arrow-right</v-icon>
+                          <v-icon size="18" color="primary" style="opacity: 0.8;">mdi-arrow-right</v-icon>
 
                           <!-- 目标模型输入 -->
-                          <div style="min-width: 160px; max-width: 220px; flex: 1;">
-                            <div class="text-caption text-medium-emphasis mb-1" style="font-size: 9px; font-weight: 600; letter-spacing: 0.16em;">TARGET</div>
+                          <div style="min-width: 160px; max-width: 240px; flex: 1;">
+                            <div class="text-caption text-medium-emphasis mb-1" style="font-size: 8px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;">Target</div>
                             <v-combobox
                               v-model="row.target"
                               :items="targetModelOptions"
@@ -370,7 +371,7 @@
                               hide-details
                               placeholder="target-model"
                               class="text-caption"
-                              style="font-family: monospace;"
+                              style="font-family: monospace; font-size: 12px;"
                               eager
                               @focus="handleTargetModelClick"
                               @update:menu="onMenuUpdate"
@@ -399,17 +400,17 @@
                           />
 
                           <!-- Vision 切换按钮 -->
-                          <v-tooltip :text="row.noVision ? t('addChannel.visionDisabled') : t('addChannel.visionEnabled')" location="top" :open-delay="150" content-class="key-tooltip">
+                          <v-tooltip :text="row.noVision ? t('addChannel.visionDisabled') : t('addChannel.visionEnabled')" location="top" :open-delay="150">
                             <template #activator="{ props: tip }">
                               <v-btn
                                 v-bind="tip"
                                 size="small"
-                                :color="row.noVision ? 'warning' : undefined"
+                                :color="row.noVision ? 'warning' : 'primary'"
                                 icon
-                                variant="text"
+                                :variant="row.noVision ? 'tonal' : 'text'"
                                 @click="toggleRowVision(row)"
                               >
-                                <v-icon size="small">{{ row.noVision ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
+                                <v-icon :size="16">{{ row.noVision ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
                               </v-btn>
                             </template>
                           </v-tooltip>
@@ -422,7 +423,7 @@
                             variant="text"
                             @click="removeModelMappingRow(index)"
                           >
-                            <v-icon size="small" color="error">mdi-close</v-icon>
+                            <v-icon :size="16">mdi-close</v-icon>
                           </v-btn>
                         </div>
                       </v-list-item>
@@ -430,63 +431,72 @@
                   </div>
 
                   <!-- 添加新映射 -->
-                  <div class="d-flex align-center flex-wrap ga-2">
-                    <v-combobox
-                      v-model="newMapping.source"
-                      :label="t('addChannel.sourceModelLabel')"
-                      :items="sourceModelOptions"
-                      variant="outlined"
-                      density="comfortable"
-                      hide-details
-                      class="flex-1-1"
-                      style="min-width: 160px"
-                      :placeholder="t('addChannel.sourceModelPlaceholder')"
-                      clearable
-                      :error="!!sourceMappingError"
-                      eager
-                      @update:model-value="handleSourceModelChange"
-                      @update:menu="onMenuUpdate"
-                      @keyup.enter="addModelMapping"
-                    />
-                    <v-icon color="primary">mdi-arrow-right</v-icon>
-                    <v-combobox
-                      v-model="newMapping.target"
-                      :label="t('addChannel.targetModelLabel')"
-                      :placeholder="targetModelPlaceholder"
-                      :items="targetModelOptions"
-                      :loading="fetchingModels"
-                      variant="outlined"
-                      density="comfortable"
-                      hide-details
-                      class="flex-1-1"
-                      style="min-width: 160px"
-                      clearable
-                      eager
-                      @focus="handleTargetModelClick"
-                      @update:menu="onMenuUpdate"
-                      @keyup.enter="addModelMapping"
-                    />
-                    <v-select
-                      v-if="supportsOpenAIAdvancedOptions"
-                      v-model="newMapping.reasoningEffort"
-                      :label="t('addChannel.reasoningEffortLabel')"
-                      :items="reasoningEffortOptions"
-                      variant="outlined"
-                      density="comfortable"
-                      hide-details
-                      clearable
-                      class="flex-1-1"
-                      eager
-                      @update:menu="onMenuUpdate"
-                    />
-                    <v-btn
-                      color="secondary"
-                      variant="elevated"
-                      :disabled="!isMappingInputValid"
-                      @click="addModelMapping"
-                    >
-                      {{ t('app.actions.add') }}
-                    </v-btn>
+                  <div class="pa-4" style="border: 1px dashed rgba(var(--v-border-color), 0.3); border-radius: 12px; background: rgba(var(--v-theme-surface), 0.3);">
+                    <div class="text-caption text-medium-emphasis mb-3" style="font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;">
+                      <v-icon size="14" class="mr-1">mdi-plus-circle-outline</v-icon>
+                      {{ t('addChannel.addNewMapping') }}
+                    </div>
+                    <div class="d-flex align-center flex-wrap ga-2">
+                      <v-combobox
+                        v-model="newMapping.source"
+                        :label="t('addChannel.sourceModelLabel')"
+                        :items="sourceModelOptions"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                        class="flex-1-1"
+                        style="min-width: 150px; font-family: monospace;"
+                        :placeholder="t('addChannel.sourceModelPlaceholder')"
+                        clearable
+                        :error="!!sourceMappingError"
+                        eager
+                        @update:model-value="handleSourceModelChange"
+                        @update:menu="onMenuUpdate"
+                        @keyup.enter="addModelMapping"
+                      />
+                      <v-icon color="primary" size="18" style="opacity: 0.8;">mdi-arrow-right</v-icon>
+                      <v-combobox
+                        v-model="newMapping.target"
+                        :label="t('addChannel.targetModelLabel')"
+                        :placeholder="targetModelPlaceholder"
+                        :items="targetModelOptions"
+                        :loading="fetchingModels"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                        class="flex-1-1"
+                        style="min-width: 150px; font-family: monospace;"
+                        clearable
+                        eager
+                        @focus="handleTargetModelClick"
+                        @update:menu="onMenuUpdate"
+                        @keyup.enter="addModelMapping"
+                      />
+                      <v-select
+                        v-if="supportsOpenAIAdvancedOptions"
+                        v-model="newMapping.reasoningEffort"
+                        :label="t('addChannel.reasoningEffortLabel')"
+                        :items="reasoningEffortOptions"
+                        variant="outlined"
+                        density="compact"
+                        hide-details
+                        clearable
+                        class="flex-1-1"
+                        style="min-width: 120px;"
+                        eager
+                        @update:menu="onMenuUpdate"
+                      />
+                      <v-btn
+                        color="primary"
+                        variant="flat"
+                        size="default"
+                        :disabled="!isMappingInputValid"
+                        @click="addModelMapping"
+                      >
+                        <v-icon size="18" class="mr-1">mdi-plus</v-icon>
+                        {{ t('app.actions.add') }}
+                      </v-btn>
+                    </div>
                   </div>
                   <!-- 错误提示 -->
                   <div v-if="sourceMappingError" class="text-error text-caption mt-2">

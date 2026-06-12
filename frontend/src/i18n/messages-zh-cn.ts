@@ -204,6 +204,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
     'addChannel.oneClickSetup': '一键设置',
     'addChannel.modelHint': '在此配置源模型到目标模型的映射。',
     'addChannel.modelHintTip': '点击目标模型输入框会自动获取上游支持的模型列表,每个 API Key 的检测状态会显示在密钥列表中',
+    'addChannel.addNewMapping': '添加新映射',
     'addChannel.sourceModelLabel': '源模型名',
     'addChannel.sourceModelPlaceholder': '选择或输入源模型名',
     'addChannel.targetModelLabel': '目标模型名',
