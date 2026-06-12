@@ -1226,7 +1226,7 @@
                 <span class="text-caption text-medium-emphasis">{{ t('addChannel.rateLimitSectionHint') }}</span>
               </div>
             </v-col>
-            <v-col cols="12" md="3">
+            <v-col cols="12" md="4">
               <v-text-field
                 v-model="form.rateLimitRpm"
                 :label="t('addChannel.rateLimitRpmLabel')"
@@ -1241,7 +1241,7 @@
                 min="1"
               />
             </v-col>
-            <v-col cols="12" md="3">
+            <v-col cols="12" md="4">
               <v-text-field
                 v-model="form.rateLimitBurst"
                 :label="t('addChannel.rateLimitBurstLabel')"
