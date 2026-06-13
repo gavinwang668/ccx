@@ -61,7 +61,8 @@ interface HeaderRow {
 let rowId = 0
 const activeSection = ref('basic')
 const sectionRefs = ref<Record<string, HTMLElement | null>>({})
-let sectionObserver: IntersectionObserver | null = null
+let scrollRoot: Element | null = null
+let scrollHandler: (() => void) | null = null
 
 // 导航 section 定义
 const sections = [
@@ -82,6 +83,25 @@ function scrollToSection(id: string) {
 
 function setSectionRef(id: string, el: any) {
   sectionRefs.value[id] = el as HTMLElement | null
+}
+
+function updateActiveSectionFromScroll() {
+  if (!scrollRoot) return
+  const rootTop = scrollRoot.getBoundingClientRect().top
+  let current = sections[0]?.id || 'basic'
+
+  for (const s of sections) {
+    const el = sectionRefs.value[s.id]
+    if (!el) continue
+    const top = el.getBoundingClientRect().top - rootTop
+    if (top <= 120) {
+      current = s.id
+    } else {
+      break
+    }
+  }
+
+  activeSection.value = current
 }
 const modelMappingRows = ref<ModelMappingRow[]>([])
 const newModelMapping = reactive<ModelMappingRow>({ id: 0, source: '', target: '', reasoning: '', noVision: false })
@@ -565,32 +585,23 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
 
-  // IntersectionObserver：滚动时同步左侧导航高亮
+  // 按滚动位置同步左侧导航高亮；长 section 内滚动也需要实时更新
   nextTick(() => {
-    const viewport = document.querySelector('[data-slot="scroll-area-viewport"]')
-    if (!viewport) return
-    sectionObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const id = (entry.target as HTMLElement).dataset.sectionId
-            if (id) activeSection.value = id
-          }
-        }
-      },
-      { root: viewport, rootMargin: '-10% 0px -70% 0px', threshold: 0 }
-    )
-    for (const s of sections) {
-      const el = sectionRefs.value[s.id]
-      if (el) sectionObserver!.observe(el)
-    }
+    scrollRoot = document.querySelector('[data-slot="scroll-area-viewport"]')
+    if (!scrollRoot) return
+    scrollHandler = () => updateActiveSectionFromScroll()
+    scrollRoot.addEventListener('scroll', scrollHandler, { passive: true })
+    updateActiveSectionFromScroll()
   })
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
-  sectionObserver?.disconnect()
-  sectionObserver = null
+  if (scrollRoot && scrollHandler) {
+    scrollRoot.removeEventListener('scroll', scrollHandler)
+  }
+  scrollRoot = null
+  scrollHandler = null
 })
 
 // ── API Key 操作 ──

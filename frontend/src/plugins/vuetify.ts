@@ -196,6 +196,8 @@ import {
   mdiChatOutline,
   mdiDragHorizontalVariant,
   mdiFilterRemove,
+  mdiFilter,
+  mdiTimer,
   mdiUpdate,
   mdiCached,
   mdiPlusCircleOutline,
@@ -401,6 +403,8 @@ const iconMap: Record<string, string> = {
   'chat-outline': mdiChatOutline,
   'drag-horizontal-variant': mdiDragHorizontalVariant,
   'filter-remove': mdiFilterRemove,
+  'filter': mdiFilter,
+  'timer': mdiTimer,
   'update': mdiUpdate,
   'cached': mdiCached,
 }

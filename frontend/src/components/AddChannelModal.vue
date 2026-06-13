@@ -15,7 +15,7 @@
           </div>
         </div>
         <div v-if="isEditing && props.channelType !== 'images'" class="header-capability-actions">
-          <v-tooltip location="bottom" :text="form.noVision ? t('channelCard.noVision') : t('channelCard.hasVision')" :open-delay="150">
+          <v-tooltip location="bottom" :text="form.noVision ? t('channelCard.noVision') : t('channelCard.hasVision')" :open-delay="150" content-class="key-tooltip">
             <template #activator="{ props: tip }">
               <v-btn
                 v-bind="tip"
@@ -187,7 +187,7 @@
       <v-card-actions class="pa-6 pt-2">
         <v-spacer />
         <v-btn variant="text" @click="handleCancel">
-          {{ t('app.actions.cancel') }}
+          {{ t('app.actions.cancel') }}<span class="shortcut-hint ml-2 text-xs opacity-50">Esc</span>
         </v-btn>
         <v-btn
           v-if="!isEditing"
@@ -196,7 +196,7 @@
           :disabled="!canSubmitQuick"
           @click="handleQuickAdd"
         >
-          {{ t('app.actions.add') }}
+          {{ t('app.actions.add') }}<span class="shortcut-hint ml-2 text-xs opacity-50">{{ isMac ? '⌘Enter' : 'Ctrl+Enter' }}</span>
         </v-btn>
         <v-btn
           v-else
@@ -206,7 +206,7 @@
           :loading="submitting"
           @click="handleSubmit"
         >
-          {{ t('app.actions.save') }}
+          {{ t('app.actions.save') }}<span class="shortcut-hint ml-2 text-xs opacity-50">{{ isMac ? '⌘Enter' : 'Ctrl+Enter' }}</span>
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -294,7 +294,8 @@ let formBaseUrlPreviewTimer: number | null = null
 // 垂直导航激活 Section
 const activeSection = ref('basic')
 const sectionRefs = ref<Record<string, HTMLElement | null>>({})
-let sectionObserver: IntersectionObserver | null = null
+let scrollRoot: Element | null = null
+let scrollHandler: (() => void) | null = null
 
 // 导航 section 定义
 const sections = [
@@ -317,6 +318,25 @@ function scrollToSection(id: string) {
 
 function setSectionRef(id: string, el: any) {
   sectionRefs.value[id] = el as HTMLElement | null
+}
+
+function updateActiveSectionFromScroll() {
+  if (!scrollRoot) return
+  const rootTop = scrollRoot.getBoundingClientRect().top
+  let current = sections[0]?.id || 'basic'
+
+  for (const s of sections) {
+    const el = sectionRefs.value[s.id]
+    if (!el) continue
+    const top = el.getBoundingClientRect().top - rootTop
+    if (top <= 120) {
+      current = s.id
+    } else {
+      break
+    }
+  }
+
+  activeSection.value = current
 }
 
 // 解析快速输入内容
@@ -2376,32 +2396,23 @@ const handleKeydown = (event: Event) => {
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
 
-  // IntersectionObserver：滚动时同步左侧导航高亮
+  // 按滚动位置同步左侧导航高亮；长 section 内滚动也需要实时更新
   nextTick(() => {
-    const viewport = document.querySelector('.content-area')
-    if (!viewport) return
-    sectionObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const id = (entry.target as HTMLElement).dataset.sectionId
-            if (id) activeSection.value = id
-          }
-        }
-      },
-      { root: viewport, rootMargin: '-10% 0px -70% 0px', threshold: 0 }
-    )
-    for (const s of sections) {
-      const el = sectionRefs.value[s.id]
-      if (el) sectionObserver!.observe(el)
-    }
+    scrollRoot = document.querySelector('.content-area')
+    if (!scrollRoot) return
+    scrollHandler = () => updateActiveSectionFromScroll()
+    scrollRoot.addEventListener('scroll', scrollHandler, { passive: true })
+    updateActiveSectionFromScroll()
   })
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
-  sectionObserver?.disconnect()
-  sectionObserver = null
+  if (scrollRoot && scrollHandler) {
+    scrollRoot.removeEventListener('scroll', scrollHandler)
+  }
+  scrollRoot = null
+  scrollHandler = null
   if (formBaseUrlPreviewTimer !== null) {
     window.clearTimeout(formBaseUrlPreviewTimer)
   }
@@ -2476,7 +2487,7 @@ onUnmounted(() => {
   }
 }
 
-:deep(.key-tooltip) {
+:global(.key-tooltip) {
   color: rgba(var(--v-theme-on-surface), 0.92);
   background-color: rgba(var(--v-theme-surface), 0.98);
   border: 1px solid rgba(var(--v-theme-primary), 0.45);

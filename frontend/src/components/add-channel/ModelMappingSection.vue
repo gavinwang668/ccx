@@ -263,6 +263,7 @@
                     :text="row.noVision ? t('addChannel.visionDisabled') : t('addChannel.visionEnabled')"
                     location="top"
                     :open-delay="150"
+                    content-class="key-tooltip"
                   >
                     <template #activator="{ props: tip }">
                       <v-btn
