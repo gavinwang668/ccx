@@ -74,7 +74,7 @@
               />
 
               <!-- Vision 回退模型（仅当有模型级 noVision 标记时显示） -->
-              <div v-if="form.noVisionModels.length > 0" class="mt-4">
+              <div v-if="form.noVisionModels.length > 0" class="mt-6">
                 <v-combobox
                   v-model="form.visionFallbackModel"
                   :label="t('addChannel.visionFallbackLabel')"
