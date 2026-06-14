@@ -510,7 +510,7 @@ const chartOptions = computed<ApexOptions>(() => {
       custom: mode === 'traffic' ? buildTrafficTooltip : undefined
     },
     legend: {
-      show: mode === 'traffic',
+      show: true,
       position: 'top' as const,
       horizontalAlign: 'right' as const,
       fontSize: '11px',
