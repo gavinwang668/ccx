@@ -382,32 +382,19 @@ const chartOptions = computed<ApexOptions>(() => {
   // All Input series share the left Y-axis, and all Output series share the right Y-axis
   let yaxisConfig: any
   if (mode === 'tokens' || mode === 'cache') {
-    const keyCount = historyData.value?.keys?.length || 1
     const inLabel = mode === 'tokens' ? 'Input' : 'Cache Read'
     const outLabel = mode === 'tokens' ? 'Output' : 'Cache Write'
+    const actualSeries = chartSeriesData.value.series
+    const hasOutput = chartSeriesData.value.hasOutput
 
-    // Use the first key's series name as the Y-axis anchor
-    const firstKey = historyData.value?.keys?.[0]
-    const firstDisplayName = firstKey?.model ? `${firstKey.keyMask}/${firstKey.model}` : firstKey?.keyMask
-    const anchorInName = firstDisplayName ? `${firstDisplayName} ${inLabel}` : undefined
-    const anchorOutName = firstDisplayName ? `${firstDisplayName} ${outLabel}` : undefined
+    // Collect actual series names for left/right axes
+    const inNames = actualSeries.filter(s => s.name.endsWith(` ${inLabel}`)).map(s => s.name)
+    const outNames = actualSeries.filter(s => s.name.endsWith(` ${outLabel}`)).map(s => s.name)
 
     yaxisConfig = [
       // Left Y-axis (Input/Read)
       {
-        seriesName: anchorInName,
-        show: true,
-        labels: {
-          formatter: (val: number) => formatAxisValue(val, mode),
-          style: { fontSize: '11px' }
-        },
-        min: 0,
-        forceNiceScale: true
-      },
-      // Right Y-axis (Output/Write)
-      {
-        seriesName: anchorOutName,
-        opposite: true,
+        seriesName: inNames[0],
         show: true,
         labels: {
           formatter: (val: number) => formatAxisValue(val, mode),
@@ -418,16 +405,34 @@ const chartOptions = computed<ApexOptions>(() => {
       }
     ]
 
-    // Bind later key series to the same Y-axis pair (seriesName points to the anchor)
-    for (let i = 1; i < keyCount; i++) {
+    // Right Y-axis (Output/Write) — only show if output data exists
+    if (hasOutput) {
       yaxisConfig.push({
-        seriesName: anchorInName,
+        seriesName: outNames[0],
+        opposite: true,
+        show: true,
+        labels: {
+          formatter: (val: number) => formatAxisValue(val, mode),
+          style: { fontSize: '11px' }
+        },
+        min: 0,
+        forceNiceScale: true
+      })
+    }
+
+    // Bind remaining Input/Read series to the left Y-axis
+    for (let i = 1; i < inNames.length; i++) {
+      yaxisConfig.push({
+        seriesName: inNames[i],
         show: false,
         min: 0,
         forceNiceScale: true
       })
+    }
+    // Bind remaining Output/Write series to the right Y-axis
+    for (let i = 1; i < outNames.length; i++) {
       yaxisConfig.push({
-        seriesName: anchorOutName,
+        seriesName: outNames[i],
         show: false,
         min: 0,
         forceNiceScale: true
@@ -519,12 +524,13 @@ const chartOptions = computed<ApexOptions>(() => {
   }
 })
 
-// Build chart series from data
+// Build chart series from data (returns series + yaxis mapping info)
 const buildChartSeries = (data: ChannelKeyMetricsHistoryResponse | null) => {
-  if (!data?.keys) return []
+  if (!data?.keys) return { series: [] as { name: string; data: { x: number; y: number }[] }[], hasOutput: false }
 
   const mode = selectedView.value
   const result: { name: string; data: { x: number; y: number }[] }[] = []
+  let hasOutput = false
 
   data.keys.forEach((keyData, _keyIndex) => {
     // Display name: show "keyMask/model" when a model exists; otherwise show only keyMask
@@ -562,6 +568,7 @@ const buildChartSeries = (data: ChannelKeyMetricsHistoryResponse | null) => {
 
       // Output/Write - distinguish with a dashed line
       if (outTotal > 0) {
+        hasOutput = true
         result.push({
           name: `${displayName} ${outLabel}`,
           data: keyData.dataPoints.map(dp => ({
@@ -573,11 +580,12 @@ const buildChartSeries = (data: ChannelKeyMetricsHistoryResponse | null) => {
     }
   })
 
-  return result
+  return { series: result, hasOutput }
 }
 
 // Computed: chart series data
-const chartSeries = computed(() => buildChartSeries(historyData.value))
+const chartSeriesData = computed(() => buildChartSeries(historyData.value))
+const chartSeries = computed(() => chartSeriesData.value.series)
 
 // Helper: format number for display
 const formatNumber = (num: number): string => {
@@ -735,38 +743,38 @@ const _getDurationMs = (duration: Duration): number => {
 
 // Helper: get dash array for stroke style
 // traffic mode: all solid lines
-// tokens/cache mode: each key has two series (solid forward line, dashed reverse line)
+// tokens/cache mode: Input/Read solid, Output/Write dashed
 const getDashArray = (): number | number[] => {
   if (selectedView.value === 'traffic') {
     return 0 // All solid lines
   }
-  // Bidirectional mode: each key produces 2 series [solid forward line, dashed reverse line]
-  const keyCount = historyData.value?.keys?.length || 0
-  const dashArray: number[] = []
-  for (let i = 0; i < keyCount; i++) {
-    dashArray.push(0)  // Forward direction (Input/Read) - solid
-    dashArray.push(5)  // Reverse direction (Output/Write) - dashed
-  }
+  // Use actual series names to determine dash pattern
+  const series = chartSeriesData.value.series
+  const inLabel = selectedView.value === 'tokens' ? 'Input' : 'Cache Read'
+  const dashArray: number[] = series.map(s => s.name.endsWith(` ${inLabel}`) ? 0 : 5)
   return dashArray.length > 0 ? dashArray : 0
 }
 
 // Helper: get chart colors aligned with series count
 // traffic mode: one series and one color per key
-// tokens/cache mode: each key has two series (Input/Output) using the same color
+// tokens/cache mode: each key's Input and Output share the same color
 const getChartColors = (): string[] => {
-  const keyCount = historyData.value?.keys?.length || 0
-  if (keyCount === 0) return keyColors
+  const series = chartSeriesData.value.series
+  if (series.length === 0) return keyColors
 
   if (selectedView.value === 'traffic') {
-    // Traffic mode: one color per key
-    return historyData.value!.keys.map((_, i) => keyColors[i % keyColors.length])
+    return series.map((_, i) => keyColors[i % keyColors.length])
   }
-  // Bidirectional mode: duplicate the color for each key (same color for Input and Output)
+  // Bidirectional mode: assign same color to Input/Read and Output/Write of each key
   const colors: string[] = []
-  for (let i = 0; i < keyCount; i++) {
-    const color = keyColors[i % keyColors.length]
-    colors.push(color)  // Forward direction
-    colors.push(color)  // Reverse direction (same color)
+  const colorMap = new Map<string, string>()
+  for (const s of series) {
+    // Strip " Input"/" Output"/" Cache Read"/" Cache Write" suffix to get key identity
+    const keyName = s.name.replace(/ (Input|Output|Cache Read|Cache Write)$/, '')
+    if (!colorMap.has(keyName)) {
+      colorMap.set(keyName, keyColors[colorMap.size % keyColors.length])
+    }
+    colors.push(colorMap.get(keyName)!)
   }
   return colors
 }
@@ -808,7 +816,7 @@ const refreshData = async (isAutoRefresh = false) => {
     if (canUpdateInPlace) {
       // Update data in place and use updateSeries for smooth update
       historyData.value = newData
-      const newSeries = buildChartSeries(newData)
+      const { series: newSeries } = buildChartSeries(newData)
       chartRef.value?.updateSeries(newSeries, false) // false = no animation reset
     } else {
       // Full update (initial load or structure changed)
