@@ -74,7 +74,7 @@
               />
 
               <!-- Vision 回退模型（仅当有模型级 noVision 标记时显示） -->
-              <div v-if="form.noVisionModels.length > 0" class="mt-6">
+              <div v-if="hasNoVisionRows" class="mt-6">
                 <v-combobox
                   v-model="form.visionFallbackModel"
                   :label="t('addChannel.visionFallbackLabel')"
@@ -953,6 +953,8 @@ interface ModelMappingRow {
 
 let rowIdCounter = 0
 const modelMappingRows = ref<ModelMappingRow[]>([])
+
+const hasNoVisionRows = computed(() => modelMappingRows.value.some(row => row.noVision && row.target.trim()))
 
 // 模型映射编辑状态（已废弃，保留以防需要恢复）
 const editingMapping = ref<string | null>(null)

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowRight, Eye, EyeOff, Plus, RotateCcw, Trash2, Zap } from 'lucide-vue-next'
 import { useLanguage } from '@/composables/useLanguage'
@@ -28,13 +27,11 @@ const props = defineProps<{
   activeTargetInputId: string | null
   targetInputFilter: string
   DEFAULT_SELECT_VALUE: string
-  noVisionModelsText: string
   visionFallbackModel: string
 }>()
 
 const emit = defineEmits<{
   'update:newModelMapping': [value: Partial<ModelMappingRow>]
-  'update:noVisionModelsText': [value: string]
   'update:visionFallbackModel': [value: string]
   'addModelMappingRow': []
   'removeModelMappingRow': [id: number]
@@ -50,6 +47,8 @@ const emit = defineEmits<{
 const { tf } = useLanguage()
 
 const presetTags = ref(['gpt-5.5', 'gpt-5.4', 'MiMo', 'DeepSeek', 'MiniMax'])
+
+const hasNoVisionRows = computed(() => props.modelMappingRows.some(row => row.noVision && row.target.trim()))
 
 function toSelectValue(effort: ReasoningEffort | ''): string {
   return effort === '' ? props.DEFAULT_SELECT_VALUE : effort
@@ -259,35 +258,21 @@ function fromSelectValue(value: string): ReasoningEffort | '' {
     </div>
 
     <!-- 视觉回退配置 -->
-    <div class="rounded-xl border border-border/60 bg-card/30 p-4 space-y-3">
+    <div v-if="hasNoVisionRows" class="rounded-xl border border-border/60 bg-card/30 p-4 space-y-3">
       <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 border-b border-border/30 pb-1.5">
         {{ tf('console.form.visionFallback', '视觉回退配置') }}
       </div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div class="space-y-1.5">
-          <Label class="text-xs font-semibold text-muted-foreground">
-            {{ tf('console.form.noVisionModels', '禁用视觉的模型列表') }}
-          </Label>
-          <Textarea
-            :model-value="noVisionModelsText"
-            placeholder="mimo-v2.5-pro&#10;deepseek-v4-pro"
-            class="w-full font-mono text-xs min-h-[80px]"
-            @update:model-value="(val) => emit('update:noVisionModelsText', val as string)"
-          />
-          <p class="text-[10px] text-muted-foreground">每行一个模型，这些模型的图像输入会回退到指定模型</p>
-        </div>
-        <div class="space-y-1.5">
-          <Label class="text-xs font-semibold text-muted-foreground">
-            {{ tf('console.form.visionFallbackModel', '视觉回退目标模型') }}
-          </Label>
-          <Input
-            :model-value="visionFallbackModel"
-            class="h-9 w-full font-mono text-xs"
-            placeholder="mimo-v2.5"
-            @update:model-value="(val) => emit('update:visionFallbackModel', val as string)"
-          />
-          <p class="text-[10px] text-muted-foreground">当上述模型遇到图像输入时，自动切换到此模型处理</p>
-        </div>
+      <div class="space-y-1.5">
+        <Label class="text-xs font-semibold text-muted-foreground">
+          {{ tf('console.form.visionFallbackModel', '视觉回退目标模型') }}
+        </Label>
+        <Input
+          :model-value="visionFallbackModel"
+          class="h-9 w-full font-mono text-xs"
+          placeholder="mimo-v2.5"
+          @update:model-value="(val) => emit('update:visionFallbackModel', val as string)"
+        />
+        <p class="text-[10px] text-muted-foreground">已通过模型重定向行的视觉开关标记禁用视觉模型；这些模型遇到图像输入时会自动切换到此模型处理</p>
       </div>
     </div>
   </section>

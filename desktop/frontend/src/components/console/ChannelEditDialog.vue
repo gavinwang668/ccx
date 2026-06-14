@@ -225,7 +225,6 @@ const form = reactive({
   reasoningParamStyle: 'reasoning' as 'reasoning' | 'reasoning_effort' | 'thinking',
   textVerbosity: '' as 'low' | 'medium' | 'high' | '',
   supportedModelsText: '',
-  noVisionModelsText: '',
   visionFallbackModel: '',
   noVision: false,
   historicalImageTurnLimit: 0,
@@ -282,7 +281,6 @@ function resetForm() {
   form.reasoningParamStyle = 'reasoning'
   form.textVerbosity = ''
   form.supportedModelsText = ''
-  form.noVisionModelsText = ''
   form.visionFallbackModel = ''
   form.noVision = false
   form.historicalImageTurnLimit = 0
@@ -354,8 +352,6 @@ function populateFromChannel(ch: Channel) {
   form.textVerbosity = ch.textVerbosity || ''
   form.supportedModelsText = (ch.supportedModels || []).join('\n')
   // noVisionModels 中命中映射 target 的由行级 toggle 表示，其余保留在文本框，避免重复展示
-  const mappedTargets = new Set(Object.values(ch.modelMapping || {}))
-  form.noVisionModelsText = (ch.noVisionModels || []).filter(m => !mappedTargets.has(m)).join('\n')
   form.visionFallbackModel = ch.visionFallbackModel || ''
   form.noVision = ch.noVision ?? false
   form.historicalImageTurnLimit = ch.historicalImageTurnLimit ?? 0
@@ -521,7 +517,7 @@ function buildSubmitPayload() {
         stripCodexClientTools: form.stripCodexClientTools,
         stripImageGenerationTool: form.stripImageGenerationTool,
         noVision: form.noVision,
-        noVisionModels: parseLines(form.noVisionModelsText),
+        noVisionModels: getNoVisionModelsFromRows(),
         visionFallbackModel: form.visionFallbackModel,
         historicalImageTurnLimit: form.historicalImageTurnLimit,
       })
@@ -1022,7 +1018,6 @@ function applyClaudePreset(name: string) {
   form.stripEmptyTextBlocks = preset.stripEmptyTextBlocks
   form.normalizeSystemRoleToTopLevel = preset.normalizeSystemRoleToTopLevel
   form.noVision = preset.noVision
-  form.noVisionModelsText = preset.noVisionModels.join('\n')
   form.visionFallbackModel = preset.visionFallbackModel
 }
 
@@ -1037,7 +1032,6 @@ function applyCodexResponsesPreset(name: string) {
   form.stripImageGenerationTool = preset.stripImageGenerationTool
   form.normalizeNonstandardChatRoles = preset.normalizeNonstandardChatRoles
   form.noVision = preset.noVision
-  form.noVisionModelsText = preset.noVisionModels.join('\n')
   form.visionFallbackModel = preset.visionFallbackModel
 }
 
@@ -1188,12 +1182,9 @@ function getReasoningMappingAsObject(): Record<string, 'none' | 'low' | 'medium'
 }
 
 function getNoVisionModelsFromRows(): string[] {
-  // 合并：模型行勾选的 noVision target + 高级选项里手动维护的列表
-  const set = new Set<string>(parseLines(form.noVisionModelsText))
-  for (const row of modelMappingRows.value) {
-    if (row.noVision && row.target) set.add(row.target)
-  }
-  return [...set]
+  return modelMappingRows.value
+    .filter(row => row.noVision && row.target.trim())
+    .map(row => row.target.trim())
 }
 
 function applyPreset(presetName: string) {
@@ -1392,7 +1383,7 @@ void fromSelectValue
           <!-- 主内容区域：滚动定位导航 -->
           <div class="min-h-0 flex-1 flex">
             <!-- 左侧导航 -->
-            <nav class="hidden md:flex w-48 shrink-0 flex-col items-stretch gap-1 rounded-none border-r border-border/50 bg-card/20 p-4">
+            <nav class="hidden md:flex w-40 shrink-0 flex-col items-stretch gap-1 rounded-none border-r border-border/50 bg-card/20 p-4">
               <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 px-3 mb-2">配置大纲</div>
               <button
                 v-for="s in sections"
@@ -1465,10 +1456,8 @@ void fromSelectValue
                         :active-target-input-id="activeTargetInputId"
                         :target-input-filter="targetInputFilter"
                         :DEFAULT_SELECT_VALUE="DEFAULT_SELECT_VALUE"
-                        :no-vision-models-text="form.noVisionModelsText"
                         :vision-fallback-model="form.visionFallbackModel"
                         @update:new-model-mapping="(updates) => Object.assign(newModelMapping, updates)"
-                        @update:no-vision-models-text="form.noVisionModelsText = $event"
                         @update:vision-fallback-model="form.visionFallbackModel = $event"
                         @add-model-mapping-row="addModelMappingRow"
                         @remove-model-mapping-row="removeModelMappingRow"
