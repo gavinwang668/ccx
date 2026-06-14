@@ -93,6 +93,7 @@
     <div v-else class="chart-area">
       <apexchart
         ref="chartRef"
+        :key="`global-chart-${selectedView}`"
         type="area"
         :height="chartHeight"
         :options="chartOptions"

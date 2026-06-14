@@ -59,7 +59,7 @@
 
     <!-- Chart -->
     <div v-else>
-      <apexchart ref="chartRef" type="area" :height="200" :options="chartOptions" :series="chartSeries" />
+      <apexchart ref="chartRef" :key="`model-stats-${selectedView}`" type="area" :height="200" :options="chartOptions" :series="chartSeries" />
     </div>
   </div>
 </template>

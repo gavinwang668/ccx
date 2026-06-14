@@ -84,6 +84,7 @@
     <div v-else class="chart-area">
       <apexchart
         ref="chartRef"
+        :key="`key-trend-${selectedView}`"
         type="area"
         height="280"
         :options="chartOptions"
