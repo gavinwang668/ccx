@@ -109,15 +109,27 @@ export const presetMessages: Record<SupportedLocale, Record<string, string>> = {
     'channel.preset.dashscope.plan.coding-openai-chat.description':
       'Coding Plan Chat / Responses shared endpoint',
     // Tencent Lkeap
+    'channel.preset.tencent-lkeap.label': 'Tencent Cloud TokenHub',
+    'channel.preset.tencent-lkeap.description':
+      "Tencent Cloud's LLM service platform integrating Hunyuan and mainstream models. Token Plan subscriptions and pay-as-you-go billing, compatible with Claude Code, Codex, and other coding tools.",
     'channel.preset.tencent-lkeap.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.tencent-lkeap.plan.openai-chat.description': 'Common Chat / Responses endpoint',
     // Volcengine Ark Coding Plan
+    'channel.preset.volc-ark.label': 'Volcengine Ark Coding Plan',
+    'channel.preset.volc-ark.description':
+      "ByteDance's one-stop AI platform under Volcengine. Full-chain services for Doubao series models including fine-tuning, inference, and evaluation. Multi-vendor model support with enterprise-grade reliability.",
     'channel.preset.volc-ark.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.volc-ark.plan.openai-chat.description': 'Common Chat / Responses endpoint',
     // Baidu Qianfan Coding Plan
+    'channel.preset.qianfan.label': 'Baidu Qianfan Coding Plan',
+    'channel.preset.qianfan.description':
+      "Baidu Cloud's enterprise LLM platform with native ERNIE 5.0 multimodal model. Multi-agent collaboration and full-lifecycle tools from development to deployment.",
     'channel.preset.qianfan.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.qianfan.plan.openai-chat.description': 'Common Chat / Responses endpoint',
     // Youyun OriginRouter
+    'channel.preset.originrouter.label': 'OriginRouter',
+    'channel.preset.originrouter.description':
+      'Unified model API forwarding platform. A single key to seamlessly switch between GPT, Claude, Gemini, and other models. High-speed and stable, ideal for multi-model mixing.',
     'channel.preset.originrouter.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.originrouter.plan.openai-chat.description': 'Common Chat / Responses endpoint',
     'channel.preset.dashscope.plan.token-plan-anthropic.label': 'Token Plan (Anthropic)',

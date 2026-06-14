@@ -152,6 +152,8 @@ export type MessageKey =
   | 'channel.preset.runapi.plan.anthropic.description'
   | 'channel.preset.runapi.plan.openai-chat.label'
   | 'channel.preset.runapi.plan.openai-chat.description'
+  | 'channel.preset.tencent-lkeap.label'
+  | 'channel.preset.tencent-lkeap.description'
   | 'channel.preset.tencent-lkeap.plan.anthropic.label'
   | 'channel.preset.tencent-lkeap.plan.anthropic.description'
   | 'channel.preset.tencent-lkeap.plan.openai-chat.label'
@@ -160,14 +162,20 @@ export type MessageKey =
   | 'channel.preset.kimi-code.plan.anthropic.description'
   | 'channel.preset.kimi-code.plan.openai-chat.label'
   | 'channel.preset.kimi-code.plan.openai-chat.description'
+  | 'channel.preset.volc-ark.label'
+  | 'channel.preset.volc-ark.description'
   | 'channel.preset.volc-ark.plan.anthropic.label'
   | 'channel.preset.volc-ark.plan.anthropic.description'
   | 'channel.preset.volc-ark.plan.openai-chat.label'
   | 'channel.preset.volc-ark.plan.openai-chat.description'
+  | 'channel.preset.qianfan.label'
+  | 'channel.preset.qianfan.description'
   | 'channel.preset.qianfan.plan.anthropic.label'
   | 'channel.preset.qianfan.plan.anthropic.description'
   | 'channel.preset.qianfan.plan.openai-chat.label'
   | 'channel.preset.qianfan.plan.openai-chat.description'
+  | 'channel.preset.originrouter.label'
+  | 'channel.preset.originrouter.description'
   | 'channel.preset.originrouter.plan.anthropic.label'
   | 'channel.preset.originrouter.plan.anthropic.description'
   | 'channel.preset.originrouter.plan.openai-chat.label'
@@ -1024,7 +1032,9 @@ export const messages: Record<SupportedLocale, Messages> = {
     'channel.preset.dashscope.plan.token-plan-anthropic.description': 'Token Plan Claude Messages native endpoint',
     'channel.preset.dashscope.plan.token-plan-openai-chat.label': 'Token Plan (OpenAI)',
     'channel.preset.dashscope.plan.token-plan-openai-chat.description': 'Token Plan Chat / Responses shared endpoint',
-    // Tencent Lkeap plans
+    // Tencent Lkeap
+    'channel.preset.tencent-lkeap.label': 'Tencent Cloud TokenHub',
+    'channel.preset.tencent-lkeap.description': "Tencent Cloud's LLM service platform integrating Hunyuan and mainstream models. Token Plan subscriptions and pay-as-you-go billing, compatible with Claude Code, Codex, and other coding tools.",
     'channel.preset.tencent-lkeap.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.tencent-lkeap.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.tencent-lkeap.plan.openai-chat.label': 'OpenAI-compatible',
@@ -1034,17 +1044,23 @@ export const messages: Record<SupportedLocale, Messages> = {
     'channel.preset.kimi-code.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.kimi-code.plan.openai-chat.label': 'OpenAI-compatible',
     'channel.preset.kimi-code.plan.openai-chat.description': 'Common Chat / Responses endpoint',
-    // Volcengine Ark Coding Plan plans
+    // Volcengine Ark Coding Plan
+    'channel.preset.volc-ark.label': 'Volcengine Ark Coding Plan',
+    'channel.preset.volc-ark.description': "ByteDance's one-stop AI platform under Volcengine. Full-chain services for Doubao series models including fine-tuning, inference, and evaluation. Multi-vendor model support with enterprise-grade reliability.",
     'channel.preset.volc-ark.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.volc-ark.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.volc-ark.plan.openai-chat.label': 'OpenAI-compatible',
     'channel.preset.volc-ark.plan.openai-chat.description': 'Common Chat / Responses endpoint',
-    // Baidu Qianfan Coding Plan plans
+    // Baidu Qianfan Coding Plan
+    'channel.preset.qianfan.label': 'Baidu Qianfan Coding Plan',
+    'channel.preset.qianfan.description': "Baidu Cloud's enterprise LLM platform with native ERNIE 5.0 multimodal model. Multi-agent collaboration and full-lifecycle tools from development to deployment.",
     'channel.preset.qianfan.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.qianfan.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.qianfan.plan.openai-chat.label': 'OpenAI-compatible',
     'channel.preset.qianfan.plan.openai-chat.description': 'Common Chat / Responses endpoint',
-    // Youyun OriginRouter plans
+    // Youyun OriginRouter
+    'channel.preset.originrouter.label': 'OriginRouter',
+    'channel.preset.originrouter.description': 'Unified model API forwarding platform. A single key to seamlessly switch between GPT, Claude, Gemini, and other models. High-speed and stable, ideal for multi-model mixing.',
     'channel.preset.originrouter.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.originrouter.plan.anthropic.description': 'Claude Messages native endpoint',
     'channel.preset.originrouter.plan.openai-chat.label': 'OpenAI-compatible',
@@ -1858,7 +1874,9 @@ export const messages: Record<SupportedLocale, Messages> = {
     'channel.preset.dashscope.plan.openai-chat.description': 'Chat / Responses 通用入口',
     'channel.preset.dashscope.plan.coding-anthropic.label': 'Coding Plan (Anthropic)',
     'channel.preset.dashscope.plan.coding-anthropic.description': 'Coding Plan Claude Messages 原生入口',
-    // Tencent Lkeap plans
+    // Tencent Lkeap
+    'channel.preset.tencent-lkeap.label': '腾讯云 TokenHub',
+    'channel.preset.tencent-lkeap.description': '腾讯云大模型服务平台，整合混元及 DeepSeek、Kimi 等主流模型，提供 Token Plan 订阅和按量计费，适配 Claude Code、Codex 等主流编程工具。',
     'channel.preset.tencent-lkeap.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.tencent-lkeap.plan.anthropic.description': 'Claude Messages 原生入口',
     'channel.preset.tencent-lkeap.plan.openai-chat.label': 'OpenAI-compatible',
@@ -1868,17 +1886,23 @@ export const messages: Record<SupportedLocale, Messages> = {
     'channel.preset.kimi-code.plan.anthropic.description': 'Claude Messages 原生入口',
     'channel.preset.kimi-code.plan.openai-chat.label': 'OpenAI-compatible',
     'channel.preset.kimi-code.plan.openai-chat.description': 'Chat / Responses 通用入口',
-    // Volcengine Ark Coding Plan plans
+    // Volcengine Ark Coding Plan
+    'channel.preset.volc-ark.label': '火山方舟 Coding Plan',
+    'channel.preset.volc-ark.description': '字节跳动火山引擎旗下一站式 AI 平台，提供豆包系列模型精调、推理、评测全链路服务，覆盖多厂商模型，企业级保障完善。',
     'channel.preset.volc-ark.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.volc-ark.plan.anthropic.description': 'Claude Messages 原生入口',
     'channel.preset.volc-ark.plan.openai-chat.label': 'OpenAI-compatible',
     'channel.preset.volc-ark.plan.openai-chat.description': 'Chat / Responses 通用入口',
-    // Baidu Qianfan Coding Plan plans
+    // Baidu Qianfan Coding Plan
+    'channel.preset.qianfan.label': '百度千帆 Coding Plan',
+    'channel.preset.qianfan.description': '百度智能云企业级大模型平台，内置文心 5.0 原生全模态大模型，支持多智能体协同，提供从开发到部署的全链路工具。',
     'channel.preset.qianfan.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.qianfan.plan.anthropic.description': 'Claude Messages 原生入口',
     'channel.preset.qianfan.plan.openai-chat.label': 'OpenAI-compatible',
     'channel.preset.qianfan.plan.openai-chat.description': 'Chat / Responses 通用入口',
-    // Youyun OriginRouter plans
+    // Youyun OriginRouter
+    'channel.preset.originrouter.label': '极易云 OriginRouter',
+    'channel.preset.originrouter.description': '极易云统一模型 API 转发平台，一个密钥无缝切换 GPT、Claude、Gemini 等主流模型，高速稳定，适合多模型混用场景。',
     'channel.preset.originrouter.plan.anthropic.label': 'Anthropic-compatible',
     'channel.preset.originrouter.plan.anthropic.description': 'Claude Messages 原生入口',
     'channel.preset.originrouter.plan.openai-chat.label': 'OpenAI-compatible',
