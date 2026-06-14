@@ -2,19 +2,19 @@
   <v-card variant="outlined" class="pa-4">
     <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis mb-3">
       <v-icon size="small" color="primary" class="mr-1">mdi-speedometer</v-icon>
-      {{ t('addChannel.rateLimitSectionLabel') }}
+      {{ t('channelEditor.rateLimit.title') }}
     </div>
 
-    <span class="text-caption text-medium-emphasis mb-3 d-block">{{ t('addChannel.rateLimitSectionHint') }}</span>
+    <span class="text-caption text-medium-emphasis mb-3 d-block">{{ t('channelEditor.rateLimit.title') }}</span>
 
     <v-row dense>
       <v-col cols="12" md="4">
         <v-text-field
           :model-value="form.rateLimitRpm"
-          :label="t('addChannel.rateLimitRpmLabel')"
-          :placeholder="t('addChannel.rateLimitRpmPlaceholder')"
+          :label="t('channelEditor.rateLimit.rpm.label')"
+          :placeholder="t('channelEditor.rateLimit.rpm.placeholder')"
           prepend-inner-icon="mdi-speedometer"
-          :hint="t('addChannel.rateLimitRpmHint')"
+          :hint="t('channelEditor.rateLimit.rpm.hint')"
           persistent-hint
           clearable
           variant="outlined"
@@ -27,10 +27,10 @@
       <v-col cols="12" md="4">
         <v-text-field
           :model-value="form.rateLimitWindowMinutes"
-          :label="t('addChannel.rateLimitWindowMinutesLabel')"
-          :placeholder="t('addChannel.rateLimitWindowMinutesPlaceholder')"
+          :label="t('channelEditor.rateLimit.window.label')"
+          :placeholder="t('channelEditor.rateLimit.window.placeholder')"
           prepend-inner-icon="mdi-clock-outline"
-          :hint="t('addChannel.rateLimitWindowMinutesHint')"
+          :hint="t('channelEditor.rateLimit.window.hint')"
           persistent-hint
           clearable
           variant="outlined"
@@ -43,10 +43,10 @@
       <v-col cols="12" md="4">
         <v-text-field
           :model-value="form.rateLimitMaxConcurrent"
-          :label="t('addChannel.rateLimitMaxConcurrentLabel')"
-          :placeholder="t('addChannel.rateLimitMaxConcurrentPlaceholder')"
+          :label="t('channelEditor.rateLimit.maxConcurrent.label')"
+          :placeholder="t('channelEditor.rateLimit.maxConcurrent.placeholder')"
           prepend-inner-icon="mdi-server-network"
-          :hint="t('addChannel.rateLimitMaxConcurrentHint')"
+          :hint="t('channelEditor.rateLimit.maxConcurrent.hint')"
           persistent-hint
           clearable
           variant="outlined"

@@ -21,7 +21,7 @@ const emit = defineEmits<{
   'update:form': [value: Partial<FormData>]
 }>()
 
-const { tf } = useLanguage()
+const { t } = useLanguage()
 
 const streamTimeoutPresets = {
   gentle: { firstContentMs: 90000, inactivityMs: 90000, toolCallIdleMs: 300000 },
@@ -49,7 +49,7 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
 <template>
   <div class="rounded-xl border border-border/60 bg-card/40 p-4 shadow-xs space-y-3">
     <div class="flex items-center justify-between">
-      <div class="text-[10px] font-bold uppercase tracking-wider text-primary">{{ tf('console.form.streamTimeoutTitle', '流式断流超时控制') }}</div>
+      <div class="text-[10px] font-bold uppercase tracking-wider text-primary">{{ t('channelEditor.streamTimeout.title') }}</div>
       <div class="flex gap-1">
         <Button
           size="sm"
@@ -57,7 +57,7 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
           class="h-6 px-2 text-[10px]"
           @click="applyStreamTimeoutPreset('gentle')"
         >
-          {{ tf('console.form.presetGentle', '温和') }}
+          {{ t('channelEditor.streamTimeout.preset.gentle') }}
         </Button>
         <Button
           size="sm"
@@ -65,7 +65,7 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
           class="h-6 px-2 text-[10px]"
           @click="applyStreamTimeoutPreset('balanced')"
         >
-          {{ tf('console.form.presetBalanced', '均衡') }}
+          {{ t('channelEditor.streamTimeout.preset.balanced') }}
         </Button>
         <Button
           size="sm"
@@ -73,7 +73,7 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
           class="h-6 px-2 text-[10px]"
           @click="applyStreamTimeoutPreset('aggressive')"
         >
-          {{ tf('console.form.presetAggressive', '激进') }}
+          {{ t('channelEditor.streamTimeout.preset.aggressive') }}
         </Button>
       </div>
     </div>
@@ -82,8 +82,8 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
       <div class="border border-border/60 bg-background/60 p-3 rounded-xl space-y-2.5">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <Label class="text-xs font-semibold block">{{ tf('console.form.firstByteWait', '首字等待') }}</Label>
-            <span class="text-[9px] text-muted-foreground leading-none">{{ tf('console.form.firstByteWaitHint', '未响应则自动断开') }}</span>
+            <Label class="text-xs font-semibold block">{{ t('channelEditor.streamTimeout.firstContent.label') }}</Label>
+            <span class="text-[9px] text-muted-foreground leading-none">{{ t('channelEditor.streamTimeout.firstContent.hint') }}</span>
           </div>
           <Switch
             :model-value="form.streamFirstContentTimeoutEnabled"
@@ -92,7 +92,7 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
         </div>
         <div class="space-y-1" :class="{ 'opacity-50 pointer-events-none': !form.streamFirstContentTimeoutEnabled }">
           <div class="flex items-center justify-between text-[10px] font-mono font-medium text-muted-foreground">
-            <span>{{ tf('console.form.timeoutThreshold', '超时阈值:') }}</span>
+            <span>{{ t('channelEditor.streamTimeout.timeoutThreshold') }}</span>
             <span class="text-primary font-bold">{{ (form.streamFirstContentTimeoutMs / 1000) }}s</span>
           </div>
           <input
@@ -112,8 +112,8 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
       <div class="border border-border/60 bg-background/60 p-3 rounded-xl space-y-2.5">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <Label class="text-xs font-semibold block">{{ tf('console.form.idleAfterFirstByte', '首字后断流') }}</Label>
-            <span class="text-[9px] text-muted-foreground leading-none">{{ tf('console.form.idleAfterFirstByteHint', '生成中途卡顿超时') }}</span>
+            <Label class="text-xs font-semibold block">{{ t('channelEditor.streamTimeout.inactivity.label') }}</Label>
+            <span class="text-[9px] text-muted-foreground leading-none">{{ t('channelEditor.streamTimeout.inactivity.hint') }}</span>
           </div>
           <Switch
             :model-value="form.streamInactivityTimeoutEnabled"
@@ -122,7 +122,7 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
         </div>
         <div class="space-y-1" :class="{ 'opacity-50 pointer-events-none': !form.streamInactivityTimeoutEnabled }">
           <div class="flex items-center justify-between text-[10px] font-mono font-medium text-muted-foreground">
-            <span>{{ tf('console.form.timeoutThreshold', '超时阈值:') }}</span>
+            <span>{{ t('channelEditor.streamTimeout.timeoutThreshold') }}</span>
             <span class="text-primary font-bold">{{ (form.streamInactivityTimeoutMs / 1000) }}s</span>
           </div>
           <input
@@ -142,8 +142,8 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
       <div class="border border-border/60 bg-background/60 p-3 rounded-xl space-y-2.5">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <Label class="text-xs font-semibold block">{{ tf('console.form.toolCallIdle', '工具调用空闲') }}</Label>
-            <span class="text-[9px] text-muted-foreground leading-none">{{ tf('console.form.toolCallIdleHint', 'FunctionCall 延迟') }}</span>
+            <Label class="text-xs font-semibold block">{{ t('channelEditor.streamTimeout.toolCallIdle.label') }}</Label>
+            <span class="text-[9px] text-muted-foreground leading-none">{{ t('channelEditor.streamTimeout.toolCallIdle.hint') }}</span>
           </div>
           <Switch
             :model-value="form.streamToolCallIdleTimeoutEnabled"
@@ -152,7 +152,7 @@ function applyStreamTimeoutPreset(presetKey: 'gentle' | 'balanced' | 'aggressive
         </div>
         <div class="space-y-1" :class="{ 'opacity-50 pointer-events-none': !form.streamToolCallIdleTimeoutEnabled }">
           <div class="flex items-center justify-between text-[10px] font-mono font-medium text-muted-foreground">
-            <span>{{ tf('console.form.timeoutThreshold', '超时阈值:') }}</span>
+            <span>{{ t('channelEditor.streamTimeout.timeoutThreshold') }}</span>
             <span class="text-primary font-bold">{{ (form.streamToolCallIdleTimeoutMs / 1000) }}s</span>
           </div>
           <input

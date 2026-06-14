@@ -2,7 +2,7 @@
   <v-card variant="outlined" class="pa-4">
     <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis mb-3">
       <v-icon size="small" color="primary" class="mr-1">mdi-network</v-icon>
-      {{ t('addChannel.transportTitle') }}
+      {{ t('channelEditor.transport.title') }}
     </div>
 
     <v-row dense>
@@ -10,10 +10,10 @@
       <v-col cols="12">
         <v-text-field
           :model-value="form.proxyUrl"
-          :label="t('addChannel.proxyUrlLabel')"
-          :placeholder="t('addChannel.proxyUrlPlaceholder')"
+          :label="t('channelEditor.transport.proxyUrl.label')"
+          :placeholder="t('channelEditor.transport.proxyUrl.placeholder')"
           prepend-inner-icon="mdi-shield-lock-outline"
-          :hint="t('addChannel.proxyUrlHint')"
+          :hint="t('channelEditor.transport.proxyUrl.hint')"
           persistent-hint
           clearable
           variant="outlined"
@@ -26,10 +26,10 @@
       <v-col cols="12">
         <v-text-field
           :model-value="form.requestTimeoutMs"
-          :label="t('addChannel.requestTimeoutMsLabel')"
-          :placeholder="t('addChannel.requestTimeoutMsPlaceholder')"
+          :label="t('channelEditor.transport.requestTimeout.label')"
+          :placeholder="t('channelEditor.transport.requestTimeout.placeholder')"
           prepend-inner-icon="mdi-timer-sand"
-          :hint="t('addChannel.requestTimeoutMsHint')"
+          :hint="t('channelEditor.transport.requestTimeout.hint')"
           :rules="[rules.requestTimeoutMs]"
           persistent-hint
           clearable
@@ -48,10 +48,10 @@
       <v-col cols="12">
         <v-text-field
           :model-value="form.routePrefix"
-          :label="t('addChannel.routePrefixLabel')"
-          :placeholder="t('addChannel.routePrefixPlaceholder')"
+          :label="t('channelEditor.transport.routePrefix.label')"
+          :placeholder="t('channelEditor.transport.routePrefix.placeholder')"
           prepend-inner-icon="mdi-routes"
-          :hint="t('addChannel.routePrefixHint')"
+          :hint="t('channelEditor.transport.routePrefix.hint')"
           persistent-hint
           clearable
           variant="outlined"

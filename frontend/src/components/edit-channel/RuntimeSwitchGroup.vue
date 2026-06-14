@@ -2,7 +2,7 @@
   <v-card variant="outlined" class="pa-4">
     <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis mb-3">
       <v-icon size="small" color="primary" class="mr-1">mdi-cog-outline</v-icon>
-      {{ t('addChannel.runtimeTitle') }}
+      {{ t('channelEditor.runtime.title') }}
     </div>
 
     <!-- 余额耗尽自动拉黑 -->
@@ -10,8 +10,8 @@
       <div class="d-flex align-center ga-2">
         <v-icon color="warning">mdi-cash-remove</v-icon>
         <div>
-          <div class="section-title section-title--soft">{{ t('addChannel.autoBlacklistBalanceLabel') }}</div>
-          <div class="text-caption text-medium-emphasis">{{ t('addChannel.autoBlacklistBalanceHint') }}</div>
+          <div class="section-title section-title--soft">{{ t('channelEditor.runtime.autoBlacklist.label') }}</div>
+          <div class="text-caption text-medium-emphasis">{{ t('channelEditor.runtime.autoBlacklist.hint') }}</div>
         </div>
       </div>
       <v-switch :model-value="form.autoBlacklistBalance" inset color="warning" hide-details @update:model-value="updateField('autoBlacklistBalance', $event)" />
@@ -22,8 +22,8 @@
       <div class="d-flex align-center ga-2">
         <v-icon color="secondary">mdi-robot</v-icon>
         <div>
-          <div class="section-title section-title--soft">{{ t('addChannel.rateLimitAutoFromHeadersLabel') }}</div>
-          <div class="text-caption text-medium-emphasis">{{ t('addChannel.rateLimitAutoFromHeadersHint') }}</div>
+          <div class="section-title section-title--soft">{{ t('channelEditor.runtime.autoLearnRateLimits.label') }}</div>
+          <div class="text-caption text-medium-emphasis">{{ t('channelEditor.runtime.autoLearnRateLimits.hint') }}</div>
         </div>
       </div>
       <v-switch :model-value="form.rateLimitAutoFromHeaders" inset color="secondary" hide-details @update:model-value="updateField('rateLimitAutoFromHeaders', $event)" />

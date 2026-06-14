@@ -51,7 +51,7 @@ const emit = defineEmits<{
   'update:form': [value: Partial<FormData>]
 }>()
 
-const { tf } = useLanguage()
+const { t, tf } = useLanguage()
 
 function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
   emit('update:form', { [key]: value } as Partial<FormData>)
@@ -144,18 +144,18 @@ function fromSelectValue(value: string): string {
         <!-- Runtime 运行期策略 -->
         <div class="p-4 rounded-xl border border-border/50 bg-background/40 space-y-2.5">
         <div class="text-[10px] font-bold uppercase tracking-wider text-primary/80 border-b border-border/30 pb-1">
-          {{ tf('console.form.runtimeTitle', '运行期策略') }}
+          {{ t('channelEditor.runtime.title') }}
         </div>
         <div class="space-y-2">
           <div class="flex items-center justify-between">
-            <Label class="text-xs font-medium">{{ tf('console.form.autoBlacklistBalanceLabel', '自动熔断/黑名单余额异常 Key') }}</Label>
+            <Label class="text-xs font-medium">{{ t('channelEditor.runtime.autoBlacklist.label') }}</Label>
             <Switch :model-value="form.autoBlacklistBalance" @update:model-value="updateField('autoBlacklistBalance', $event)" />
           </div>
           <div class="flex items-center justify-between">
             <div class="space-y-0.5">
-              <Label class="text-xs font-medium">{{ tf('console.form.rateLimitAutoLabel', '自动学习上游限速') }}</Label>
+              <Label class="text-xs font-medium">{{ t('channelEditor.runtime.autoLearnRateLimits.label') }}</Label>
               <p class="text-[10px] leading-4 text-muted-foreground">
-                {{ tf('console.form.rateLimitAutoHint', '解析 Retry-After / x-ratelimit-* 响应头动态调整 cooldown') }}
+                {{ t('channelEditor.runtime.autoLearnRateLimits.hint') }}
               </p>
             </div>
             <Switch :model-value="form.rateLimitAutoFromHeaders" @update:model-value="updateField('rateLimitAutoFromHeaders', $event)" />
@@ -166,40 +166,40 @@ function fromSelectValue(value: string): string {
       <!-- 协议规范化 -->
       <div class="p-4 rounded-xl border border-border/50 bg-background/40 space-y-2.5">
       <div class="text-[10px] font-bold uppercase tracking-wider text-primary/80 border-b border-border/30 pb-1">
-        {{ tf('console.form.compatibilityTitle', '协议规范化') }}
+        {{ t('channelEditor.compat.title') }}
       </div>
       <div class="space-y-2">
         <div v-if="channelType === 'responses'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.codexNativeToolPassthrough', 'Codex 原生工具透传') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.codexNativeTools.label') }}</Label>
           <Switch :model-value="form.codexNativeToolPassthrough" @update:model-value="updateField('codexNativeToolPassthrough', $event)" />
         </div>
         <div v-if="channelType === 'responses'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.codexToolCompat', 'Codex 工具兼容模式') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.codexCompat.label') }}</Label>
           <Switch :model-value="form.codexToolCompat" @update:model-value="updateField('codexToolCompat', $event)" />
         </div>
         <div v-if="channelType === 'responses' || channelType === 'chat'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.stripImageGenerationTool', '过滤图像生成工具') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.stripImageGen.label') }}</Label>
           <Switch :model-value="form.stripImageGenerationTool" @update:model-value="updateField('stripImageGenerationTool', $event)" />
         </div>
         <div v-if="channelType === 'messages'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.normalizeSystemRole', '规范化 System 角色域') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.normalizeSystem.label') }}</Label>
           <Switch :model-value="form.normalizeSystemRoleToTopLevel" @update:model-value="updateField('normalizeSystemRoleToTopLevel', $event)" />
         </div>
         <div v-if="['messages','responses'].includes(channelType)" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.normalizeUserId', '平铺扁平化用户 ID') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.normalizeUserId.label') }}</Label>
           <Switch :model-value="form.normalizeMetadataUserId" @update:model-value="updateField('normalizeMetadataUserId', $event)" />
         </div>
         <div v-if="channelType === 'messages'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.stripBillingHeader', '抽离并剔除 CCH 计费尾缀') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.stripBillingHeader.label') }}</Label>
           <Switch :model-value="form.stripBillingHeader" @update:model-value="updateField('stripBillingHeader', $event)" />
         </div>
         <div v-if="supportsChatRoleNormalization" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.normalizeNonstandardChatRoles', '规范化非标准聊天角色') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.normalizeRoles.label') }}</Label>
           <Switch :model-value="form.normalizeNonstandardChatRoles" @update:model-value="updateField('normalizeNonstandardChatRoles', $event)" />
         </div>
         <div v-if="supportsOpenAIAdvancedOptions" class="flex items-center justify-between">
           <div class="flex-1">
-            <Label class="text-xs font-medium">{{ tf('console.form.reasoningParamStyle', 'Reasoning 参数样式') }}</Label>
+            <Label class="text-xs font-medium">{{ t('channelEditor.compat.reasoningStyle.label') }}</Label>
           </div>
           <Select
             :model-value="form.reasoningParamStyle || 'default'"
@@ -209,30 +209,30 @@ function fromSelectValue(value: string): string {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">{{ tf('console.form.selectDefaultLabel', '默认') }}</SelectItem>
+              <SelectItem value="default">{{ t('channelEditor.compat.selectDefault') }}</SelectItem>
               <SelectItem value="reasoning_effort">reasoning_effort</SelectItem>
               <SelectItem value="developer_message">developer_message</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div v-if="(channelType === 'gemini' || channelType === 'messages') && form.serviceType === 'gemini'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.injectDummyThoughtSignature', '注入 Gemini 思考标记') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.injectDummySignature.label') }}</Label>
           <Switch :model-value="form.injectDummyThoughtSignature" @update:model-value="updateField('injectDummyThoughtSignature', $event)" />
         </div>
         <div v-if="form.serviceType === 'gemini'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.stripThoughtSignature', '剥离 Gemini 思考标记') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.stripThoughtSignature.label') }}</Label>
           <Switch :model-value="form.stripThoughtSignature" @update:model-value="updateField('stripThoughtSignature', $event)" />
         </div>
         <div v-if="(channelType === 'messages' || channelType === 'chat' || channelType === 'responses') && form.serviceType === 'claude'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.passbackReasoningContent', '回传 Claude 推理内容') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.passbackReasoning.label') }}</Label>
           <Switch :model-value="form.passbackReasoningContent" @update:model-value="updateField('passbackReasoningContent', $event)" />
         </div>
         <div v-if="(channelType === 'messages' || channelType === 'chat' || channelType === 'responses') && form.serviceType === 'claude'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.passbackThinkingBlocks', '回传 Claude 思考块') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.passbackThinking.label') }}</Label>
           <Switch :model-value="form.passbackThinkingBlocks" @update:model-value="updateField('passbackThinkingBlocks', $event)" />
         </div>
         <div v-if="channelType === 'messages' && form.serviceType === 'claude'" class="flex items-center justify-between">
-          <Label class="text-xs font-medium">{{ tf('console.form.stripEmptyTextBlocks', '剥离空文本块') }}</Label>
+          <Label class="text-xs font-medium">{{ t('channelEditor.compat.stripEmptyBlocks.label') }}</Label>
           <Switch :model-value="form.stripEmptyTextBlocks" @update:model-value="updateField('stripEmptyTextBlocks', $event)" />
         </div>
       </div>
@@ -242,11 +242,11 @@ function fromSelectValue(value: string): string {
       <!-- Transport 代理路由网络 -->
       <div class="p-4 rounded-xl border border-border/50 bg-background/40 space-y-3">
         <div class="text-[10px] font-bold uppercase tracking-wider text-primary/80 border-b border-border/30 pb-1">
-          {{ tf('console.form.transportTitle', '代理路由网络') }}
+          {{ t('channelEditor.transport.title') }}
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div class="space-y-1">
-            <Label class="text-[9px] font-bold text-muted-foreground">{{ tf('console.form.proxyUrlLabel', '代理通道 URL') }}</Label>
+            <Label class="text-[9px] font-bold text-muted-foreground">{{ t('channelEditor.transport.proxyUrl.label') }}</Label>
             <Input
               :model-value="form.proxyUrl"
               class="h-8 w-full font-mono text-xs"
@@ -255,7 +255,7 @@ function fromSelectValue(value: string): string {
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[9px] font-bold text-muted-foreground">{{ tf('console.form.requestTimeoutLabel', '请求超时 (ms)') }}</Label>
+            <Label class="text-[9px] font-bold text-muted-foreground">{{ t('channelEditor.transport.requestTimeout.label') }}</Label>
             <Input
               :model-value="form.requestTimeoutMs"
               type="number"
@@ -265,7 +265,7 @@ function fromSelectValue(value: string): string {
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[9px] font-bold text-muted-foreground">{{ tf('console.form.routePrefixLabel', '接口路由前缀') }}</Label>
+            <Label class="text-[9px] font-bold text-muted-foreground">{{ t('channelEditor.transport.routePrefix.label') }}</Label>
             <Input
               :model-value="form.routePrefix"
               class="h-8 w-full font-mono text-xs"
@@ -279,36 +279,36 @@ function fromSelectValue(value: string): string {
       <!-- Rate Limit -->
       <div class="p-4 rounded-xl border border-border/50 bg-background/40 space-y-3">
         <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-          {{ tf('console.form.rateLimitTitle', '上游主动限速流量阀') }}
+          {{ t('channelEditor.rateLimit.title') }}
         </div>
         <div class="grid grid-cols-3 gap-3">
           <div class="space-y-1">
-            <Label class="text-[10px] font-medium text-muted-foreground/80">{{ tf('console.form.rpmLabel', '每分钟最大请求量 (RPM)') }}</Label>
+            <Label class="text-[10px] font-medium text-muted-foreground/80">{{ t('channelEditor.rateLimit.rpm.label') }}</Label>
             <Input
               :model-value="form.rateLimitRpm"
               type="number"
               class="h-9 text-xs"
-              :placeholder="tf('console.form.rpmPlaceholder', '不设限制')"
+              :placeholder="t('channelEditor.rateLimit.rpm.placeholder')"
               @update:model-value="updateField('rateLimitRpm', $event)"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] font-medium text-muted-foreground/80">{{ tf('console.form.windowLabel', '检测窗口滑动时间 (s)') }}</Label>
+            <Label class="text-[10px] font-medium text-muted-foreground/80">{{ t('channelEditor.rateLimit.window.label') }}</Label>
             <Input
               :model-value="form.rateLimitWindowMinutes"
               type="number"
               class="h-9 text-xs"
-              :placeholder="tf('console.form.windowPlaceholder', '60 秒')"
+              :placeholder="t('channelEditor.rateLimit.window.placeholder')"
               @update:model-value="updateField('rateLimitWindowMinutes', $event)"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] font-medium text-muted-foreground/80">{{ tf('console.form.maxConcurrentLabel', '全双工最大并发数限制') }}</Label>
+            <Label class="text-[10px] font-medium text-muted-foreground/80">{{ t('channelEditor.rateLimit.maxConcurrent.label') }}</Label>
             <Input
               :model-value="form.rateLimitMaxConcurrent"
               type="number"
               class="h-9 text-xs"
-              :placeholder="tf('console.form.maxConcurrentPlaceholder', '不设限制')"
+              :placeholder="t('channelEditor.rateLimit.maxConcurrent.placeholder')"
               @update:model-value="updateField('rateLimitMaxConcurrent', $event)"
             />
           </div>

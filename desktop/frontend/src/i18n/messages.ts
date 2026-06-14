@@ -849,6 +849,82 @@ export type MessageKey =
   | 'channelEditor.actions.create'
   | 'channelEditor.actions.save'
   | 'channelEditor.actions.cancel'
+  | 'channelEditor.compat.title'
+  | 'channelEditor.compat.fastMode.label'
+  | 'channelEditor.compat.fastMode.hint'
+  | 'channelEditor.compat.noVision.label'
+  | 'channelEditor.compat.noVision.hint'
+  | 'channelEditor.compat.reasoningStyle.label'
+  | 'channelEditor.compat.selectDefault'
+  | 'channelEditor.compat.passbackReasoning.label'
+  | 'channelEditor.compat.passbackReasoning.hint'
+  | 'channelEditor.compat.passbackThinking.label'
+  | 'channelEditor.compat.passbackThinking.hint'
+  | 'channelEditor.compat.stripThoughtSignature.label'
+  | 'channelEditor.compat.stripThoughtSignature.hint'
+  | 'channelEditor.compat.injectDummySignature.label'
+  | 'channelEditor.compat.injectDummySignature.hint'
+  | 'channelEditor.compat.stripEmptyBlocks.label'
+  | 'channelEditor.compat.stripEmptyBlocks.hint'
+  | 'channelEditor.compat.normalizeSystem.label'
+  | 'channelEditor.compat.normalizeSystem.hint'
+  | 'channelEditor.compat.normalizeUserId.label'
+  | 'channelEditor.compat.normalizeUserId.hint'
+  | 'channelEditor.compat.stripBillingHeader.label'
+  | 'channelEditor.compat.stripBillingHeader.hint'
+  | 'channelEditor.compat.normalizeRoles.label'
+  | 'channelEditor.compat.normalizeRoles.hint'
+  | 'channelEditor.compat.codexNativeTools.label'
+  | 'channelEditor.compat.codexNativeTools.hint'
+  | 'channelEditor.compat.codexCompat.label'
+  | 'channelEditor.compat.codexCompat.hint'
+  | 'channelEditor.compat.stripImageGen.label'
+  | 'channelEditor.compat.historicalImageLimit.label'
+  | 'channelEditor.compat.historicalImageLimit.hint'
+  | 'channelEditor.runtime.title'
+  | 'channelEditor.runtime.autoBlacklist.label'
+  | 'channelEditor.runtime.autoBlacklist.hint'
+  | 'channelEditor.runtime.autoLearnRateLimits.label'
+  | 'channelEditor.runtime.autoLearnRateLimits.hint'
+  | 'channelEditor.transport.title'
+  | 'channelEditor.transport.proxyUrl.label'
+  | 'channelEditor.transport.proxyUrl.placeholder'
+  | 'channelEditor.transport.proxyUrl.hint'
+  | 'channelEditor.transport.requestTimeout.label'
+  | 'channelEditor.transport.requestTimeout.placeholder'
+  | 'channelEditor.transport.requestTimeout.hint'
+  | 'channelEditor.transport.routePrefix.label'
+  | 'channelEditor.transport.routePrefix.placeholder'
+  | 'channelEditor.transport.routePrefix.hint'
+  | 'channelEditor.transport.skipTls.label'
+  | 'channelEditor.transport.skipTls.hint'
+  | 'channelEditor.transport.lowQuality.label'
+  | 'channelEditor.transport.lowQuality.hint'
+  | 'channelEditor.rateLimit.title'
+  | 'channelEditor.rateLimit.rpm.label'
+  | 'channelEditor.rateLimit.rpm.placeholder'
+  | 'channelEditor.rateLimit.rpm.hint'
+  | 'channelEditor.rateLimit.window.label'
+  | 'channelEditor.rateLimit.window.placeholder'
+  | 'channelEditor.rateLimit.window.hint'
+  | 'channelEditor.rateLimit.maxConcurrent.label'
+  | 'channelEditor.rateLimit.maxConcurrent.placeholder'
+  | 'channelEditor.rateLimit.maxConcurrent.hint'
+  | 'channelEditor.streamTimeout.title'
+  | 'channelEditor.streamTimeout.strategy'
+  | 'channelEditor.streamTimeout.strategyInherit'
+  | 'channelEditor.streamTimeout.preset.gentle'
+  | 'channelEditor.streamTimeout.preset.balanced'
+  | 'channelEditor.streamTimeout.preset.aggressive'
+  | 'channelEditor.streamTimeout.firstContent.label'
+  | 'channelEditor.streamTimeout.firstContent.hint'
+  | 'channelEditor.streamTimeout.inactivity.label'
+  | 'channelEditor.streamTimeout.inactivity.hint'
+  | 'channelEditor.streamTimeout.toolCallIdle.label'
+  | 'channelEditor.streamTimeout.toolCallIdle.hint'
+  | 'channelEditor.streamTimeout.timeoutThreshold'
+  | 'channelEditor.streamTimeout.overrideHint'
+  | 'channelEditor.streamTimeout.inheritHint'
 
 export type Messages = Record<MessageKey, string>
 
@@ -1700,6 +1776,82 @@ export const messages: Record<SupportedLocale, Messages> = {
     'channelEditor.actions.create': 'Create channel',
     'channelEditor.actions.save': 'Save',
     'channelEditor.actions.cancel': 'Cancel',
+    'channelEditor.compat.title': 'Compatibility',
+    'channelEditor.compat.fastMode.label': 'Fast mode',
+    'channelEditor.compat.fastMode.hint': 'Prefer low-latency lightweight edge routing',
+    'channelEditor.compat.noVision.label': 'Skip image requests',
+    'channelEditor.compat.noVision.hint': 'When enabled, requests containing images skip this channel and failover to the next one',
+    'channelEditor.compat.reasoningStyle.label': 'Reasoning parameter style',
+    'channelEditor.compat.selectDefault': 'Default',
+    'channelEditor.compat.passbackReasoning.label': 'Passback reasoning content',
+    'channelEditor.compat.passbackReasoning.hint': 'Convert thinking blocks into reasoning_content for passback',
+    'channelEditor.compat.passbackThinking.label': 'Passback thinking blocks',
+    'channelEditor.compat.passbackThinking.hint': 'Project real reasoning_content into Claude content[].thinking',
+    'channelEditor.compat.stripThoughtSignature.label': 'Strip thought signature',
+    'channelEditor.compat.stripThoughtSignature.hint': 'Remove the thought_signature field from functionCall',
+    'channelEditor.compat.injectDummySignature.label': 'Inject dummy signature',
+    'channelEditor.compat.injectDummySignature.hint': 'Inject a dummy signature into functionCall for third-party APIs',
+    'channelEditor.compat.stripEmptyBlocks.label': 'Strip empty text blocks',
+    'channelEditor.compat.stripEmptyBlocks.hint': 'Strip bare empty text content blocks before forwarding',
+    'channelEditor.compat.normalizeSystem.label': 'Normalize system role',
+    'channelEditor.compat.normalizeSystem.hint': 'Normalize system role to top level',
+    'channelEditor.compat.normalizeUserId.label': 'Normalize user ID',
+    'channelEditor.compat.normalizeUserId.hint': 'Flatten metadata user ID',
+    'channelEditor.compat.stripBillingHeader.label': 'Strip billing header',
+    'channelEditor.compat.stripBillingHeader.hint': 'Remove CCH billing suffix',
+    'channelEditor.compat.normalizeRoles.label': 'Normalize chat roles',
+    'channelEditor.compat.normalizeRoles.hint': 'Normalize non-standard chat roles',
+    'channelEditor.compat.codexNativeTools.label': 'Codex native tool passthrough',
+    'channelEditor.compat.codexNativeTools.hint': 'Convert Codex native tools into OpenAI function format',
+    'channelEditor.compat.codexCompat.label': 'Codex tool compatibility',
+    'channelEditor.compat.codexCompat.hint': 'Enable Codex CLI compatibility mode',
+    'channelEditor.compat.stripImageGen.label': 'Strip image generation tool',
+    'channelEditor.compat.historicalImageLimit.label': 'Historical image turn limit',
+    'channelEditor.compat.historicalImageLimit.hint': 'Images in historical turns beyond this limit are replaced with placeholder',
+    'channelEditor.runtime.title': 'Runtime',
+    'channelEditor.runtime.autoBlacklist.label': 'Auto blacklist abnormal balance keys',
+    'channelEditor.runtime.autoBlacklist.hint': 'Automatically trip/disable keys with balance errors',
+    'channelEditor.runtime.autoLearnRateLimits.label': 'Auto learn upstream rate limiting',
+    'channelEditor.runtime.autoLearnRateLimits.hint': 'Parse Retry-After / x-ratelimit-* headers and adjust cooldown dynamically',
+    'channelEditor.transport.title': 'Transport',
+    'channelEditor.transport.proxyUrl.label': 'Proxy URL',
+    'channelEditor.transport.proxyUrl.placeholder': 'socks5://...',
+    'channelEditor.transport.proxyUrl.hint': 'Proxy channel for upstream requests',
+    'channelEditor.transport.requestTimeout.label': 'Request timeout (ms)',
+    'channelEditor.transport.requestTimeout.placeholder': '60000',
+    'channelEditor.transport.requestTimeout.hint': 'Maximum time to wait for upstream response',
+    'channelEditor.transport.routePrefix.label': 'Route prefix',
+    'channelEditor.transport.routePrefix.placeholder': 'kimi',
+    'channelEditor.transport.routePrefix.hint': 'Interface route prefix',
+    'channelEditor.transport.skipTls.label': 'Skip TLS verification',
+    'channelEditor.transport.skipTls.hint': 'Disable TLS certificate verification for upstream',
+    'channelEditor.transport.lowQuality.label': 'Low quality channel',
+    'channelEditor.transport.lowQuality.hint': 'Mark this channel as low quality, used as last resort',
+    'channelEditor.rateLimit.title': 'Rate Limit',
+    'channelEditor.rateLimit.rpm.label': 'Max requests per minute (RPM)',
+    'channelEditor.rateLimit.rpm.placeholder': 'No limit',
+    'channelEditor.rateLimit.rpm.hint': 'Requests per minute limit',
+    'channelEditor.rateLimit.window.label': 'Sliding window (s)',
+    'channelEditor.rateLimit.window.placeholder': '60s',
+    'channelEditor.rateLimit.window.hint': 'Sliding window duration',
+    'channelEditor.rateLimit.maxConcurrent.label': 'Max concurrent streams',
+    'channelEditor.rateLimit.maxConcurrent.placeholder': 'No limit',
+    'channelEditor.rateLimit.maxConcurrent.hint': 'Full-duplex concurrent stream limit',
+    'channelEditor.streamTimeout.title': 'Stream Timeout',
+    'channelEditor.streamTimeout.strategy': 'Strategy',
+    'channelEditor.streamTimeout.strategyInherit': 'Inherit global',
+    'channelEditor.streamTimeout.preset.gentle': 'Gentle',
+    'channelEditor.streamTimeout.preset.balanced': 'Balanced',
+    'channelEditor.streamTimeout.preset.aggressive': 'Aggressive',
+    'channelEditor.streamTimeout.firstContent.label': 'First byte wait',
+    'channelEditor.streamTimeout.firstContent.hint': 'Auto disconnect if no response',
+    'channelEditor.streamTimeout.inactivity.label': 'Post-first-byte idle',
+    'channelEditor.streamTimeout.inactivity.hint': 'Mid-generation stall timeout',
+    'channelEditor.streamTimeout.toolCallIdle.label': 'Tool call idle',
+    'channelEditor.streamTimeout.toolCallIdle.hint': 'FunctionCall delay timeout',
+    'channelEditor.streamTimeout.timeoutThreshold': 'Timeout threshold:',
+    'channelEditor.streamTimeout.overrideHint': 'Custom value overrides the global stream timeout for this channel',
+    'channelEditor.streamTimeout.inheritHint': 'Disabled means this channel inherits the global stream timeout',
   },
   'zh-CN': {
     'common.gatewayLabel': 'CCX CORE',
@@ -2548,5 +2700,81 @@ export const messages: Record<SupportedLocale, Messages> = {
     'channelEditor.actions.create': '创建渠道',
     'channelEditor.actions.save': '保存',
     'channelEditor.actions.cancel': '取消',
+    'channelEditor.compat.title': '协议规范化',
+    'channelEditor.compat.fastMode.label': '快速模式',
+    'channelEditor.compat.fastMode.hint': '优先选取低延迟的轻量边缘路由链路',
+    'channelEditor.compat.noVision.label': '跳过含图请求',
+    'channelEditor.compat.noVision.hint': '启用后，包含图片的请求将跳过此渠道并 failover 到下一个渠道',
+    'channelEditor.compat.reasoningStyle.label': 'Reasoning 参数样式',
+    'channelEditor.compat.selectDefault': '默认',
+    'channelEditor.compat.passbackReasoning.label': '回传 Claude 推理内容',
+    'channelEditor.compat.passbackReasoning.hint': '将思考块转换为 reasoning_content 回传',
+    'channelEditor.compat.passbackThinking.label': '回传 Claude 思考块',
+    'channelEditor.compat.passbackThinking.hint': '将真正的 reasoning_content 投影到 Claude content[].thinking',
+    'channelEditor.compat.stripThoughtSignature.label': '剥离 Gemini 思考标记',
+    'channelEditor.compat.stripThoughtSignature.hint': '移除 functionCall 中的 thought_signature 字段',
+    'channelEditor.compat.injectDummySignature.label': '注入 Gemini 思考标记',
+    'channelEditor.compat.injectDummySignature.hint': '为第三方 API 注入假签名',
+    'channelEditor.compat.stripEmptyBlocks.label': '剥离空文本块',
+    'channelEditor.compat.stripEmptyBlocks.hint': '转发前剥离空的文本内容块',
+    'channelEditor.compat.normalizeSystem.label': '规范化 System 角色域',
+    'channelEditor.compat.normalizeSystem.hint': '将 system 角色规范化到顶层',
+    'channelEditor.compat.normalizeUserId.label': '规范化用户 ID',
+    'channelEditor.compat.normalizeUserId.hint': '扁平化 metadata 中的 user ID',
+    'channelEditor.compat.stripBillingHeader.label': '剔除 CCH 计费尾缀',
+    'channelEditor.compat.stripBillingHeader.hint': '移除 CCH 计费后缀',
+    'channelEditor.compat.normalizeRoles.label': '规范化非标准聊天角色',
+    'channelEditor.compat.normalizeRoles.hint': '规范化非标准聊天角色',
+    'channelEditor.compat.codexNativeTools.label': 'Codex 原生工具透传',
+    'channelEditor.compat.codexNativeTools.hint': '将 Codex 原生工具转换为 OpenAI function 格式',
+    'channelEditor.compat.codexCompat.label': 'Codex 工具兼容模式',
+    'channelEditor.compat.codexCompat.hint': '启用 Codex CLI 兼容模式',
+    'channelEditor.compat.stripImageGen.label': '过滤图像生成工具',
+    'channelEditor.compat.historicalImageLimit.label': '历史图片轮次限制',
+    'channelEditor.compat.historicalImageLimit.hint': '超过限制的历史图片将被替换为占位符',
+    'channelEditor.runtime.title': '运行期策略',
+    'channelEditor.runtime.autoBlacklist.label': '自动熔断/黑名单余额异常 Key',
+    'channelEditor.runtime.autoBlacklist.hint': '自动禁用余额异常的 Key',
+    'channelEditor.runtime.autoLearnRateLimits.label': '自动学习上游限速',
+    'channelEditor.runtime.autoLearnRateLimits.hint': '解析 Retry-After / x-ratelimit-* 响应头动态调整 cooldown',
+    'channelEditor.transport.title': '代理路由网络',
+    'channelEditor.transport.proxyUrl.label': '代理通道 URL',
+    'channelEditor.transport.proxyUrl.placeholder': 'socks5://...',
+    'channelEditor.transport.proxyUrl.hint': '代理上游请求的通道',
+    'channelEditor.transport.requestTimeout.label': '请求超时 (ms)',
+    'channelEditor.transport.requestTimeout.placeholder': '60000',
+    'channelEditor.transport.requestTimeout.hint': '等待上游响应的最大时间',
+    'channelEditor.transport.routePrefix.label': '接口路由前缀',
+    'channelEditor.transport.routePrefix.placeholder': 'kimi',
+    'channelEditor.transport.routePrefix.hint': '接口路由前缀',
+    'channelEditor.transport.skipTls.label': '跳过 TLS 验证',
+    'channelEditor.transport.skipTls.hint': '禁用上游 TLS 证书验证',
+    'channelEditor.transport.lowQuality.label': '低质量渠道',
+    'channelEditor.transport.lowQuality.hint': '标记此渠道为低质量，作为最后手段',
+    'channelEditor.rateLimit.title': '上游主动限速流量阀',
+    'channelEditor.rateLimit.rpm.label': '每分钟最大请求量 (RPM)',
+    'channelEditor.rateLimit.rpm.placeholder': '不设限制',
+    'channelEditor.rateLimit.rpm.hint': '每分钟请求数限制',
+    'channelEditor.rateLimit.window.label': '检测窗口滑动时间 (s)',
+    'channelEditor.rateLimit.window.placeholder': '60 秒',
+    'channelEditor.rateLimit.window.hint': '滑动窗口时长',
+    'channelEditor.rateLimit.maxConcurrent.label': '全双工最大并发数限制',
+    'channelEditor.rateLimit.maxConcurrent.placeholder': '不设限制',
+    'channelEditor.rateLimit.maxConcurrent.hint': '全双工并发流限制',
+    'channelEditor.streamTimeout.title': '流式断流超时控制',
+    'channelEditor.streamTimeout.strategy': '策略',
+    'channelEditor.streamTimeout.strategyInherit': '继承全局',
+    'channelEditor.streamTimeout.preset.gentle': '温和',
+    'channelEditor.streamTimeout.preset.balanced': '均衡',
+    'channelEditor.streamTimeout.preset.aggressive': '激进',
+    'channelEditor.streamTimeout.firstContent.label': '首字等待',
+    'channelEditor.streamTimeout.firstContent.hint': '未响应则自动断开',
+    'channelEditor.streamTimeout.inactivity.label': '首字后断流',
+    'channelEditor.streamTimeout.inactivity.hint': '生成中途卡顿超时',
+    'channelEditor.streamTimeout.toolCallIdle.label': '工具调用空闲',
+    'channelEditor.streamTimeout.toolCallIdle.hint': 'FunctionCall 延迟超时',
+    'channelEditor.streamTimeout.timeoutThreshold': '超时阈值:',
+    'channelEditor.streamTimeout.overrideHint': '自定义值将覆盖此渠道的全局流式超时设置',
+    'channelEditor.streamTimeout.inheritHint': '禁用表示此渠道继承全局流式超时设置',
   },
 }

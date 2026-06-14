@@ -2,7 +2,7 @@
   <v-card variant="outlined" class="pa-4">
     <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis mb-3">
       <v-icon size="small" color="primary" class="mr-1">mdi-format-align-justify</v-icon>
-      {{ t('addChannel.compatibilityTitle') }}
+      {{ t('channelEditor.compat.title') }}
     </div>
 
     <div class="d-flex flex-column ga-3">
@@ -11,8 +11,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="primary">mdi-cog</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.codexNativeToolPassthroughLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.codexNativeToolPassthroughHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.codexNativeTools.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.codexNativeTools.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.codexNativeToolPassthrough" inset color="primary" hide-details @update:model-value="updateField('codexNativeToolPassthrough', $event)" />
@@ -23,8 +23,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="primary">mdi-cog</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.codexToolCompatLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.codexToolCompatHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.codexCompat.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.codexCompat.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.codexToolCompat" inset color="primary" hide-details @update:model-value="updateField('codexToolCompat', $event)" />
@@ -35,8 +35,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="warning">mdi-filter-remove</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.stripImageGenerationToolLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.stripImageGenerationToolHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.stripImageGen.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.stripImageGen.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.stripImageGenerationTool" inset color="warning" hide-details @update:model-value="updateField('stripImageGenerationTool', $event)" />
@@ -47,8 +47,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="warning">mdi-arrow-collapse-up</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.normalizeSystemRoleToTopLevelLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.normalizeSystemRoleToTopLevelHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.normalizeSystem.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.normalizeSystem.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.normalizeSystemRoleToTopLevel" inset color="warning" hide-details @update:model-value="updateField('normalizeSystemRoleToTopLevel', $event)" />
@@ -59,8 +59,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="primary">mdi-identifier</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.normalizeMetadataUserIdLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.normalizeMetadataUserIdHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.normalizeUserId.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.normalizeUserId.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.normalizeMetadataUserId" inset color="primary" hide-details @update:model-value="updateField('normalizeMetadataUserId', $event)" />
@@ -71,8 +71,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="warning">mdi-tag-off</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.stripBillingHeaderLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.stripBillingHeaderHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.stripBillingHeader.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.stripBillingHeader.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.stripBillingHeader" inset color="warning" hide-details @update:model-value="updateField('stripBillingHeader', $event)" />
@@ -83,8 +83,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="primary">mdi-account-switch</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.normalizeNonstandardChatRolesLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.normalizeNonstandardChatRolesHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.normalizeRoles.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.normalizeRoles.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.normalizeNonstandardChatRoles" inset color="primary" hide-details @update:model-value="updateField('normalizeNonstandardChatRoles', $event)" />
@@ -95,8 +95,8 @@
         <div class="d-flex align-center ga-2 flex-1">
           <v-icon color="primary">mdi-tune</v-icon>
           <div class="flex-1">
-            <div class="section-title section-title--soft">{{ t('addChannel.reasoningParamStyleLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.reasoningParamStyleHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.reasoningStyle.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.reasoningStyle.hint') }}</div>
           </div>
         </div>
         <v-select
@@ -118,8 +118,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="primary">mdi-fast-forward</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.fastModeLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.fastModeHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.fastMode.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.fastMode.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.fastMode" inset color="primary" hide-details @update:model-value="updateField('fastMode', $event)" />
@@ -130,8 +130,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="secondary">mdi-signature</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.injectDummyThoughtSignatureLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.injectDummyThoughtSignatureHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.injectDummySignature.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.injectDummySignature.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.injectDummyThoughtSignature" inset color="secondary" hide-details @update:model-value="updateField('injectDummyThoughtSignature', $event)" />
@@ -142,8 +142,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="error">mdi-close-circle</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.stripThoughtSignatureLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.stripThoughtSignatureHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.stripThoughtSignature.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.stripThoughtSignature.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.stripThoughtSignature" inset color="error" hide-details @update:model-value="updateField('stripThoughtSignature', $event)" />
@@ -154,8 +154,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="secondary">mdi-brain</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.passbackReasoningContentLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.passbackReasoningContentHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.passbackReasoning.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.passbackReasoning.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.passbackReasoningContent" inset color="secondary" hide-details @update:model-value="updateField('passbackReasoningContent', $event)" />
@@ -166,8 +166,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="secondary">mdi-head-snowflake</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.passbackThinkingBlocksLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.passbackThinkingBlocksHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.passbackThinking.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.passbackThinking.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.passbackThinkingBlocks" inset color="secondary" hide-details @update:model-value="updateField('passbackThinkingBlocks', $event)" />
@@ -178,8 +178,8 @@
         <div class="d-flex align-center ga-2">
           <v-icon color="warning">mdi-filter-remove</v-icon>
           <div>
-            <div class="section-title section-title--soft">{{ t('addChannel.stripEmptyTextBlocksLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.stripEmptyTextBlocksHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.stripEmptyBlocks.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.stripEmptyBlocks.hint') }}</div>
           </div>
         </div>
         <v-switch :model-value="form.stripEmptyTextBlocks" inset color="warning" hide-details @update:model-value="updateField('stripEmptyTextBlocks', $event)" />
@@ -190,8 +190,8 @@
         <div class="d-flex align-center ga-2 flex-1">
           <v-icon color="primary">mdi-image-multiple</v-icon>
           <div class="flex-1">
-            <div class="section-title section-title--soft">{{ t('addChannel.historicalImageTurnLimitLabel') }}</div>
-            <div class="text-caption text-medium-emphasis">{{ t('addChannel.historicalImageTurnLimitHint') }}</div>
+            <div class="section-title section-title--soft">{{ t('channelEditor.compat.historicalImageLimit.label') }}</div>
+            <div class="text-caption text-medium-emphasis">{{ t('channelEditor.compat.historicalImageLimit.hint') }}</div>
           </div>
         </div>
         <v-text-field
