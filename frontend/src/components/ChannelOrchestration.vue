@@ -1618,7 +1618,7 @@ defineExpose({
   background: rgb(var(--v-theme-surface));
   border: 2px solid rgb(var(--v-theme-on-surface));
   box-shadow: 4px 4px 0 0 rgb(var(--v-theme-on-surface));
-  min-height: 52px;
+  height: 52px;
   transition: all 0.1s ease;
   cursor: pointer;
   overflow: hidden;
@@ -1765,7 +1765,8 @@ defineExpose({
   overflow: hidden;
   min-width: 0;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .channel-name > * {
@@ -1778,19 +1779,16 @@ defineExpose({
 
 .channel-name .font-weight-medium {
   font-size: 0.875rem;
-  flex-shrink: 0;
+  flex: 0 1 auto;
 }
 
-/* Limit description text to at most two lines */
 .channel-description {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  display: inline-block;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.4;
-  max-height: calc(1.4em * 2);
-  word-break: break-word;
+  white-space: nowrap;
 }
 
 .channel-name-link {

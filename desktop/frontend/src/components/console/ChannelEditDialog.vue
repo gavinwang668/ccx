@@ -3,11 +3,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Eye,
-  EyeOff,
   Loader2,
-  X,
-  Zap,
 } from 'lucide-vue-next'
 import { useConsoleChannels } from '@/composables/useConsoleChannels'
 import { useLanguage } from '@/composables/useLanguage'
@@ -17,6 +13,8 @@ import { getChannelTypeApi, type ManagedChannelType } from '@/utils/channel-type
 import { buildExpectedRequestUrls } from '@/utils/expected-request-urls'
 import { parseQuickInput } from '@/utils/quick-input-parser'
 import type { Channel, DisabledKeyInfo } from '@/services/admin-api'
+import ChannelEditorHeader from './channel-edit/ChannelEditorHeader.vue'
+import QuickCreatePanel from './channel-edit/QuickCreatePanel.vue'
 import BasicConfigPanel from './channel-edit/BasicConfigPanel.vue'
 import AuthPanel from './channel-edit/AuthPanel.vue'
 import ModelMappingPanel from './channel-edit/ModelMappingPanel.vue'
@@ -726,8 +724,9 @@ function addModelMappingRow() {
   newModelMapping.noVision = false
 }
 
-function removeModelMappingRow(index: number) {
-  modelMappingRows.value.splice(index, 1)
+function removeModelMappingRow(id: number) {
+  const index = modelMappingRows.value.findIndex(row => row.id === id)
+  if (index >= 0) modelMappingRows.value.splice(index, 1)
 }
 
 // ── 预设模板 ──
@@ -995,7 +994,7 @@ const showClaudeChannelPresets = computed(() => form.serviceType === 'claude' &&
 const showCodexResponsesPresets = computed(() => props.channelType === 'responses' && supportsOpenAIAdvanced.value)
 
 function applyModelMappingPreset(name: string) {
-  const preset = modelMappingPresets[name]
+  const preset = modelMappingPresets[name.toLowerCase()]
   if (!preset) return
   // 仅 OpenAI/Responses 上游应用 reasoning 映射（对齐 WebUI）
   const applyReasoning = supportsOpenAIAdvanced.value
@@ -1011,9 +1010,10 @@ function applyModelMappingPreset(name: string) {
 }
 
 function applyClaudePreset(name: string) {
-  const preset = claudeChannelPresets[name]
+  const preset = claudeChannelPresets[name.toLowerCase()]
   if (!preset) return
-  modelMappingRows.value = preset.mapping.map(m => ({ id: ++rowId, source: m.source, target: m.target, reasoning: '', noVision: false }))
+  const noVisionSet = new Set(preset.noVisionModels)
+  modelMappingRows.value = preset.mapping.map(m => ({ id: ++rowId, source: m.source, target: m.target, reasoning: '', noVision: noVisionSet.has(m.target) }))
   form.passbackReasoningContent = preset.passbackReasoningContent
   form.passbackThinkingBlocks = preset.passbackThinkingBlocks
   form.stripEmptyTextBlocks = preset.stripEmptyTextBlocks
@@ -1023,9 +1023,10 @@ function applyClaudePreset(name: string) {
 }
 
 function applyCodexResponsesPreset(name: string) {
-  const preset = codexResponsesPresets[name]
+  const preset = codexResponsesPresets[name.toLowerCase()]
   if (!preset) return
-  modelMappingRows.value = preset.mapping.map(m => ({ id: ++rowId, source: m.source, target: m.target, reasoning: m.reasoning || '', noVision: false }))
+  const noVisionSet = new Set(preset.noVisionModels)
+  modelMappingRows.value = preset.mapping.map(m => ({ id: ++rowId, source: m.source, target: m.target, reasoning: m.reasoning || '', noVision: noVisionSet.has(m.target) }))
   form.reasoningParamStyle = preset.reasoningParamStyle as typeof form.reasoningParamStyle
   form.codexNativeToolPassthrough = preset.codexNativeToolPassthrough
   form.codexToolCompat = preset.codexToolCompat
@@ -1183,15 +1184,22 @@ function getReasoningMappingAsObject(): Record<string, 'none' | 'low' | 'medium'
 }
 
 function getNoVisionModelsFromRows(): string[] {
-  return modelMappingRows.value
-    .filter(row => row.noVision && row.target.trim())
-    .map(row => row.target.trim())
+  return [...new Set(
+    modelMappingRows.value
+      .filter(row => row.noVision && row.target.trim())
+      .map(row => row.target.trim())
+  )]
 }
 
 function applyPreset(presetName: string) {
-  // 预设标签快速注入功能
-  if (newModelMapping.source && !newModelMapping.target) {
-    newModelMapping.target = presetName
+  if (presetName === 'gpt-5.5' || presetName === 'gpt-5.4') {
+    applyModelMappingPreset(presetName)
+  } else if (form.serviceType === 'claude') {
+    applyClaudePreset(presetName)
+  } else if (props.channelType === 'responses') {
+    applyCodexResponsesPreset(presetName)
+  } else if (props.channelType === 'messages' || props.channelType === 'chat') {
+    applyClaudePreset(presetName)
   }
 }
 
@@ -1338,48 +1346,15 @@ void fromSelectValue
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="emit('close')" />
 
         <div ref="dialogRef" class="relative z-10 flex max-h-[90vh] w-[94vw] max-w-6xl flex-col overflow-hidden rounded-xl border border-border/80 bg-background shadow-2xl backdrop-blur-md">
-          <!-- 标题栏 -->
-          <div class="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 bg-card/50 p-5 backdrop-blur-sm">
-            <div class="min-w-0 space-y-1">
-              <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/80">
-                {{ channelType }} CHANNEL
-              </div>
-              <h3 class="text-xl font-bold tracking-tight">
-                {{ isEditMode
-                  ? tf('channelEditor.title.edit', '编辑渠道')
-                  : tf('channelEditor.title.create', '添加渠道')
-                }}
-              </h3>
-            </div>
-            <div class="flex shrink-0 items-center gap-1.5">
-              <template v-if="isEditMode">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  class="h-8 w-8 rounded-full text-muted-foreground transition-all hover:bg-primary/10 hover:text-primary"
-                  :title="form.noVision ? tf('channelEditor.compat.visionDisabled', '视觉已禁用') : tf('channelEditor.compat.visionEnabled', '视觉已启用')"
-                  @click="form.noVision = !form.noVision"
-                >
-                  <EyeOff v-if="form.noVision" class="h-3.5 w-3.5 text-amber-500" />
-                  <Eye v-else class="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  v-if="channelType !== 'images'"
-                  variant="outline"
-                  size="sm"
-                  class="h-8 rounded-full border border-border/80 bg-background/50 hover:bg-accent px-3.5 shadow-sm"
-                  :disabled="saving"
-                  @click="handleTestCapability"
-                >
-                  <Zap class="h-3.5 w-3.5 text-amber-500 fill-amber-500/20 mr-1" />
-                  {{ tf('capability.startTest', '能力测试') }}
-                </Button>
-              </template>
-              <Button variant="ghost" size="icon-sm" class="h-8 w-8 shrink-0 rounded-md hover:bg-destructive/10 hover:text-destructive transition-colors" @click="emit('close')">
-                <X class="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+          <ChannelEditorHeader
+            :channel-type="channelType"
+            :is-edit-mode="isEditMode"
+            :no-vision="form.noVision"
+            :saving="saving"
+            @close="emit('close')"
+            @toggle-no-vision="form.noVision = !form.noVision"
+            @test-capability="handleTestCapability"
+          />
 
           <!-- 主内容区域：滚动定位导航 -->
           <div class="min-h-0 flex-1 flex">
@@ -1408,19 +1383,21 @@ void fromSelectValue
 
                     <!-- Section: 基础配置 -->
                     <section :ref="(el: any) => setSectionRef('basic', el)" data-section-id="basic" class="scroll-mt-4">
-                      <BasicConfigPanel
-                        :form="form"
-                        :errors="errors"
-                        :is-edit-mode="isEditMode"
-                        :channel-type="channelType"
-                        :service-type-options="serviceTypeOptions"
-                        :expected-request-urls="expectedRequestUrls"
+                      <QuickCreatePanel
+                        v-if="!isEditMode"
                         :quick-input="quickInput"
                         :detected-base-urls="detectedBaseUrls"
                         :detected-api-keys="detectedApiKeys"
-                        @update:form="(updates) => Object.assign(form, updates)"
                         @update:quick-input="quickInput = $event"
                         @quick-paste="handleQuickPaste"
+                      />
+                      <BasicConfigPanel
+                        v-else
+                        :form="form"
+                        :errors="errors"
+                        :service-type-options="serviceTypeOptions"
+                        :expected-request-urls="expectedRequestUrls"
+                        @update:form="(updates) => Object.assign(form, updates)"
                       />
                     </section>
 

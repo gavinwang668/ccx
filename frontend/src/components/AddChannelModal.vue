@@ -1901,6 +1901,8 @@ const applyModelMappingPreset = (preset: keyof typeof modelMappingPresets) => {
   } else {
     form.reasoningMapping = {}
   }
+
+  syncModelMappingRowsFromForm()
 }
 
 // fable/opus/sonnet/haiku 模型别名的一键预设（MiMo / DeepSeek）
@@ -1985,6 +1987,8 @@ const applyClaudeChannelPreset = (preset: keyof typeof claudeChannelPresets) => 
   form.visionFallbackModel = presetConfig.visionFallbackModel
   if (presetConfig.modelMapping) {
     form.modelMapping = { ...presetConfig.modelMapping }
+    form.reasoningMapping = {}
+    syncModelMappingRowsFromForm()
   }
 }
 
@@ -2076,6 +2080,8 @@ const applyCodexResponsesChannelPreset = (preset: keyof typeof codexResponsesCha
   form.noVision = presetConfig.noVision
   form.noVisionModels = [...presetConfig.noVisionModels]
   form.visionFallbackModel = presetConfig.visionFallbackModel
+
+  syncModelMappingRowsFromForm()
 }
 
 // 模型优先级排序规则（索引越小优先级越高）
@@ -3080,6 +3086,7 @@ const syncModelMappingToForm = () => {
   form.modelMapping = {}
   form.reasoningMapping = {}
   form.noVisionModels = []
+  const noVisionModels = new Set<string>()
 
   modelMappingRows.value.forEach(row => {
     if (row.source && row.target) {
@@ -3088,10 +3095,12 @@ const syncModelMappingToForm = () => {
         form.reasoningMapping[row.source] = row.reasoning
       }
       if (row.noVision) {
-        form.noVisionModels.push(row.target)
+        noVisionModels.add(row.target)
       }
     }
   })
+
+  form.noVisionModels = [...noVisionModels]
 }
 
 // 从渠道数据初始化 modelMappingRows
@@ -3105,6 +3114,18 @@ const loadModelMappingRows = (channel: Channel) => {
     source,
     target,
     reasoning: (reasoning[source] || '') as ModelMappingRow['reasoning'],
+    noVision: noVisionSet.has(target)
+  }))
+}
+
+const syncModelMappingRowsFromForm = () => {
+  const noVisionSet = new Set(form.noVisionModels || [])
+
+  modelMappingRows.value = Object.entries(form.modelMapping || {}).map(([source, target]) => ({
+    id: ++rowIdCounter,
+    source,
+    target,
+    reasoning: (form.reasoningMapping[source] || '') as ModelMappingRow['reasoning'],
     noVision: noVisionSet.has(target)
   }))
 }
