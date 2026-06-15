@@ -11,9 +11,13 @@
           <v-icon color="primary">mdi-update</v-icon>
           <span>{{ t('update.title') }}</span>
         </div>
-        <v-btn icon variant="text" @click="$emit('update:modelValue', false)">
-          <v-icon>mdi-close</v-icon>
-        </v-btn>
+        <v-tooltip location="bottom" :text="t('app.actions.close') + ' (Esc)'" content-class="ccx-tooltip">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn icon variant="text" v-bind="tooltipProps" @click="$emit('update:modelValue', false)">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
       </v-card-title>
 
       <v-divider />
