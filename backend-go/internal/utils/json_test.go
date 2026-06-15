@@ -183,12 +183,12 @@ func TestMaskAPIKey(t *testing.T) {
 		{
 			name:     "短密钥(6字符)",
 			input:    "abc123",
-			expected: "abc***23",
+			expected: "***",
 		},
 		{
 			name:     "长密钥",
 			input:    "sk-1234567890abcdef",
-			expected: "sk-12345***bcdef",
+			expected: "sk-123***def",
 		},
 		{
 			name:     "超短密钥",

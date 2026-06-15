@@ -797,14 +797,15 @@ func MaskAPIKey(key string) string {
 	}
 
 	length := len(key)
-	if length <= 10 {
-		if length <= 5 {
-			return "***"
-		}
-		return key[:3] + "***" + key[length-2:]
+	if length <= 8 {
+		return "***"
 	}
 
-	return key[:8] + "***" + key[length-5:]
+	if length <= 12 {
+		return key[:3] + "***" + key[length-3:]
+	}
+
+	return key[:6] + "***" + key[length-3:]
 }
 
 // FormatJSONBytesRaw 原始输出JSON字节数组（不缩进、不截断、不重排序）

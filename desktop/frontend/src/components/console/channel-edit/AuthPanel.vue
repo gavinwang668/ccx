@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-vue-next'
 import { useLanguage } from '@/composables/useLanguage'
+import { maskApiKey } from '@/utils/api-key-mask'
 
 interface DisabledKeyInfo {
   key: string
@@ -43,12 +44,6 @@ const emit = defineEmits<{
 }>()
 
 const { tf } = useLanguage()
-
-function maskApiKey(key: string): string {
-  if (!key) return ''
-  if (key.length <= 8) return key
-  return key.slice(0, 4) + '***' + key.slice(-4)
-}
 
 function findDuplicateKeyIndex(key: string): number {
   return props.existingApiKeys.indexOf(key)

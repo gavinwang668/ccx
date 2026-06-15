@@ -1,4 +1,4 @@
-export const maskApiKey = (key: string): string => {
+export function maskApiKey(key: string): string {
   if (!key) return ''
 
   if (key.length <= 8) {

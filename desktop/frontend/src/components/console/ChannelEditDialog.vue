@@ -12,6 +12,7 @@ import { syncBaseUrlsFormState } from '@/utils/channel-dialog-state'
 import { getChannelTypeApi, type ManagedChannelType } from '@/utils/channel-type-api'
 import { buildExpectedRequestUrls } from '@/utils/expected-request-urls'
 import { parseQuickInput } from '@/utils/quick-input-parser'
+import { maskApiKey } from '@/utils/api-key-mask'
 import type { Channel, DisabledKeyInfo } from '@/services/admin-api'
 import ChannelEditorHeader from './channel-edit/ChannelEditorHeader.vue'
 import QuickCreatePanel from './channel-edit/QuickCreatePanel.vue'
@@ -452,11 +453,6 @@ function parseLines(text: string) {
     .split('\n')
     .map(s => s.trim())
     .filter(Boolean)
-}
-
-function maskApiKey(key: string): string {
-  if (key.length <= 10) return `${key.slice(0, 3)}***${key.slice(-2)}`
-  return `${key.slice(0, 8)}***${key.slice(-5)}`
 }
 
 function removeExistingApiKey(index: number) {
