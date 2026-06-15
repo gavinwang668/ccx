@@ -320,7 +320,6 @@
 
             <!-- Action buttons -->
             <div class="channel-actions" @click.stop>
-              <!-- Show resume button for breaker-managed channels -->
               <v-btn
                 v-if="isBreakerManagedChannel(element)"
                 icon
@@ -331,6 +330,18 @@
                 @click="resumeChannel(element.index)"
               >
                 <v-icon size="small">mdi-refresh</v-icon>
+              </v-btn>
+
+              <v-btn
+                v-else
+                icon
+                size="x-small"
+                variant="text"
+                color="warning"
+                :title="t('orchestration.pause')"
+                @click="setChannelStatus(element.index, 'suspended')"
+              >
+                <v-icon size="small">mdi-pause-circle</v-icon>
               </v-btn>
 
               <v-btn
@@ -376,12 +387,6 @@
                     </template>
                     <v-list-item-title>{{ t('addChannel.testCapability') }}</v-list-item-title>
                   </v-list-item>
-                  <v-list-item @click="openLogsDialog(element)">
-                    <template #prepend>
-                      <v-icon size="small">mdi-history</v-icon>
-                    </template>
-                    <v-list-item-title>{{ t('orchestration.logs') }}</v-list-item-title>
-                  </v-list-item>
                   <v-list-item @click="copyChannelInfo(element)">
                     <template #prepend>
                       <v-icon size="small">mdi-content-copy</v-icon>
@@ -412,15 +417,6 @@
                       <v-icon size="small" color="success">mdi-play-circle</v-icon>
                     </template>
                     <v-list-item-title>{{ t('orchestration.resumeReset') }}</v-list-item-title>
-                  </v-list-item>
-                  <v-list-item
-                    v-if="element.status !== 'suspended'"
-                    @click="setChannelStatus(element.index, 'suspended')"
-                  >
-                    <template #prepend>
-                      <v-icon size="small" color="warning">mdi-pause-circle</v-icon>
-                    </template>
-                    <v-list-item-title>{{ t('orchestration.pause') }}</v-list-item-title>
                   </v-list-item>
                   <v-list-item @click="setChannelStatus(element.index, 'disabled')">
                     <template #prepend>
