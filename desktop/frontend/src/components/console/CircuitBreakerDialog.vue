@@ -417,53 +417,55 @@ watch(() => props.open, (isOpen) => {
 .cb-slider {
   -webkit-appearance: none;
   appearance: none;
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, hsl(var(--muted)) 0%, hsl(var(--muted)/0.6) 100%);
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, hsl(var(--primary)/0.2) 0%, hsl(var(--muted)) 50%, hsl(var(--muted)/0.5) 100%);
   outline: none;
   cursor: pointer;
   transition: background 0.15s;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
 }
 .cb-slider:hover {
-  background: linear-gradient(90deg, hsl(var(--primary)/0.15) 0%, hsl(var(--muted)/0.8) 100%);
+  background: linear-gradient(90deg, hsl(var(--primary)/0.3) 0%, hsl(var(--muted)) 50%, hsl(var(--muted)/0.6) 100%);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
 }
 .cb-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary)/0.85) 100%);
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary)/0.9) 100%);
   cursor: pointer;
-  border: 2.5px solid hsl(var(--background));
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2), 0 0 0 0 hsl(var(--primary)/0.3);
+  border: 3px solid hsl(var(--background));
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3), 0 0 0 0 hsl(var(--primary)/0.4);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .cb-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-  box-shadow: 0 3px 8px rgba(0,0,0,0.25), 0 0 0 4px hsl(var(--primary)/0.15);
+  transform: scale(1.2);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.35), 0 0 0 5px hsl(var(--primary)/0.2);
 }
 .cb-slider::-webkit-slider-thumb:active {
-  transform: scale(1.05);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 0 0 6px hsl(var(--primary)/0.2);
+  transform: scale(1.1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 0 0 7px hsl(var(--primary)/0.25);
 }
 .cb-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary)/0.85) 100%);
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary)/0.9) 100%);
   cursor: pointer;
-  border: 2.5px solid hsl(var(--background));
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  border: 3px solid hsl(var(--background));
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .cb-slider::-moz-range-thumb:hover {
-  transform: scale(1.15);
-  box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+  transform: scale(1.2);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.35);
 }
 .cb-slider::-moz-range-thumb:active {
-  transform: scale(1.05);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  transform: scale(1.1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 .cb-slider:disabled {
   opacity: 0.5;
