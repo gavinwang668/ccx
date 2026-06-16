@@ -281,12 +281,48 @@ const detectedBaseUrls = computed(() => quickDetection.value.detectedBaseUrls)
 const detectedApiKeys = computed(() => quickDetection.value.detectedApiKeys)
 const detectedServiceType = computed(() => quickDetection.value.detectedServiceType)
 
+// 生成随机字符串（用于渠道名称后缀）
+function generateRandomString(length: number): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
+// 从 URL 提取二级域名
+function extractDomain(url: string): string {
+  try {
+    const hostname = new URL(url).hostname
+    const cleanHost = hostname.replace(/^www\./, '')
+    const parts = cleanHost.split('.')
+    if (parts.length <= 1) return cleanHost
+    if (parts.length === 2) return parts[0]
+    return parts[parts.length - 2]
+  }
+  catch {
+    return 'channel'
+  }
+}
+
+const randomSuffix = ref(generateRandomString(6))
+
+// 自动生成的渠道名称
+const generatedChannelName = computed(() => {
+  const firstUrl = detectedBaseUrls.value[0]
+  if (!firstUrl) return `channel-${randomSuffix.value}`
+  const domain = extractDomain(firstUrl)
+  return `${domain}-${randomSuffix.value}`
+})
+
 watch(detectedServiceType, (serviceType) => {
   if (isEditMode.value || quickServiceTypeTouched.value || !serviceType) return
   form.serviceType = serviceType
 })
 
 function resetForm() {
+  randomSuffix.value = generateRandomString(6)
   form.name = ''
   form.description = ''
   form.serviceType = defaultServiceTypeForChannel()
@@ -1524,12 +1560,9 @@ void toggleSupportedModelFilter
             :is-edit-mode="isEditMode"
             :no-vision="form.noVision"
             :saving="saving"
-            :service-type="form.serviceType"
-            :service-type-options="isEditMode ? undefined : headerServiceTypeItems"
             @close="emit('close')"
             @toggle-no-vision="form.noVision = !form.noVision"
             @test-capability="handleTestCapability"
-            @update:service-type="updateQuickServiceType"
           />
 
           <!-- 创建模式：独立快速添加，不展示编辑器大纲和高级配置 -->
@@ -1542,10 +1575,14 @@ void toggleSupportedModelFilter
 
                 <QuickCreatePanel
                   :quick-input="quickInput"
+                  :service-type="form.serviceType"
+                  :service-type-options="headerServiceTypeItems"
                   :detected-base-urls="detectedBaseUrls"
                   :detected-api-keys="detectedApiKeys"
                   :expected-request-urls="quickExpectedRequestUrls"
+                  :generated-channel-name="generatedChannelName"
                   @update:quick-input="quickInput = $event"
+                  @update:service-type="updateQuickServiceType"
                   @quick-paste="handleQuickPaste"
                 />
               </form>
