@@ -77,6 +77,22 @@
           @update:model-value="updateField('website', $event)"
         />
       </v-col>
+
+      <!-- 描述 -->
+      <v-col cols="12">
+        <v-textarea
+          :model-value="form.description"
+          :label="t('addChannel.descriptionLabel')"
+          :hint="t('addChannel.descriptionHint')"
+          persistent-hint
+          prepend-inner-icon="mdi-text"
+          variant="outlined"
+          density="comfortable"
+          rows="3"
+          no-resize
+          @update:model-value="updateField('description', $event)"
+        />
+      </v-col>
     </v-row>
   </div>
 </template>
@@ -89,6 +105,7 @@ interface FormData {
   name: string
   serviceType: string
   website: string
+  description: string
 }
 
 interface Props {

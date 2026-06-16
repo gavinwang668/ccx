@@ -11,6 +11,7 @@ interface FormData {
   baseUrl: string
   baseUrlsText: string
   website: string
+  description: string
 }
 
 interface Errors {
@@ -110,6 +111,18 @@ function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
         :placeholder="tf('channelEditor.basic.website.placeholder', 'https://openai.com')"
         @update:model-value="(val) => updateField('website', val as string)"
       />
+    </div>
+
+    <div class="space-y-1.5">
+      <Label class="text-xs font-semibold text-muted-foreground">{{ tf('addChannel.descriptionLabel', '描述 (可选)') }}</Label>
+      <Textarea
+        :model-value="form.description"
+        rows="3"
+        class="min-h-[84px] resize-none"
+        :placeholder="tf('addChannel.descriptionHint', '可选的渠道描述...')"
+        @update:model-value="(val) => updateField('description', val as string)"
+      />
+      <p class="text-[10px] leading-4 text-muted-foreground">{{ tf('addChannel.descriptionHint', '可选的渠道描述...') }}</p>
     </div>
   </section>
 </template>

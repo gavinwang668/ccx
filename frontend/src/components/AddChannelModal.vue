@@ -220,6 +220,21 @@
               />
             </v-col>
 
+            <!-- 描述 -->
+            <v-col cols="12">
+              <v-textarea
+                v-model="form.description"
+                :label="t('addChannel.descriptionLabel')"
+                :hint="t('addChannel.descriptionHint')"
+                persistent-hint
+                prepend-inner-icon="mdi-text"
+                variant="outlined"
+                density="comfortable"
+                rows="3"
+                no-resize
+              />
+            </v-col>
+
             <!-- 模型重定向配置 -->
             <v-col v-if="form.serviceType && isEditing" cols="12">
               <v-card variant="outlined" rounded="lg">
@@ -850,21 +865,6 @@
                   </div>
                 </v-card-text>
               </v-card>
-            </v-col>
-
-            <!-- 描述 -->
-            <v-col cols="12">
-              <v-textarea
-                v-model="form.description"
-                :label="t('addChannel.descriptionLabel')"
-                :hint="t('addChannel.descriptionHint')"
-                persistent-hint
-                prepend-inner-icon="mdi-text"
-                variant="outlined"
-                density="comfortable"
-                rows="3"
-                no-resize
-              />
             </v-col>
 
             <!-- 跳过 TLS 证书验证 -->

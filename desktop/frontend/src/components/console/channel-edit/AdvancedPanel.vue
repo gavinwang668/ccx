@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useLanguage } from '@/composables/useLanguage'
 
 interface FormData {
-  description: string
   fastMode: boolean
   historicalImageTurnLimit: number
   insecureSkipVerify: boolean
@@ -73,18 +71,6 @@ function updateTextVerbosity(value: string) {
       </span>
       {{ tf('channelEditor.nav.advanced', '高级选项') }}
     </h4>
-
-    <div class="space-y-1.5">
-      <Label class="text-xs font-semibold text-muted-foreground">{{ tf('addChannel.descriptionLabel', '描述 (可选)') }}</Label>
-      <Textarea
-        :model-value="form.description"
-        rows="3"
-        class="min-h-[84px] resize-none"
-        :placeholder="tf('addChannel.descriptionHint', '可选的渠道描述...')"
-        @update:model-value="(val) => updateField('description', val as string)"
-      />
-      <p class="text-[10px] leading-4 text-muted-foreground">{{ tf('addChannel.descriptionHint', '可选的渠道描述...') }}</p>
-    </div>
 
     <div class="grid gap-3">
       <div class="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-gradient-to-r from-background/60 to-background/40 p-4 shadow-sm backdrop-blur-sm transition-all hover:shadow-md">

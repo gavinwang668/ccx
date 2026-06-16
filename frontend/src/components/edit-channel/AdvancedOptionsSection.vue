@@ -1,22 +1,6 @@
 <template>
   <div class="advanced-options-section">
     <v-row dense>
-      <!-- 描述 -->
-      <v-col cols="12">
-        <v-textarea
-          :model-value="form.description"
-          :label="t('addChannel.descriptionLabel')"
-          :hint="t('addChannel.descriptionHint')"
-          persistent-hint
-          prepend-inner-icon="mdi-text"
-          variant="outlined"
-          density="comfortable"
-          rows="3"
-          no-resize
-          @update:model-value="updateField('description', $event)"
-        />
-      </v-col>
-
       <!-- 跳过 TLS 证书验证 -->
       <v-col cols="12">
         <div class="d-flex align-center justify-space-between">
@@ -91,7 +75,6 @@ import RuntimeSwitchGroup from './RuntimeSwitchGroup.vue'
 import TransportConfigGroup from './TransportConfigGroup.vue'
 
 interface FormData {
-  description: string
   insecureSkipVerify: boolean
   lowQuality: boolean
   autoBlacklistBalance: boolean
