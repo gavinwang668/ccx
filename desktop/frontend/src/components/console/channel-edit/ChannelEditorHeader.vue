@@ -11,7 +11,6 @@ defineProps<{
   saving: boolean
   serviceType?: string
   serviceTypeOptions?: Array<{ label: string; value: string }>
-  serviceTypeStatus?: string
 }>()
 
 const emit = defineEmits<{
@@ -37,13 +36,13 @@ const { tf } = useLanguage()
       </h3>
     </div>
 
-    <!-- 创建模式：显示服务类型选择器 -->
+    <!-- 创建模式：显示上游类型选择器 -->
     <div v-if="!isEditMode && serviceTypeOptions" class="flex shrink-0 items-center gap-3">
       <span class="text-xs font-medium text-muted-foreground">
         {{ tf('channelEditor.basic.serviceType.label', '上游类型') }}
       </span>
       <Select :model-value="serviceType" @update:model-value="(val) => emit('update:service-type', String(val))">
-        <SelectTrigger class="h-9 w-[160px] bg-background">
+        <SelectTrigger class="h-9 w-[200px] bg-background">
           <SelectValue :placeholder="tf('channelEditor.basic.serviceType.placeholder', '选择类型')" />
         </SelectTrigger>
         <SelectContent>
@@ -52,9 +51,6 @@ const { tf } = useLanguage()
           </SelectItem>
         </SelectContent>
       </Select>
-      <div class="rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-[10px] text-muted-foreground whitespace-nowrap">
-        {{ serviceTypeStatus }}
-      </div>
     </div>
 
     <!-- 编辑模式：显示操作按钮 -->

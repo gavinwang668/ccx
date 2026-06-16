@@ -5,18 +5,13 @@ import { useLanguage } from '@/composables/useLanguage'
 
 defineProps<{
   quickInput: string
-  serviceType: string
-  serviceTypeOptions: Array<{ label: string; value: string }>
-  detectedServiceType: string | null
   detectedBaseUrls: string[]
   detectedApiKeys: string[]
-  userSelectedServiceType: boolean
   expectedRequestUrls: Array<{ baseUrl: string; expectedUrl: string }>
 }>()
 
 const emit = defineEmits<{
   (e: 'update:quick-input', value: string): void
-  (e: 'update:service-type', value: string): void
   (e: 'quick-paste', text: string): void
 }>()
 
@@ -69,7 +64,7 @@ const { tf } = useLanguage()
             {{ tf('channelEditor.auth.keys.label', 'API Keys') }}
           </div>
           <p v-if="detectedApiKeys.length" class="text-xs font-medium text-emerald-600">
-            {{ tf('addChannel.detectedKeys', '已识别 {count} 个密钥', { count: detectedApiKeys.length }) }}
+            {{ detectedApiKeys.length }} {{ tf('channelCard.configuredKeys', 'active keys') }}
           </p>
           <p v-else class="text-xs text-muted-foreground">
             {{ tf('addChannel.noneDetected', '未识别到密钥') }}

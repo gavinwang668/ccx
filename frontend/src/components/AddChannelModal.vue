@@ -13,6 +13,25 @@
             {{ isEditing ? t('addChannel.editSubtitle') : t('addChannel.quickSubtitle') }}
           </div>
         </div>
+        <!-- 创建模式：上游类型选择器（标题同一行右侧） -->
+        <div v-if="!isEditing" class="d-flex align-center ga-2 header-service-type">
+          <span class="text-caption font-weight-medium text-white text-no-wrap">
+            {{ t('channelEditor.basic.serviceType.label') }}
+          </span>
+          <v-select
+            v-model="quickServiceType"
+            :items="headerServiceTypeItems"
+            item-title="title"
+            item-value="value"
+            variant="solo"
+            density="compact"
+            flat
+            hide-details
+            class="header-service-type-select"
+            @update:model-value="quickServiceTypeTouched = true"
+            @update:menu="onMenuUpdate"
+          />
+        </div>
         <div v-if="isEditing && props.channelType !== 'images'" class="header-capability-actions">
           <v-tooltip location="bottom" :text="form.noVision ? t('channelCard.noVision') : t('channelCard.hasVision')" :open-delay="150" content-class="key-tooltip">
             <template #activator="{ props: tip }">
@@ -46,32 +65,6 @@
       <v-card-text class="pa-6">
         <!-- 快速添加模式 -->
         <div v-if="!isEditing">
-          <v-select
-            v-model="quickServiceType"
-            :items="serviceTypeOptions"
-            item-title="title"
-            item-value="value"
-            :label="t('channelEditor.basic.serviceType.label')"
-            variant="outlined"
-            density="compact"
-            class="mb-4"
-            hide-details
-            @update:model-value="quickServiceTypeTouched = true"
-            @update:menu="onMenuUpdate"
-          >
-            <template #append-inner>
-              <v-chip size="x-small" :color="quickServiceTypeTouched ? 'primary' : (detectedServiceType ? 'success' : 'default')" variant="tonal">
-                {{
-                  quickServiceTypeTouched
-                    ? t('addChannel.serviceTypeManual')
-                    : detectedServiceType
-                      ? t('addChannel.serviceTypeDetected')
-                      : t('addChannel.serviceTypeDefault')
-                }}
-              </v-chip>
-            </template>
-          </v-select>
-
           <v-textarea
             v-model="quickInput"
             :label="t('addChannel.quickInputLabel')"
@@ -1747,6 +1740,22 @@ const serviceTypeOptions = computed(() => {
     default:
       return allOptions
   }
+})
+
+// 推荐的上游类型：未手动选择时 = 已识别类型，否则回退默认类型；手动选择后不再推荐
+const recommendedServiceType = computed<string | null>(() => {
+  if (quickServiceTypeTouched.value) return null
+  return detectedServiceType.value || getDefaultServiceTypeValue()
+})
+
+// 头部选择器的选项：给推荐项的标题追加「· 推荐」后缀
+const headerServiceTypeItems = computed(() => {
+  const suffix = t('addChannel.serviceTypeRecommendedSuffix')
+  return serviceTypeOptions.value.map(option =>
+    option.value === recommendedServiceType.value
+      ? { ...option, title: `${option.title}${suffix}` }
+      : option
+  )
 })
 
 // 全部源模型选项 - 根据渠道类型动态显示
@@ -3611,6 +3620,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.header-service-type {
+  flex-shrink: 0;
+}
+
+.header-service-type-select {
+  width: 200px;
+}
+
+.header-service-type-select :deep(.v-field) {
+  border-radius: 8px;
+}
+
+.header-service-type-select :deep(.v-select__selection-text) {
+  white-space: nowrap;
 }
 
 .capability-test-btn :deep(.v-btn__content) {

@@ -1024,6 +1024,22 @@ const serviceTypeOptions = computed(() => {
   return primary ? [primary, ...rest] : all
 })
 
+// 推荐的上游类型：未手动选择时 = 已识别类型，否则回退默认类型；手动选择后不再推荐
+const recommendedServiceType = computed<string | null>(() => {
+  if (quickServiceTypeTouched.value) return null
+  return detectedServiceType.value || defaultServiceTypeForChannel()
+})
+
+// 头部选择器选项：给推荐项的标签追加「· 推荐」后缀
+const headerServiceTypeItems = computed(() => {
+  const suffix = tf('addChannel.serviceTypeRecommendedSuffix', ' · 推荐')
+  return serviceTypeOptions.value.map(option =>
+    option.value === recommendedServiceType.value
+      ? { ...option, label: `${option.label}${suffix}` }
+      : option,
+  )
+})
+
 const supportsOpenAIAdvanced = computed(() => form.serviceType === 'openai' || form.serviceType === 'responses')
 const supportsOpenAIAdvancedOptions = computed(() => form.serviceType === 'openai' || form.serviceType === 'responses')
 const supportsChatRoleNormalization = computed(() => {
@@ -1509,8 +1525,7 @@ void toggleSupportedModelFilter
             :no-vision="form.noVision"
             :saving="saving"
             :service-type="form.serviceType"
-            :service-type-options="isEditMode ? undefined : serviceTypeOptions"
-            :service-type-status="quickServiceTypeTouched ? tf('addChannel.serviceTypeManual', '手动选择') : (detectedServiceType ? tf('addChannel.serviceTypeDetected', '已识别') : tf('addChannel.serviceTypeDefault', '默认'))"
+            :service-type-options="isEditMode ? undefined : headerServiceTypeItems"
             @close="emit('close')"
             @toggle-no-vision="form.noVision = !form.noVision"
             @test-capability="handleTestCapability"
@@ -1527,15 +1542,10 @@ void toggleSupportedModelFilter
 
                 <QuickCreatePanel
                   :quick-input="quickInput"
-                  :service-type="form.serviceType"
-                  :service-type-options="serviceTypeOptions"
-                  :detected-service-type="detectedServiceType"
                   :detected-base-urls="detectedBaseUrls"
                   :detected-api-keys="detectedApiKeys"
-                  :user-selected-service-type="quickServiceTypeTouched"
                   :expected-request-urls="quickExpectedRequestUrls"
                   @update:quick-input="quickInput = $event"
-                  @update:service-type="updateQuickServiceType"
                   @quick-paste="handleQuickPaste"
                 />
               </form>
