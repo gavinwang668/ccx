@@ -42,7 +42,7 @@ func performSettingsJSON(handler gin.HandlerFunc, method string, body string) *h
 func TestGetCircuitBreaker_ReturnsToolCallIdleTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	config.SetRuntimeTimeouts(123000, 45000)
-	t.Cleanup(func() { config.SetRuntimeTimeouts(300000, 60000) })
+	t.Cleanup(func() { config.SetRuntimeTimeouts(120000, 60000) })
 
 	w := performSettingsJSON(GetCircuitBreaker(func() metrics.CircuitBreakerParams {
 		return metrics.CircuitBreakerParams{
@@ -53,7 +53,7 @@ func TestGetCircuitBreaker_ReturnsToolCallIdleTimeout(t *testing.T) {
 			StreamInactivityTimeoutMs:    20000,
 			StreamToolCallIdleTimeoutMs:  30000,
 		}
-	}, &config.EnvConfig{RequestTimeout: 300000, ResponseHeaderTimeout: 60}), http.MethodGet, "")
+	}, &config.EnvConfig{RequestTimeout: 120000, ResponseHeaderTimeout: 60}), http.MethodGet, "")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)

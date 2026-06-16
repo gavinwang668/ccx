@@ -58,7 +58,7 @@ ENABLE_RESPONSE_LOGS=false             # 是否记录响应日志
 QUIET_POLLING_LOGS=true                # 静默前端轮询端点日志（如 /api/messages/channels/dashboard）
 
 # 性能配置
-REQUEST_TIMEOUT=300000                 # 非流式上游请求超时时间（毫秒，1000-300000）
+REQUEST_TIMEOUT=120000                 # 非流式上游请求总超时（毫秒，1000-300000，默认 2 分钟，最大 5 分钟）
 RESPONSE_HEADER_TIMEOUT=60             # 等待上游 HTTP 响应头超时（秒，30-120；调校台可运行时覆盖到 300 秒）
 MAX_REQUEST_BODY_SIZE_MB=50            # 请求体最大大小（MB，默认 50）
 

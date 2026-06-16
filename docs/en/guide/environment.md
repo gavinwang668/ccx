@@ -58,7 +58,7 @@ ENABLE_RESPONSE_LOGS=false             # 是否记录响应日志
 QUIET_POLLING_LOGS=true                # 静默前端轮询端点日志（如 /api/messages/channels/dashboard）
 
 # 性能配置
-REQUEST_TIMEOUT=300000                 # Non-streaming upstream request timeout (ms, 1000-300000)
+REQUEST_TIMEOUT=120000                 # Non-streaming upstream request timeout (ms, 1000-300000; default 2 minutes, max 5 minutes)
 RESPONSE_HEADER_TIMEOUT=60             # Wait for upstream HTTP response headers (seconds, 30-120; tuning bench can override up to 300s at runtime)
 MAX_REQUEST_BODY_SIZE_MB=50            # 请求体最大大小（MB，默认 50）
 
