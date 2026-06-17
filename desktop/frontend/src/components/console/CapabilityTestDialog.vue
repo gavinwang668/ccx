@@ -50,8 +50,10 @@ const rpmValue = ref(10)
 // 加载 snapshot
 watch(() => props.open, async (isOpen) => {
   if (isOpen) {
+    window.addEventListener('keydown', onKeyDown)
     await fetchSnapshot(props.channelType, props.channelId, props.channelType)
   } else {
+    window.removeEventListener('keydown', onKeyDown)
     reset()
   }
 }, { immediate: true })
@@ -211,10 +213,13 @@ function getRunModeLabel(mode: string): string {
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (!props.open || e.key !== 'Escape') return
+  e.preventDefault()
+  emit('close')
 }
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown)
   reset()
 })
 </script>
@@ -222,7 +227,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center" @keydown="onKeyDown">
+      <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="emit('close')" />
 
         <div class="relative z-10 w-[94vw] max-w-4xl max-h-[90vh] border border-border bg-card shadow-2xl flex flex-col">

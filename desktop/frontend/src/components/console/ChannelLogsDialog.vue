@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onBeforeUnmount } from 'vue'
 import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -149,9 +149,11 @@ watch(() => props.open, (isOpen) => {
     logs.value = []
     expandedIndex.value = null
     resume()
+    window.addEventListener('keydown', onKeyDown)
     void fetchLogs()
   } else {
     pause()
+    window.removeEventListener('keydown', onKeyDown)
   }
 })
 
@@ -168,8 +170,14 @@ watch(shouldPoll, (polling) => {
 })
 
 function onKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (!props.open || e.key !== 'Escape') return
+  e.preventDefault()
+  emit('close')
 }
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown)
+})
 </script>
 
 <template>
@@ -178,7 +186,6 @@ function onKeyDown(e: KeyboardEvent) {
       <div
         v-if="open"
         class="fixed inset-0 z-50 flex items-center justify-center"
-        @keydown="onKeyDown"
       >
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="emit('close')" />
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch, computed } from 'vue'
+import { reactive, ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Alert } from '@/components/ui/alert'
@@ -204,8 +204,27 @@ const saveConfig = async () => {
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (!props.open) return
+
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    emit('close')
+    return
+  }
+
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !saving.value) {
+    e.preventDefault()
+    void saveConfig()
+  }
 }
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown)
+})
 
 // 弹窗打开时加载配置
 const loadOnOpen = async () => {
@@ -227,7 +246,6 @@ watch(() => props.open, (isOpen) => {
       <div
         v-if="open"
         class="fixed inset-0 z-50 flex items-center justify-center"
-        @keydown="onKeyDown"
       >
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="emit('close')" />
 
