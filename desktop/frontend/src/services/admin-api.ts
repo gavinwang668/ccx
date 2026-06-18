@@ -419,6 +419,8 @@ export interface ChannelLogEntry {
   model: string
   originalModel?: string
   operation?: string
+  originalReasoningEffort?: string
+  actualReasoningEffort?: string
   statusCode: number
   durationMs: number
   success: boolean

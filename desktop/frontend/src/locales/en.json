@@ -826,6 +826,8 @@
   "channelLogs.status.failed": "Failed",
   "channelLogs.status.cancelled": "Cancelled",
   "channelLogs.sourceCapabilityTest": "Capability test",
+  "channelLogs.reasoning.original": "Original",
+  "channelLogs.reasoning.actual": "Sent",
   "channelLogs.retry": "Retry",
   "channelLogs.duration.connect": "Connect",
   "channelLogs.duration.firstByte": "First byte",

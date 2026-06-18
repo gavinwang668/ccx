@@ -132,6 +132,32 @@ function formatDurationSeconds(durationMs: number) {
   return `${Number.parseFloat(seconds.toPrecision(3))}s`
 }
 
+function formatReasoningEffort(effort: string) {
+  const value = effort.trim()
+  return value.length > 24 ? `${value.slice(0, 21)}...` : value
+}
+
+function normalizedReasoningEffort(effort?: string) {
+  return effort?.trim() || ''
+}
+
+function singleReasoningEffort(log: ChannelLogEntry) {
+  const original = normalizedReasoningEffort(log.originalReasoningEffort)
+  const actual = normalizedReasoningEffort(log.actualReasoningEffort)
+  if (!original) return actual
+  if (!actual) return original
+  return original.toLowerCase() === actual.toLowerCase() ? actual : ''
+}
+
+function reasoningEffortClass(effort: string) {
+  const value = effort.toLowerCase()
+  if (value === 'none' || value === 'disabled' || value === 'false') return 'border-border bg-muted/30 text-muted-foreground'
+  if (value === 'minimal' || value === 'low') return 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+  if (value === 'high' || value === 'xhigh' || value === 'max') return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  if (value.startsWith('budget=')) return 'border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+  return 'border-primary/30 bg-primary/10 text-primary'
+}
+
 function formatTime(ts: string) {
   try {
     return new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -268,6 +294,32 @@ onBeforeUnmount(() => {
                     </span>
                     <span v-if="log.originalModel" class="text-muted-foreground">{{ log.originalModel }} →</span>
                     <span class="font-medium">{{ log.model }}</span>
+                    <span
+                      v-if="singleReasoningEffort(log)"
+                      class="inline-flex border px-1.5 py-0.5 text-[10px] font-bold"
+                      :class="reasoningEffortClass(singleReasoningEffort(log))"
+                      :title="singleReasoningEffort(log)"
+                    >
+                      {{ formatReasoningEffort(singleReasoningEffort(log)) }}
+                    </span>
+                    <template v-else>
+                      <span
+                        v-if="log.originalReasoningEffort"
+                        class="inline-flex border px-1.5 py-0.5 text-[10px] font-bold"
+                        :class="reasoningEffortClass(log.originalReasoningEffort)"
+                        :title="log.originalReasoningEffort"
+                      >
+                        {{ tf('channelLogs.reasoning.original', '原始') }} {{ formatReasoningEffort(log.originalReasoningEffort) }}
+                      </span>
+                      <span
+                        v-if="log.actualReasoningEffort"
+                        class="inline-flex border px-1.5 py-0.5 text-[10px] font-bold"
+                        :class="reasoningEffortClass(log.actualReasoningEffort)"
+                        :title="log.actualReasoningEffort"
+                      >
+                        {{ tf('channelLogs.reasoning.actual', '发出') }} {{ formatReasoningEffort(log.actualReasoningEffort) }}
+                      </span>
+                    </template>
                     <code class="max-w-[130px] truncate bg-secondary px-1 py-0.5 font-mono text-[10px] text-muted-foreground">{{ log.keyMask }}</code>
                     <code v-if="log.baseUrl" class="max-w-[220px] truncate bg-secondary px-1 py-0.5 font-mono text-[10px] text-muted-foreground" :title="log.baseUrl">
                       {{ log.baseUrl }}

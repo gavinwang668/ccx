@@ -826,6 +826,8 @@
   "channelLogs.status.failed": "失败",
   "channelLogs.status.cancelled": "已取消",
   "channelLogs.sourceCapabilityTest": "能力测试",
+  "channelLogs.reasoning.original": "原始",
+  "channelLogs.reasoning.actual": "发出",
   "channelLogs.retry": "重试",
   "channelLogs.duration.connect": "连接",
   "channelLogs.duration.firstByte": "首字节",
