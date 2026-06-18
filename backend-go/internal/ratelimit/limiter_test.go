@@ -346,6 +346,26 @@ func TestLimiter_ApplyUpstreamHints_IgnoresOnNon429WithoutRemaining(t *testing.T
 	}
 }
 
+func TestLimiter_SetCooldown(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{}, base)
+
+	l.SetCooldown(base.Add(30 * time.Second))
+	in, until := l.InCooldown(base)
+	if !in {
+		t.Fatal("expected cooldown")
+	}
+	if d := until.Sub(base); d != 30*time.Second {
+		t.Fatalf("cooldown = %v, want 30s", d)
+	}
+
+	l.SetCooldown(base.Add(10 * time.Second))
+	_, until = l.InCooldown(base)
+	if d := until.Sub(base); d != 30*time.Second {
+		t.Fatalf("shorter cooldown should not replace existing, got %v", d)
+	}
+}
+
 // ── nil limiter safety ──
 
 func TestLimiter_NilSafety(t *testing.T) {

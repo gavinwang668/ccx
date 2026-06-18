@@ -65,6 +65,18 @@ func (m *Manager) Get(apiType string, channelIndex int) *ChannelLimiter {
 	return m.limiters[key]
 }
 
+// SetCooldown 将指定渠道置入短期冷却；不存在 limiter 时创建一个不限速 limiter 承载运行态冷却。
+func (m *Manager) SetCooldown(apiType string, channelIndex int, duration time.Duration, now time.Time) {
+	if m == nil || duration <= 0 {
+		return
+	}
+	if l := m.Get(apiType, channelIndex); l != nil {
+		l.SetCooldown(now.Add(duration))
+		return
+	}
+	m.GetOrCreate(apiType, channelIndex, Config{}).SetCooldown(now.Add(duration))
+}
+
 // Remove 移除指定渠道的 limiter。
 func (m *Manager) Remove(apiType string, channelIndex int) {
 	key := limiterKey(apiType, channelIndex)

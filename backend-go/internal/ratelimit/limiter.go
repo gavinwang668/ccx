@@ -103,6 +103,18 @@ func (l *ChannelLimiter) InCooldown(now time.Time) (bool, time.Time) {
 	return true, l.cooldownUntil
 }
 
+// SetCooldown 将渠道置入短期冷却；如果已有更晚的冷却截止时间，则保持原值。
+func (l *ChannelLimiter) SetCooldown(until time.Time) {
+	if l == nil || until.IsZero() {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if until.After(l.cooldownUntil) {
+		l.cooldownUntil = until
+	}
+}
+
 // Acquire 尝试获取一个请求许可。返回 release 函数（必须在请求完成后调用以释放并发信号量）。
 // maxWait 是最长排队等待时间；ctx 支持客户端断开取消。
 // 返回的 error 可能是 ErrInCooldown / ErrAcquireBusy / ErrWindowFull / context.Canceled。
@@ -279,8 +291,8 @@ func (l *ChannelLimiter) Status(now time.Time) LimiterStatus {
 
 // LimiterStatus 是 limiter 的只读快照。
 type LimiterStatus struct {
-	WindowSize     int       // 当前窗口内请求数
-	MaxRequests    int       // 窗口最大请求数（RPM）
+	WindowSize     int // 当前窗口内请求数
+	MaxRequests    int // 窗口最大请求数（RPM）
 	MaxConcurrent  int
 	ActiveRequests int
 	InCooldown     bool

@@ -480,7 +480,7 @@ func (s *ChannelScheduler) SelectChannel(
 				for _, ch := range activeChannels {
 					if ch.Index == entry.ChannelIndex && ch.Status == "active" {
 						upstream := s.getUpstreamByIndex(entry.ChannelIndex, kind)
-						if upstream != nil && s.channelCircuitState(upstream, kind) != metrics.CircuitStateOpen {
+						if upstream != nil && s.channelCircuitState(upstream, kind) != metrics.CircuitStateOpen && !s.channelInRuntimeCooldown(kind, entry.ChannelIndex) {
 							log.Printf("[%s-Override] 手动覆盖选择渠道: [%d] %s (user: %s)", prefix, entry.ChannelIndex, entry.ChannelName, maskUserID(userID))
 							// Idle 续期：对话活跃时延长 override TTL
 							s.overrideManager.RefreshOverrideForUser(string(kind), userID)
@@ -499,7 +499,7 @@ func (s *ChannelScheduler) SelectChannel(
 	if promotedChannel != nil && !failedChannels[promotedChannel.Index] {
 		// 促销渠道存在且未失败，直接使用（不检查健康状态，让用户设置的促销渠道有机会尝试）
 		upstream := s.getUpstreamByIndex(promotedChannel.Index, kind)
-		if upstream != nil && len(upstream.APIKeys) > 0 {
+		if upstream != nil && len(upstream.APIKeys) > 0 && !s.channelInRuntimeCooldown(kind, promotedChannel.Index) {
 			failureRate := s.channelFailureRate(upstream, kind)
 			prefix := kindSchedulerLogPrefix(kind)
 			log.Printf("[%s-Promotion] 促销期优先选择渠道: [%d] %s (失败率: %.1f%%, 绕过健康检查)", prefix, promotedChannel.Index, upstream.Name, failureRate*100)
@@ -532,9 +532,9 @@ func (s *ChannelScheduler) SelectChannel(
 						log.Printf("[%s-Affinity] 跳过亲和渠道 [%d] %s: 存在更高优先级可用渠道 (亲和优先级: %d, 最优优先级: %d, user: %s)", prefix, preferredIdx, ch.Name, ch.Priority, bestPriority, maskUserID(userID))
 						continue
 					}
-					// 检查渠道是否健康
+					// 检查渠道是否健康且未处于运行态冷却
 					upstream := s.getUpstreamByIndex(preferredIdx, kind)
-					if upstream != nil && s.channelIsHealthy(upstream, kind) {
+					if upstream != nil && s.channelIsRuntimeAvailable(upstream, kind, preferredIdx) {
 						prefix := kindSchedulerLogPrefix(kind)
 						log.Printf("[%s-Affinity] Trace亲和选择渠道: [%d] %s (user: %s)", prefix, preferredIdx, upstream.Name, maskUserID(userID))
 						return s.selectionResult(kind, upstream, preferredIdx, "trace_affinity"), nil
@@ -576,10 +576,10 @@ func (s *ChannelScheduler) SelectChannel(
 			continue
 		}
 
-		// 跳过主动限速 cooldown 中的渠道（429 Retry-After 触发的临时冷却）
-		if s.channelInRateLimitCooldown(kind, ch.Index) {
+		// 跳过运行态 cooldown 中的渠道（如 429 Retry-After 或上游账号池临时不可用）
+		if s.channelInRuntimeCooldown(kind, ch.Index) {
 			prefix := kindSchedulerLogPrefix(kind)
-			log.Printf("[%s-Channel] 跳过限速 cooldown 中的渠道: [%d] %s", prefix, ch.Index, ch.Name)
+			log.Printf("[%s-Channel] 跳过运行态 cooldown 中的渠道: [%d] %s", prefix, ch.Index, ch.Name)
 			continue
 		}
 
@@ -599,8 +599,8 @@ func (s *ChannelScheduler) channelCircuitState(upstream *config.UpstreamConfig, 
 	return s.getMetricsManager(kind).GetChannelCircuitStateMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, NormalizedMetricsServiceType(kind, upstream.ServiceType))
 }
 
-// channelInRateLimitCooldown 判断渠道是否处于主动限速 cooldown（如 429 Retry-After 触发）。
-func (s *ChannelScheduler) channelInRateLimitCooldown(kind ChannelKind, channelIndex int) bool {
+// channelInRuntimeCooldown 判断渠道是否处于运行态 cooldown。
+func (s *ChannelScheduler) channelInRuntimeCooldown(kind ChannelKind, channelIndex int) bool {
 	if s.rateLimitManager == nil {
 		return false
 	}
@@ -610,6 +610,14 @@ func (s *ChannelScheduler) channelInRateLimitCooldown(kind ChannelKind, channelI
 	}
 	inCooldown, _ := limiter.InCooldown(time.Now())
 	return inCooldown
+}
+
+// MarkChannelCooldown 将渠道置入短期冷却，后续调度会暂时跳过该渠道。
+func (s *ChannelScheduler) MarkChannelCooldown(kind ChannelKind, channelIndex int, duration time.Duration) {
+	if s == nil || s.rateLimitManager == nil || duration <= 0 {
+		return
+	}
+	s.rateLimitManager.SetCooldown(kindAPIType(kind), channelIndex, duration, time.Now())
 }
 
 func (s *ChannelScheduler) channelFailureRate(upstream *config.UpstreamConfig, kind ChannelKind) float64 {
@@ -624,6 +632,19 @@ func (s *ChannelScheduler) channelIsHealthy(upstream *config.UpstreamConfig, kin
 		return false
 	}
 	return s.getMetricsManager(kind).IsChannelHealthyMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, NormalizedMetricsServiceType(kind, upstream.ServiceType))
+}
+
+func (s *ChannelScheduler) channelIsRuntimeAvailable(upstream *config.UpstreamConfig, kind ChannelKind, channelIndex int) bool {
+	if upstream == nil {
+		return false
+	}
+	if s.channelCircuitState(upstream, kind) == metrics.CircuitStateOpen {
+		return false
+	}
+	if !s.channelIsHealthy(upstream, kind) {
+		return false
+	}
+	return !s.channelInRuntimeCooldown(kind, channelIndex)
 }
 
 // findPromotedChannel 查找处于促销期的渠道
@@ -672,6 +693,9 @@ func (s *ChannelScheduler) selectFallbackChannel(
 
 		channelState := s.channelCircuitState(upstream, kind)
 		if channelState == metrics.CircuitStateOpen {
+			continue
+		}
+		if s.channelInRuntimeCooldown(kind, ch.Index) {
 			continue
 		}
 
@@ -781,7 +805,7 @@ func (s *ChannelScheduler) findBestAvailableChannelPriority(
 		if upstream == nil || len(upstream.APIKeys) == 0 {
 			continue
 		}
-		if s.channelCircuitState(upstream, kind) == metrics.CircuitStateOpen || !s.channelIsHealthy(upstream, kind) {
+		if !s.channelIsRuntimeAvailable(upstream, kind, ch.Index) {
 			continue
 		}
 

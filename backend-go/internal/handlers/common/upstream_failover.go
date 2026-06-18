@@ -21,6 +21,8 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+const upstreamAccountPoolCooldown = time.Minute
+
 // isClientSideError 判断错误是否由客户端明确取消（不应计入渠道失败）
 // 仅识别 context.Canceled，broken pipe/connection reset 视为连接故障需要 failover
 func isClientSideError(err error) bool {
@@ -359,6 +361,11 @@ func TryUpstreamWithAllKeys(
 
 					if isQuotaRelated {
 						deprioritizeCandidates[apiKey] = true
+					}
+					if IsUpstreamAccountPoolUnavailable(respBodyBytes) {
+						channelScheduler.MarkChannelCooldown(kind, channelIndex, upstreamAccountPoolCooldown)
+						RequestLogf(c, "[%s-Channel] 渠道 [%d] %s 上游账号池不可用，冷却 %s 并尝试下一个渠道", apiType, channelIndex, upstream.Name, upstreamAccountPoolCooldown)
+						return false, "", 0, lastFailoverError, nil, lastError
 					}
 					continue
 				}

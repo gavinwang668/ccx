@@ -522,6 +522,69 @@ func TestIsNonRetryableErrorCode(t *testing.T) {
 	}
 }
 
+func TestIsUpstreamAccountPoolUnavailable(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "error_code",
+			body: `{"error":{"message":"无可用账号，请稍后重试","type":"server_error","param":"","code":"no_available_account"}}`,
+			want: true,
+		},
+		{
+			name: "english_message",
+			body: `{"error":{"message":"no available accounts, retry later","type":"server_error"}}`,
+			want: true,
+		},
+		{
+			name: "sub2api_gemini_accounts",
+			body: `{"error":{"code":503,"message":"No available Gemini accounts","status":"UNAVAILABLE"}}`,
+			want: true,
+		},
+		{
+			name: "accounts_exhausted",
+			body: `{"error":{"message":"All available accounts exhausted","type":"api_error"}}`,
+			want: true,
+		},
+		{
+			name: "chinese_account_pool",
+			body: `{"error":{"message":"账号池不可用，请稍后重试","type":"server_error"}}`,
+			want: true,
+		},
+		{
+			name: "chinese_account_variant",
+			body: `{"error":{"message":"无可用账户，请稍后重试","type":"server_error"}}`,
+			want: true,
+		},
+		{
+			name: "top_level_message",
+			body: `{"message":"No available account for upstream pool"}`,
+			want: true,
+		},
+		{
+			name: "generic_server_error",
+			body: `{"error":{"message":"upstream temporarily unavailable","type":"server_error","code":"server_error"}}`,
+			want: false,
+		},
+		{
+			name: "invalid_json",
+			body: `not json`,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsUpstreamAccountPoolUnavailable([]byte(tt.body))
+			if got != tt.want {
+				t.Fatalf("IsUpstreamAccountPoolUnavailable() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestIsContentModerationErrorCode 测试内容审核类错误码判断
 func TestIsContentModerationErrorCode(t *testing.T) {
 	tests := []struct {

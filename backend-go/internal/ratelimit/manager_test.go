@@ -42,6 +42,47 @@ func TestManager_Get(t *testing.T) {
 	}
 }
 
+func TestManager_SetCooldownCreatesLimiter(t *testing.T) {
+	m := NewManager()
+	now := time.Now()
+
+	m.SetCooldown("Responses", 2, 30*time.Second, now)
+
+	l := m.Get("Responses", 2)
+	if l == nil {
+		t.Fatal("expected limiter created for cooldown")
+	}
+	in, until := l.InCooldown(now)
+	if !in {
+		t.Fatal("expected cooldown")
+	}
+	if d := until.Sub(now); d != 30*time.Second {
+		t.Fatalf("cooldown = %v, want 30s", d)
+	}
+}
+
+func TestManager_SetCooldownKeepsExistingConfig(t *testing.T) {
+	m := NewManager()
+	now := time.Now()
+	l := m.GetOrCreate("Responses", 2, Config{RPM: 120, MaxConcurrent: 4})
+
+	m.SetCooldown("Responses", 2, 30*time.Second, now)
+
+	if got := m.Get("Responses", 2); got != l {
+		t.Fatal("expected existing limiter instance")
+	}
+	status := l.Status(now)
+	if status.MaxRequests != 120 {
+		t.Fatalf("maxRequests = %v, want 120", status.MaxRequests)
+	}
+	if status.MaxConcurrent != 4 {
+		t.Fatalf("maxConcurrent = %v, want 4", status.MaxConcurrent)
+	}
+	if !status.InCooldown {
+		t.Fatal("expected cooldown")
+	}
+}
+
 func TestManager_Remove(t *testing.T) {
 	m := NewManager()
 	m.GetOrCreate("messages", 0, Config{RPM: 60})

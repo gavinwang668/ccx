@@ -247,6 +247,59 @@ func classifyByErrorMessageWithLogTag(bodyBytes []byte, apiType string, logTag s
 	return false, false
 }
 
+func IsUpstreamAccountPoolUnavailable(bodyBytes []byte) bool {
+	var errResp map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &errResp); err != nil {
+		return false
+	}
+
+	if isAccountPoolUnavailableMap(errResp) {
+		return true
+	}
+	if errObj, ok := errResp["error"].(map[string]interface{}); ok {
+		if isAccountPoolUnavailableMap(errObj) {
+			return true
+		}
+		if upstreamErr, ok := errObj["upstream_error"].(map[string]interface{}); ok {
+			return isAccountPoolUnavailableMap(upstreamErr)
+		}
+	}
+	return false
+}
+
+func isAccountPoolUnavailableMap(m map[string]interface{}) bool {
+	combined := strings.ToLower(strings.Join([]string{
+		toStringField(m, "code"),
+		toStringField(m, "type"),
+		toStringField(m, "message"),
+		toStringField(m, "detail"),
+		toStringField(m, "msg"),
+	}, " "))
+
+	accountPoolUnavailableMarkers := []string{
+		"no_available_account",
+		"no available account",
+		"no available accounts",
+		"no available gemini accounts",
+		"no available claude accounts",
+		"no available openai accounts",
+		"all available accounts exhausted",
+		"available accounts exhausted",
+		"accounts exhausted",
+		"account pool unavailable",
+		"账号池不可用",
+		"无可用账号",
+		"无可用账户",
+		"账户不可用",
+	}
+	for _, marker := range accountPoolUnavailableMarkers {
+		if strings.Contains(combined, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func classifyMessageFromMap(m map[string]interface{}) (bool, bool, string) {
 	messageFields := []string{"message", "param", "upstream_error", "detail", "error_description", "msg"}
 	for _, field := range messageFields {

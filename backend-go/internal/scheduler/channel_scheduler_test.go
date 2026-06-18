@@ -13,6 +13,7 @@ import (
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/metrics"
+	"github.com/BenedictKing/ccx/internal/ratelimit"
 	"github.com/BenedictKing/ccx/internal/session"
 	"github.com/BenedictKing/ccx/internal/warmup"
 )
@@ -69,6 +70,7 @@ func createTestScheduler(t *testing.T, cfg config.Config) (*ChannelScheduler, fu
 	urlManager := warmup.NewURLManager(30*time.Second, 3)
 
 	scheduler := NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
+	scheduler.SetRateLimitManager(ratelimit.NewManager())
 
 	return scheduler, func() {
 		messagesMetrics.Stop()
@@ -191,6 +193,44 @@ func TestPromotedChannelSkippedAfterFailure(t *testing.T) {
 
 	if got := scheduler.GetCurrentChannelIndex(ChannelKindMessages); got != 0 {
 		t.Errorf("运行态当前渠道 = %d, want 0", got)
+	}
+}
+
+func TestPromotedChannelSkippedInRuntimeCooldown(t *testing.T) {
+	promotionUntil := time.Now().Add(5 * time.Minute)
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "normal-channel",
+				BaseURL:  "https://normal.example.com",
+				APIKeys:  []string{"sk-normal-key"},
+				Status:   "active",
+				Priority: 1,
+			},
+			{
+				Name:           "promoted-channel",
+				BaseURL:        "https://promoted.example.com",
+				APIKeys:        []string{"sk-promoted-key"},
+				Status:         "active",
+				Priority:       2,
+				PromotionUntil: &promotionUntil,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+	scheduler.MarkChannelCooldown(ChannelKindMessages, 1, time.Minute)
+
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 0 {
+		t.Fatalf("期望跳过 cooldown 促销渠道并选择 index=0，实际为 index=%d", result.ChannelIndex)
+	}
+	if result.Reason != "priority_order" {
+		t.Fatalf("期望选择原因为 priority_order，实际为 %s", result.Reason)
 	}
 }
 
@@ -657,6 +697,54 @@ func hasMetricsKey(allMetrics []*metrics.KeyMetrics, metricsKey string) bool {
 	return false
 }
 
+func TestFallbackSkipsRuntimeCooldownChannel(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "unhealthy-channel",
+				BaseURL:  "https://unhealthy.example.com",
+				APIKeys:  []string{"sk-unhealthy"},
+				Status:   "active",
+				Priority: 1,
+			},
+			{
+				Name:     "cooldown-channel",
+				BaseURL:  "https://cooldown.example.com",
+				APIKeys:  []string{"sk-cooldown"},
+				Status:   "active",
+				Priority: 2,
+			},
+			{
+				Name:     "fallback-channel",
+				BaseURL:  "https://fallback.example.com",
+				APIKeys:  []string{"sk-fallback"},
+				Status:   "active",
+				Priority: 3,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	scheduler.MarkChannelCooldown(ChannelKindMessages, 1, time.Minute)
+
+	activeChannels := []ChannelInfo{
+		{Index: 1, Name: "cooldown-channel", Priority: 1, Status: "active"},
+		{Index: 2, Name: "fallback-channel", Priority: 2, Status: "active"},
+	}
+	result, err := scheduler.selectFallbackChannel(activeChannels, map[int]bool{}, ChannelKindMessages)
+	if err != nil {
+		t.Fatalf("fallback 选择失败: %v", err)
+	}
+	if result.ChannelIndex != 2 {
+		t.Fatalf("期望 fallback 跳过 cooldown 渠道并选择 index=2，实际为 index=%d", result.ChannelIndex)
+	}
+	if result.Reason != "fallback" {
+		t.Fatalf("期望选择原因为 fallback，实际为 %s", result.Reason)
+	}
+}
+
 func TestAffinityYieldToHigherPriorityHealthyChannel(t *testing.T) {
 	cfg := config.Config{
 		Upstream: []config.UpstreamConfig{
@@ -730,6 +818,41 @@ func TestAffinityStillWorksWithoutHigherPriorityAlternative(t *testing.T) {
 	}
 	if result.Reason != "trace_affinity" {
 		t.Fatalf("期望选择原因为 trace_affinity，实际为 %s", result.Reason)
+	}
+}
+
+func TestAffinitySkipsRuntimeCooldownChannel(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "affinity-channel",
+				BaseURL:  "https://affinity.example.com",
+				APIKeys:  []string{"sk-affinity"},
+				Status:   "active",
+				Priority: 1,
+			},
+			{
+				Name:     "fallback-channel",
+				BaseURL:  "https://fallback.example.com",
+				APIKeys:  []string{"sk-fallback"},
+				Status:   "active",
+				Priority: 2,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	scheduler.traceAffinity.SetPreferredChannel(string(ChannelKindMessages)+":test-user", 0)
+	scheduler.MarkChannelCooldown(ChannelKindMessages, 0, time.Minute)
+
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 1 {
+		t.Fatalf("期望跳过 cooldown 亲和渠道并选择 index=1，实际为 index=%d", result.ChannelIndex)
 	}
 }
 
