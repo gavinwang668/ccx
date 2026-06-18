@@ -515,6 +515,7 @@
   "orchestration.enable": "活跃",
   "channelCard.suspended": "暂停",
   "orchestration.moveToPool": "备用",
+  "orchestration.cache": "缓存",
   "orchestration.cacheWriteHigh": "缓存写偏高",
   "orchestration.cacheWriteHighHint": "过去 15 分钟缓存写入占比偏高，可能存在缓存命中配置不合理的问题。",
   "chart.globalStats": "用量统计",

@@ -4,8 +4,10 @@ import type {
   Channel,
   ChannelMetrics,
   ChannelRecentActivity,
+  TimeWindowStats,
 } from '@/services/admin-api'
 import { useLanguage } from '@/composables/useLanguage'
+import { openExternalLink } from '@/lib/external-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +25,7 @@ import {
   ArrowUp,
   Ban,
   Copy,
+  Database,
   Edit3,
   ExternalLink,
   GripVertical,
@@ -156,12 +159,42 @@ const tpmDisplay = computed(() => {
   return tpm.toFixed(0)
 })
 
+const currentStats = computed(() => props.metrics?.timeWindows?.['15m'])
+
+const cacheHitRate = computed(() => {
+  const stats = currentStats.value
+  if (!shouldShowCacheHitRate(stats)) return null
+  const inputTokens = stats.inputTokens ?? 0
+  const cacheReadTokens = stats.cacheReadTokens ?? 0
+  return stats.cacheHitRate ?? (cacheReadTokens / (inputTokens + cacheReadTokens) * 100)
+})
+
+const cacheHitRateClass = computed(() => {
+  const rate = cacheHitRate.value
+  if (rate === null) return 'border-muted bg-muted/50 text-muted-foreground'
+  if (rate >= 50) return 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  if (rate >= 20) return 'border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+  if (rate >= 5) return 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  return 'border-orange-500/25 bg-orange-500/10 text-orange-700 dark:text-orange-300'
+})
+
+const cacheHitRateDisplay = computed(() => {
+  const rate = cacheHitRate.value
+  return rate === null ? '' : `${rate.toFixed(0)}%`
+})
+
+const cacheHitRateTitle = computed(() => {
+  const stats = currentStats.value
+  if (!stats) return ''
+  return `${t('orchestration.cache')} ${cacheHitRateDisplay.value} · R ${formatTokenCount(stats.cacheReadTokens ?? 0)} · W ${formatTokenCount(stats.cacheCreationTokens ?? 0)}`
+})
+
 const CACHE_WRITE_WARNING_MIN_REQUESTS = 5
 const CACHE_WRITE_WARNING_MIN_TOKENS = 100000
 const CACHE_WRITE_WARNING_RATIO = 0.2
 
 const cacheWriteWarning = computed(() => {
-  const stats = props.metrics?.timeWindows?.['15m']
+  const stats = currentStats.value
   if (!stats || (stats.requestCount ?? 0) < CACHE_WRITE_WARNING_MIN_REQUESTS) return false
   const inputTokens = stats.inputTokens ?? 0
   const cacheReadTokens = stats.cacheReadTokens ?? 0
@@ -170,6 +203,19 @@ const cacheWriteWarning = computed(() => {
   if (denom <= 0 || cacheCreationTokens < CACHE_WRITE_WARNING_MIN_TOKENS) return false
   return (cacheCreationTokens / denom) >= CACHE_WRITE_WARNING_RATIO
 })
+
+function shouldShowCacheHitRate(stats?: TimeWindowStats): stats is TimeWindowStats {
+  if (!stats) return false
+  const inputTokens = stats.inputTokens ?? 0
+  const cacheReadTokens = stats.cacheReadTokens ?? 0
+  return inputTokens + cacheReadTokens > 0
+}
+
+function formatTokenCount(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return value.toFixed(0)
+}
 
 const websiteUrl = computed(() => {
   if (props.channel.website) return props.channel.website
@@ -192,6 +238,11 @@ async function copyChannelInfo() {
     ...(props.channel.apiKeys ?? []),
   ].map(item => item?.trim()).filter(Boolean)
   await navigator.clipboard?.writeText(lines.join('\n'))
+}
+
+function openWebsite() {
+  if (!websiteUrl.value) return
+  void openExternalLink(websiteUrl.value)
 }
 </script>
 
@@ -236,6 +287,15 @@ async function copyChannelInfo() {
           {{ channel.serviceType }}
         </Badge>
         <button
+          v-if="websiteUrl"
+          type="button"
+          class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border bg-secondary/50 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          :title="t('orchestration.openWebsite')"
+          @click.stop="openWebsite"
+        >
+          <ExternalLink class="h-3 w-3" />
+        </button>
+        <button
           type="button"
           class="inline-flex shrink-0 items-center gap-1 border border-border bg-secondary/50 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary"
           @click.stop="emit('edit')"
@@ -257,6 +317,15 @@ async function copyChannelInfo() {
         >
           <AlertTriangle class="h-3 w-3" />
           {{ circuitDisplay.label }}
+        </span>
+        <span
+          v-if="cacheHitRate !== null"
+          class="inline-flex shrink-0 items-center gap-1 border px-1.5 py-0.5 text-[10px] font-bold"
+          :class="cacheHitRateClass"
+          :title="cacheHitRateTitle"
+        >
+          <Database class="h-3 w-3" />
+          {{ t('orchestration.cache') }} {{ cacheHitRateDisplay }}
         </span>
         <span
           v-if="cacheWriteWarning"
@@ -367,7 +436,7 @@ async function copyChannelInfo() {
               <Copy class="h-4 w-4" />
               {{ t('orchestration.copyConfig') }}
             </DropdownMenuItem>
-            <DropdownMenuItem v-if="websiteUrl" as="a" :href="websiteUrl" target="_blank" rel="noopener">
+            <DropdownMenuItem v-if="websiteUrl" @click="openWebsite">
               <ExternalLink class="h-4 w-4" />
               {{ t('orchestration.openWebsite') }}
             </DropdownMenuItem>
