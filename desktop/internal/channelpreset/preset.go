@@ -757,15 +757,23 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 		},
 		ProviderVolcArk: {
 			ModelMapping: map[string]string{
-				"fable":  "minimax-m3",
+				"fable":  "glm-5.2",
 				"haiku":  "deepseek-v4-flash",
-				"opus":   "minimax-m3",
-				"sonnet": "minimax-m3",
+				"opus":   "glm-5.2",
+				"sonnet": "glm-5.2",
 			},
+			ReasoningMapping: map[string]string{
+				"fable":       "max",
+				"haiku":       "high",
+				"opus":        "max",
+				"sonnet":      "max",
+				"minimax-m3":  "xhigh",
+			},
+			ReasoningParamStyle:      "reasoning",
 			PassbackReasoningContent: true,
 			PassbackThinkingBlocks:   true,
-			NoVisionModels:           []string{"deepseek-v4-flash"},
-			VisionFallbackModel:      "minimax-m2.7",
+			NoVisionModels:           []string{"glm-5.2", "deepseek-v4-flash"},
+			VisionFallbackModel:      "minimax-m3",
 		},
 		ProviderQianfan: {
 			ModelMapping: map[string]string{
@@ -896,15 +904,22 @@ var channelTargetConfigs = map[string]map[string]channelTargetConfig{
 		ProviderVolcArk: {
 			ModelMapping: map[string]string{
 				"codex": "deepseek-v4-flash",
-				"gpt":   "minimax-m3",
+				"gpt":   "glm-5.2",
 				"mini":  "deepseek-v4-flash",
 			},
+			ReasoningMapping: map[string]string{
+				"codex":      "high",
+				"gpt":        "max",
+				"mini":       "high",
+				"minimax-m3": "xhigh",
+			},
+			ReasoningParamStyle:           "reasoning",
 			CodexToolCompat:               boolRef(false),
 			StripCodexClientTools:         boolRef(false),
 			CodexNativeToolPassthrough:    true,
 			NormalizeNonstandardChatRoles: true,
 			NoVisionModels:                []string{"deepseek-v4-flash"},
-			VisionFallbackModel:           "minimax-m2.7",
+			VisionFallbackModel:           "minimax-m3",
 		},
 		ProviderQianfan: {
 			ModelMapping: map[string]string{
