@@ -719,5 +719,22 @@
   "channelEditor.streamTimeout.preset.gentle": "Gentle",
   "channelEditor.streamTimeout.preset.balanced": "Balanced",
   "channelEditor.streamTimeout.preset.aggressive": "Aggressive",
-  "channelEditor.streamTimeout.timeoutThreshold": "Timeout threshold"
+  "channelEditor.streamTimeout.timeoutThreshold": "Timeout threshold",
+  "addChannel.syncModelList": "Sinkronkan model",
+  "addChannel.modelCapabilitiesRowsHint": "Pilih model upstream aktual dari /models. Preset bawaan mengisi konteks, output, thinking, dan harga; tetap bisa diedit.",
+  "addChannel.modelCapabilitiesConfigured": "Kemampuan model yang dikonfigurasi",
+  "addChannel.modelCapabilityModelLabel": "Model aktual",
+  "addChannel.modelCapabilityModelPlaceholder": "Pilih atau masukkan model upstream",
+  "addChannel.contextTokensShort": "Konteks",
+  "addChannel.outputTokensShort": "Output",
+  "addChannel.thinkingModeLabel": "Mode thinking",
+  "addChannel.reasoningEffortsLabel": "Reasoning effort",
+  "addChannel.modelCapabilityBuiltinMatched": "Preset bawaan cocok: {pattern}",
+  "addChannel.modelCapabilitiesRowsInvalid": "Periksa baris kemampuan model. Nama model wajib; token dan harga harus non-negatif.",
+  "addChannel.inputCacheHitPriceLabel": "Input cache hit",
+  "addChannel.inputCacheMissPriceLabel": "Input cache miss",
+  "addChannel.outputPriceLabel": "Harga output",
+  "addChannel.defaultOutputTokensMeta": "Output default {tokens}",
+  "addChannel.recommendedOutputTokensMeta": "Output rekomendasi {tokens}",
+  "addChannel.modelPricingUnitHint": "USD / 1 juta token"
 }

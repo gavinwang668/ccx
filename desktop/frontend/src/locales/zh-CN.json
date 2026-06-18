@@ -958,5 +958,22 @@
   "capability.genericJobError": "能力测试失败：{message}",
   "capability.redirectTests": "模型重定向测试",
   "capability.redirectTestsDesc": "跨协议模型映射验证",
-  "addChannel.quickInputPlaceholder": "粘贴配置片段，自动识别 Base URL 和 API Key（支持多行）\nhttps://api.example.com\nhttps://api-backup.example.com\nsk-ant-api03-xxxxxxxxxxxxxxxx\nsk-ant-api03-yyyyyyyyyyyyyyyy"
+  "addChannel.quickInputPlaceholder": "粘贴配置片段，自动识别 Base URL 和 API Key（支持多行）\nhttps://api.example.com\nhttps://api-backup.example.com\nsk-ant-api03-xxxxxxxxxxxxxxxx\nsk-ant-api03-yyyyyyyyyyyyyyyy",
+  "addChannel.syncModelList": "同步模型",
+  "addChannel.modelCapabilitiesRowsHint": "从上游 /models 选择实际模型，内置预设会自动填充上下文、输出、思考和价格；仍可手动调整。",
+  "addChannel.modelCapabilitiesConfigured": "已配置模型能力",
+  "addChannel.modelCapabilityModelLabel": "实际模型",
+  "addChannel.modelCapabilityModelPlaceholder": "选择或输入上游实际模型",
+  "addChannel.contextTokensShort": "上下文",
+  "addChannel.outputTokensShort": "输出",
+  "addChannel.thinkingModeLabel": "思考模式",
+  "addChannel.reasoningEffortsLabel": "思考强度",
+  "addChannel.modelCapabilityBuiltinMatched": "已匹配内置预设：{pattern}",
+  "addChannel.modelCapabilitiesRowsInvalid": "请检查模型能力行，模型名不能为空，tokens 和价格必须是非负数。",
+  "addChannel.inputCacheHitPriceLabel": "缓存命中输入价",
+  "addChannel.inputCacheMissPriceLabel": "缓存未命中输入价",
+  "addChannel.outputPriceLabel": "输出价",
+  "addChannel.defaultOutputTokensMeta": "默认输出 {tokens}",
+  "addChannel.recommendedOutputTokensMeta": "推荐输出 {tokens}",
+  "addChannel.modelPricingUnitHint": "美元 / 100万 tokens"
 }

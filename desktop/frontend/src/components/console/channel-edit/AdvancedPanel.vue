@@ -2,14 +2,16 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Clock, Database, Globe, ShieldCheck, Zap } from 'lucide-vue-next'
+import { Clock, Globe, ShieldCheck, Zap } from 'lucide-vue-next'
 import { useLanguage } from '@/composables/useLanguage'
+import type { ModelCapabilityRow } from '@/utils/channel-payload'
+import ModelCapabilityPanel from './ModelCapabilityPanel.vue'
 
 interface FormData {
   fastMode: boolean
   modelCapabilitiesText: string
+  modelCapabilityRows: ModelCapabilityRow[]
   defaultContextWindowTokens: string | number
   defaultMaxOutputTokens: string | number
   allowUnknownContext: boolean
@@ -50,20 +52,20 @@ defineProps<{
   supportsChatRoleNormalization: boolean
   reasoningParamStyleOptions: Array<{ label: string; value: string }>
   textVerbosityOptions: Array<{ label: string; value: string }>
+  modelCapabilityRows: ModelCapabilityRow[]
+  targetModels: string[]
+  fetchingModels: boolean
+  fetchModelsError: string
 }>()
 
 const emit = defineEmits<{
   'update:form': [value: Partial<FormData>]
+  'update:model-capability-rows': [rows: ModelCapabilityRow[]]
+  'sync-upstream-models': []
 }>()
 
 const { t, tf } = useLanguage()
 const TEXT_VERBOSITY_DEFAULT_VALUE = 'default'
-const modelCapabilitiesJsonPlaceholder = `{
-  "claude-sonnet-4-6": {
-    "contextWindowTokens": 1000000,
-    "maxOutputTokens": 64000
-  }
-}`
 
 function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
   emit('update:form', { [key]: value } as Partial<FormData>)
@@ -103,73 +105,22 @@ function updateTextVerbosity(value: string) {
       </div>
     </div>
 
-    <div v-if="channelType !== 'images'" class="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4 shadow-sm backdrop-blur-sm">
-      <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary border-b border-border/40 pb-2">
-        <Database class="h-3 w-3" />
-        {{ t('addChannel.contextCapabilityTitle') }}
-      </div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div class="space-y-1.5">
-          <Label class="text-xs font-semibold text-muted-foreground">
-            {{ t('addChannel.defaultContextWindowLabel') }}
-          </Label>
-          <Input
-            :model-value="form.defaultContextWindowTokens"
-            type="number"
-            min="0"
-            class="h-9"
-            :placeholder="tf('addChannel.defaultContextWindowLabel', '默认上下文窗口 tokens')"
-            @update:model-value="(val) => updateField('defaultContextWindowTokens', val as string | number)"
-          />
-          <p class="text-[10px] leading-4 text-muted-foreground">
-            {{ t('addChannel.defaultContextWindowHint') }}
-          </p>
-        </div>
-        <div class="space-y-1.5">
-          <Label class="text-xs font-semibold text-muted-foreground">
-            {{ t('addChannel.defaultMaxOutputLabel') }}
-          </Label>
-          <Input
-            :model-value="form.defaultMaxOutputTokens"
-            type="number"
-            min="0"
-            class="h-9"
-            :placeholder="tf('addChannel.defaultMaxOutputLabel', '默认最大输出 tokens')"
-            @update:model-value="(val) => updateField('defaultMaxOutputTokens', val as string | number)"
-          />
-          <p class="text-[10px] leading-4 text-muted-foreground">
-            {{ t('addChannel.defaultMaxOutputHint') }}
-          </p>
-        </div>
-      </div>
-
-      <div class="space-y-1.5">
-        <Label class="text-xs font-semibold text-muted-foreground">
-          {{ t('addChannel.modelCapabilitiesJsonLabel') }}
-        </Label>
-        <Textarea
-          :model-value="form.modelCapabilitiesText"
-          :placeholder="modelCapabilitiesJsonPlaceholder"
-          class="min-h-[104px] font-mono text-xs"
-          :class="{ 'border-destructive': !!modelCapabilitiesError }"
-          @update:model-value="(val) => updateField('modelCapabilitiesText', val as string)"
-        />
-        <p v-if="modelCapabilitiesError" class="text-[10px] leading-4 text-destructive">
-          {{ modelCapabilitiesError }}
-        </p>
-        <p class="text-[10px] leading-4 text-muted-foreground">
-          {{ t('addChannel.modelCapabilitiesJsonHint') }}
-        </p>
-      </div>
-
-      <div class="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-background/80 p-3">
-        <div class="min-w-0 space-y-0.5">
-          <Label class="text-xs font-medium">{{ t('addChannel.allowUnknownContextLabel') }}</Label>
-          <p class="text-[10px] leading-4 text-muted-foreground">{{ t('addChannel.allowUnknownContextHint') }}</p>
-        </div>
-        <Switch :model-value="form.allowUnknownContext" @update:model-value="updateField('allowUnknownContext', $event)" />
-      </div>
-    </div>
+    <ModelCapabilityPanel
+      v-if="channelType !== 'images'"
+      :rows="modelCapabilityRows"
+      :target-models="targetModels"
+      :fetching-models="fetchingModels"
+      :fetch-models-error="fetchModelsError"
+      :error="modelCapabilitiesError || ''"
+      :default-context-window-tokens="form.defaultContextWindowTokens"
+      :default-max-output-tokens="form.defaultMaxOutputTokens"
+      :allow-unknown-context="form.allowUnknownContext"
+      @update:rows="emit('update:model-capability-rows', $event)"
+      @update:default-context-window-tokens="(val) => updateField('defaultContextWindowTokens', val)"
+      @update:default-max-output-tokens="(val) => updateField('defaultMaxOutputTokens', val)"
+      @update:allow-unknown-context="(val) => updateField('allowUnknownContext', val)"
+      @sync-upstream-models="emit('sync-upstream-models')"
+    />
 
     <div class="space-y-2.5">
       <!-- Runtime 运行期策略 -->

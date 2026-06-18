@@ -92,6 +92,34 @@ func TestResolveUpstreamCapability_ChannelOverrideWins(t *testing.T) {
 	}
 }
 
+func TestResolveUpstreamCapability_KimiK27Builtin(t *testing.T) {
+	upstream := &UpstreamConfig{
+		ModelMapping: map[string]string{
+			"agent": "Kimi-K2.7-Code-HighSpeed",
+		},
+	}
+
+	resolved := ResolveUpstreamCapability("agent", upstream, nil)
+	if !resolved.Known || resolved.Source != "builtin" {
+		t.Fatalf("source = %q known=%v, want builtin known", resolved.Source, resolved.Known)
+	}
+	if resolved.Capability.ContextWindowTokens != 262144 {
+		t.Fatalf("ContextWindowTokens = %d, want 262144", resolved.Capability.ContextWindowTokens)
+	}
+	if resolved.Capability.MaxOutputTokens != 262144 {
+		t.Fatalf("MaxOutputTokens = %d, want 262144", resolved.Capability.MaxOutputTokens)
+	}
+	if resolved.Capability.DefaultOutputTokens != 32768 {
+		t.Fatalf("DefaultOutputTokens = %d, want 32768", resolved.Capability.DefaultOutputTokens)
+	}
+	if resolved.Capability.RecommendedOutputTokens != 262144 {
+		t.Fatalf("RecommendedOutputTokens = %d, want 262144", resolved.Capability.RecommendedOutputTokens)
+	}
+	if resolved.Capability.Pricing == nil || resolved.Capability.Pricing.OutputPrice == nil || *resolved.Capability.Pricing.OutputPrice != 8 {
+		t.Fatalf("Pricing.OutputPrice = %#v, want 8", resolved.Capability.Pricing)
+	}
+}
+
 func TestResolveUpstreamCapability_RequestModelFallback(t *testing.T) {
 	upstream := &UpstreamConfig{
 		ModelMapping: map[string]string{"agent-1m": "vendor-hidden-model"},

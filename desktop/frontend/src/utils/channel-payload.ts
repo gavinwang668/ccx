@@ -1,6 +1,27 @@
 import type { Channel, UpstreamModelCapability } from '@/services/admin-api'
 import { normalizeAdvancedChannelOptions } from './channel-advanced-options'
 import { deduplicateEquivalentBaseUrls } from './base-url-semantics'
+import { builtinUpstreamModelCapabilities } from '@/generated/model-registry'
+
+export interface ModelCapabilityRow {
+  id: number
+  model: string
+  contextWindowTokens: string | number | null
+  maxOutputTokens: string | number | null
+  thinkingMode: string
+  reasoningEffortsText: string
+  pricingUnit: string
+  pricingCurrency: string
+  inputCacheHitPrice: string | number | null
+  inputCacheMissPrice: string | number | null
+  outputPrice: string | number | null
+  defaultOutputTokens?: number
+  recommendedOutputTokens?: number
+  displayName?: string
+  description?: string
+  source?: 'builtin' | 'custom'
+  matchedPattern?: string
+}
 
 export interface ChannelFormLike {
   name: string
@@ -18,6 +39,7 @@ export interface ChannelFormLike {
   apiKeys: string[]
   modelMapping: Record<string, string>
   modelCapabilitiesText?: string
+  modelCapabilityRows?: ModelCapabilityRow[]
   defaultContextWindowTokens?: string | number | null
   defaultMaxOutputTokens?: string | number | null
   allowUnknownContext?: boolean
@@ -53,6 +75,39 @@ export interface ChannelFormLike {
   visionFallbackModel: string
   historicalImageTurnLimit?: string | number | null
 
+}
+
+
+function normalizePricingValue(value: unknown): number | null | false {
+  const trimmed = String(value ?? '').trim()
+  if (!trimmed) return null
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || parsed < 0) return false
+  return parsed
+}
+
+function hasPricingValue(row: ModelCapabilityRow): boolean {
+  return !!(
+    String(row.inputCacheHitPrice ?? '').trim() ||
+    String(row.inputCacheMissPrice ?? '').trim() ||
+    String(row.outputPrice ?? '').trim()
+  )
+}
+
+function createPricingFromRow(row: ModelCapabilityRow): UpstreamModelCapability['pricing'] | null | false {
+  if (!hasPricingValue(row)) return null
+  const inputCacheHitPrice = normalizePricingValue(row.inputCacheHitPrice)
+  const inputCacheMissPrice = normalizePricingValue(row.inputCacheMissPrice)
+  const outputPrice = normalizePricingValue(row.outputPrice)
+  if (inputCacheHitPrice === false || inputCacheMissPrice === false || outputPrice === false) return false
+  const pricing: NonNullable<UpstreamModelCapability['pricing']> = {
+    unit: row.pricingUnit.trim() || 'per_1m_tokens_usd',
+    currency: row.pricingCurrency.trim() || 'USD',
+  }
+  if (inputCacheHitPrice !== null) pricing.inputCacheHitPrice = inputCacheHitPrice
+  if (inputCacheMissPrice !== null) pricing.inputCacheMissPrice = inputCacheMissPrice
+  if (outputPrice !== null) pricing.outputPrice = outputPrice
+  return pricing
 }
 
 export function parseModelCapabilitiesText(text?: string): Record<string, UpstreamModelCapability> | null {
@@ -97,10 +152,159 @@ export function parseModelCapabilitiesText(text?: string): Record<string, Upstre
       if (!Array.isArray(capability.reasoningEfforts) || !capability.reasoningEfforts.every(v => typeof v === 'string')) return null
       normalized.reasoningEfforts = capability.reasoningEfforts
     }
+    if (capability.pricing !== undefined) {
+      if (!capability.pricing || typeof capability.pricing !== 'object' || Array.isArray(capability.pricing)) return null
+      const pricing = capability.pricing as Record<string, unknown>
+      const normalizedPricing: NonNullable<UpstreamModelCapability['pricing']> = {}
+      if (pricing.unit !== undefined) {
+        if (typeof pricing.unit !== 'string') return null
+        normalizedPricing.unit = pricing.unit
+      }
+      if (pricing.currency !== undefined) {
+        if (typeof pricing.currency !== 'string') return null
+        normalizedPricing.currency = pricing.currency
+      }
+      for (const key of ['inputCacheHitPrice', 'inputCacheMissPrice', 'outputPrice'] as const) {
+        if (pricing[key] !== undefined) {
+          if (typeof pricing[key] !== 'number' || !Number.isFinite(pricing[key]) || pricing[key] < 0) return null
+          normalizedPricing[key] = pricing[key]
+        }
+      }
+      normalized.pricing = normalizedPricing
+    }
 
     result[modelName] = normalized
   }
 
+  return result
+}
+
+function matchesModelPattern(pattern: string, model: string): boolean {
+  const normalizedPattern = pattern.trim().toLowerCase()
+  const normalizedModel = model.trim().toLowerCase()
+  if (!normalizedPattern || !normalizedModel) return false
+  if (normalizedPattern === normalizedModel) return true
+  if (!normalizedPattern.includes('*')) return false
+
+  const escaped = normalizedPattern
+    .split('*')
+    .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*')
+  return new RegExp(`^${escaped}$`).test(normalizedModel)
+}
+
+export function resolveBuiltinUpstreamModelCapability(model: string): { capability: UpstreamModelCapability; pattern: string } | null {
+  const trimmed = model.trim()
+  if (!trimmed) return null
+  if (builtinUpstreamModelCapabilities[trimmed]) {
+    return { capability: builtinUpstreamModelCapabilities[trimmed], pattern: trimmed }
+  }
+
+  const patterns = Object.keys(builtinUpstreamModelCapabilities)
+    .filter(pattern => pattern !== trimmed && pattern.includes('*'))
+    .sort((a, b) => b.length - a.length || a.localeCompare(b))
+  for (const pattern of patterns) {
+    if (matchesModelPattern(pattern, trimmed)) {
+      return { capability: builtinUpstreamModelCapabilities[pattern], pattern }
+    }
+  }
+  return null
+}
+
+export function createModelCapabilityRow(
+  id: number,
+  model = '',
+  capability?: UpstreamModelCapability,
+  source: 'builtin' | 'custom' = 'custom',
+  matchedPattern = '',
+): ModelCapabilityRow {
+  return {
+    id,
+    model,
+    contextWindowTokens: capability?.contextWindowTokens || null,
+    maxOutputTokens: capability?.maxOutputTokens || null,
+    thinkingMode: capability?.thinkingMode || '',
+    reasoningEffortsText: capability?.reasoningEfforts?.join(', ') || '',
+    pricingUnit: capability?.pricing?.unit || 'per_1m_tokens_usd',
+    pricingCurrency: capability?.pricing?.currency || 'USD',
+    inputCacheHitPrice: capability?.pricing?.inputCacheHitPrice ?? null,
+    inputCacheMissPrice: capability?.pricing?.inputCacheMissPrice ?? null,
+    outputPrice: capability?.pricing?.outputPrice ?? null,
+    defaultOutputTokens: capability?.defaultOutputTokens,
+    recommendedOutputTokens: capability?.recommendedOutputTokens,
+    displayName: capability?.displayName || '',
+    description: capability?.description || '',
+    source,
+    matchedPattern,
+  }
+}
+
+export function capabilityRowDefaultsFromBuiltin(capability: UpstreamModelCapability) {
+  return {
+    contextWindowTokens: capability.contextWindowTokens || null,
+    maxOutputTokens: capability.maxOutputTokens || null,
+    thinkingMode: capability.thinkingMode || '',
+    reasoningEffortsText: capability.reasoningEfforts?.join(', ') || '',
+    pricingUnit: capability.pricing?.unit || 'per_1m_tokens_usd',
+    pricingCurrency: capability.pricing?.currency || 'USD',
+    inputCacheHitPrice: capability.pricing?.inputCacheHitPrice ?? null,
+    inputCacheMissPrice: capability.pricing?.inputCacheMissPrice ?? null,
+    outputPrice: capability.pricing?.outputPrice ?? null,
+    defaultOutputTokens: capability.defaultOutputTokens,
+    recommendedOutputTokens: capability.recommendedOutputTokens,
+    displayName: capability.displayName || '',
+    description: capability.description || '',
+  }
+}
+
+export function modelCapabilitiesToRows(record: Record<string, UpstreamModelCapability> | undefined, nextId: () => number): ModelCapabilityRow[] {
+  return Object.entries(record || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([model, capability]) => createModelCapabilityRow(nextId(), model, capability, 'custom'))
+}
+
+export function modelCapabilityRowsToRecord(rows: ModelCapabilityRow[] = []): Record<string, UpstreamModelCapability> | null {
+  const result: Record<string, UpstreamModelCapability> = {}
+  for (const row of rows) {
+    const model = row.model.trim()
+    const hasAnyValue =
+      String(row.contextWindowTokens ?? '').trim() ||
+      String(row.maxOutputTokens ?? '').trim() ||
+      row.thinkingMode.trim() ||
+      row.reasoningEffortsText.trim() ||
+      hasPricingValue(row)
+    if (!model) {
+      if (hasAnyValue) return null
+      continue
+    }
+
+    const contextWindowTokens = Number(row.contextWindowTokens)
+    const maxOutputTokens = Number(row.maxOutputTokens)
+    const capability: UpstreamModelCapability = {}
+
+    if (String(row.contextWindowTokens ?? '').trim()) {
+      if (!Number.isInteger(contextWindowTokens) || contextWindowTokens < 0) return null
+      capability.contextWindowTokens = contextWindowTokens
+    }
+    if (String(row.maxOutputTokens ?? '').trim()) {
+      if (!Number.isInteger(maxOutputTokens) || maxOutputTokens < 0) return null
+      capability.maxOutputTokens = maxOutputTokens
+    }
+    const thinkingMode = row.thinkingMode.trim()
+    if (thinkingMode) capability.thinkingMode = thinkingMode
+
+    const reasoningEfforts = row.reasoningEffortsText
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean)
+    if (reasoningEfforts.length) capability.reasoningEfforts = reasoningEfforts
+
+    const pricing = createPricingFromRow(row)
+    if (pricing === false) return null
+    if (pricing) capability.pricing = pricing
+
+    result[model] = capability
+  }
   return result
 }
 
@@ -115,7 +319,9 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
 
   const sourceUrls = form.baseUrls.length > 0 ? form.baseUrls : [form.baseUrl]
   const deduplicatedUrls = deduplicateEquivalentBaseUrls(sourceUrls, form.serviceType)
-  const modelCapabilities = parseModelCapabilitiesText(form.modelCapabilitiesText)
+  const modelCapabilities = form.modelCapabilityRows
+    ? modelCapabilityRowsToRecord(form.modelCapabilityRows)
+    : parseModelCapabilitiesText(form.modelCapabilitiesText)
   const defaultContextWindowTokens = Number(form.defaultContextWindowTokens)
   const defaultMaxOutputTokens = Number(form.defaultMaxOutputTokens)
 

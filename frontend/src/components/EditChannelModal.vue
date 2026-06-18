@@ -126,60 +126,17 @@
               </div>
 
               <div v-if="props.channelType !== 'images'" class="mt-6">
-                <div class="text-subtitle-2 mb-3">{{ t('addChannel.contextCapabilityTitle') }}</div>
-                <v-row dense>
-                  <v-col cols="12" md="6">
-                    <v-text-field
-                      v-model="form.defaultContextWindowTokens"
-                      :label="t('addChannel.defaultContextWindowLabel')"
-                      :hint="t('addChannel.defaultContextWindowHint')"
-                      type="number"
-                      min="0"
-                      prepend-inner-icon="mdi-database"
-                      persistent-hint
-                      variant="outlined"
-                      density="comfortable"
-                    />
-                  </v-col>
-                  <v-col cols="12" md="6">
-                    <v-text-field
-                      v-model="form.defaultMaxOutputTokens"
-                      :label="t('addChannel.defaultMaxOutputLabel')"
-                      :hint="t('addChannel.defaultMaxOutputHint')"
-                      type="number"
-                      min="0"
-                      prepend-inner-icon="mdi-text"
-                      persistent-hint
-                      variant="outlined"
-                      density="comfortable"
-                    />
-                  </v-col>
-                </v-row>
-
-                <v-textarea
-                  v-model="form.modelCapabilitiesText"
-                  :label="t('addChannel.modelCapabilitiesJsonLabel')"
-                  :placeholder="modelCapabilitiesJsonPlaceholder"
-                  :hint="t('addChannel.modelCapabilitiesJsonHint')"
-                  :error-messages="modelCapabilitiesError ? [modelCapabilitiesError] : []"
-                  prepend-inner-icon="mdi-code-braces"
-                  persistent-hint
-                  auto-grow
-                  rows="4"
-                  variant="outlined"
-                  density="comfortable"
-                  class="mt-2"
-                />
-
-                <v-switch
-                  v-model="form.allowUnknownContext"
-                  :label="t('addChannel.allowUnknownContextLabel')"
-                  :hint="t('addChannel.allowUnknownContextHint')"
-                  color="primary"
-                  inset
-                  persistent-hint
-                  hide-details="auto"
-                  class="mt-2"
+                <ModelCapabilitySection
+                  v-model:rows="form.modelCapabilityRows"
+                  v-model:default-context-window-tokens="form.defaultContextWindowTokens"
+                  v-model:default-max-output-tokens="form.defaultMaxOutputTokens"
+                  v-model:allow-unknown-context="form.allowUnknownContext"
+                  :target-model-options="targetModelOptions"
+                  :fetching-models="fetchingModels"
+                  :fetch-models-error="fetchModelsError"
+                  :error="modelCapabilitiesError"
+                  @sync-upstream="syncUpstreamModels"
+                  @menu-update="onMenuUpdate"
                 />
               </div>
             </section>
@@ -268,7 +225,13 @@ import { useChannelStore } from '../stores/channel'
 import { useDialogStore } from '../stores/dialog'
 import { buildExpectedRequestUrls } from '../utils/expectedRequestUrls'
 import { supportsAdvancedChannelOptions, supportsReasoningMapping } from '../utils/channelAdvancedOptions'
-import { buildChannelPayload, normalizeSelectableString, parseModelCapabilitiesText } from '../utils/channelPayload'
+import {
+  buildChannelPayload,
+  modelCapabilitiesToRows,
+  modelCapabilityRowsToRecord,
+  normalizeSelectableString,
+  type ModelCapabilityRow,
+} from '../utils/channelPayload'
 import { maskApiKey } from '../utils/apiKeyMask'
 import {
   resolveChannelWatcherAction,
@@ -285,6 +248,7 @@ import AddChannelSidebarNav from './edit-channel/AddChannelSidebarNav.vue'
 import BasicInfoSection from './edit-channel/BasicInfoSection.vue'
 import ApiKeyManagementSection from './edit-channel/ApiKeyManagementSection.vue'
 import ModelMappingSection from './edit-channel/ModelMappingSection.vue'
+import ModelCapabilitySection from './edit-channel/ModelCapabilitySection.vue'
 import SupportedModelsFilter from './edit-channel/SupportedModelsFilter.vue'
 import CustomHeadersSection from './edit-channel/CustomHeadersSection.vue'
 import StreamTimeoutSection from './edit-channel/StreamTimeoutSection.vue'
@@ -871,6 +835,7 @@ const modelPriorityPatterns: RegExp[] = [
   /grok-4/i,
 
   // 智谱 GLM
+  /glm-?5\.2/i,
   /glm-?5\.1/i,
   /glm-?5/i,
   /glm-?4\.7-flash/i,
@@ -895,11 +860,19 @@ const modelPriorityPatterns: RegExp[] = [
   /deepseek-v3/i,
 
   // Moonshot Kimi / MiniMax（带版本号 → 通用简写）
+  /kimi-?k2\.7/i,
   /kimi-?k2\.6/i,
   /kimi-?k2\.5/i,
+  /kimi-?k2-thinking/i,
   /minimax-?m3/i,
   /minimax-?m2\.7/i,
   /minimax-?m2\.5/i,
+  /mimo-v2\.5/i,
+  /doubao-seed-2-0/i,
+  /ernie-4\.5/i,
+  /baichuan-m2/i,
+  /yi-34b-200k/i,
+  /k2\.7/i,
   /k2\.6/i,
   /k2\.5/i,
   /m3/i,
@@ -950,6 +923,7 @@ const form = reactive({
   apiKeys: [] as string[],
   modelMapping: {} as Record<string, string>,
   modelCapabilitiesText: '',
+  modelCapabilityRows: [] as ModelCapabilityRow[],
   defaultContextWindowTokens: null as string | number | null,
   defaultMaxOutputTokens: null as string | number | null,
   allowUnknownContext: false,
@@ -1042,6 +1016,8 @@ interface ModelMappingRow {
 
 let rowIdCounter = 0
 const modelMappingRows = ref<ModelMappingRow[]>([])
+let capabilityRowIdCounter = 0
+const nextCapabilityRowId = () => ++capabilityRowIdCounter
 
 const hasNoVisionRows = computed(() => modelMappingRows.value.some(row => row.noVision && row.target.trim()))
 
@@ -1124,8 +1100,48 @@ const isMappingInputValid = computed(() => {
   return !validateSourceModelName(source)
 })
 
-// 目标模型列表（从上游获取）
+const commonTargetModelPresets = [
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'glm-5.2',
+  'glm-5.1',
+  'zai/glm-5',
+  'qwen3.5-plus',
+  'qwen3-coder-plus',
+  'qwen3-max',
+  'deepseek-v4-pro',
+  'deepseek-v4-flash',
+  'deepseek-v3.2',
+  'deepseek-reasoner',
+  'kimi-k2.7-code',
+  'kimi-k2.7-code-highspeed',
+  'kimi-k2.6',
+  'kimi-k2.5',
+  'MiniMax-M3',
+  'MiniMax-M2.5',
+  'MiniMax-M2.1',
+  'mimo-v2.5',
+  'mimo-v2.5-pro',
+  'mimo-v2-flash',
+  'doubao-seed-2-0-pro',
+  'doubao-seed-2-0-code-preview',
+  'ernie-4.5-21B-a3b-thinking',
+  'baichuan-m2-32b',
+  'yi-34b-200k-capybara',
+]
+
+// 目标模型列表（从上游获取，未拉取前合并常用预置候选）
 const targetModelOptions = ref<Array<{ title: string; value: string }>>([])
+const mergeTargetModelOptions = (models: string[]) => {
+  const allModels = new Set<string>([
+    ...targetModelOptions.value.map(opt => opt.value),
+    ...commonTargetModelPresets,
+    ...models,
+  ])
+  targetModelOptions.value = sortModelNamesDesc(Array.from(allModels)).map(id => ({ title: id, value: id }))
+}
+mergeTargetModelOptions([])
 const fetchingModels = ref(false)
 const fetchModelsError = ref('')
 const hasTriedFetchModels = ref(false) // 标记是否已尝试获取过模型列表
@@ -1260,15 +1276,9 @@ const commonSupportedModelFilters = ['claude-*', 'gpt-5*', 'gpt-image-2', 'grok-
 
 const selectedSupportedModelSet = computed(() => new Set(form.supportedModels))
 const supportedModelsError = ref('')
-const modelCapabilitiesJsonPlaceholder = `{
-  "claude-sonnet-4-6": {
-    "contextWindowTokens": 1000000,
-    "maxOutputTokens": 64000
-  }
-}`
 const modelCapabilitiesError = computed(() => {
-  return parseModelCapabilitiesText(form.modelCapabilitiesText) === null
-    ? t('addChannel.modelCapabilitiesJsonInvalid')
+  return modelCapabilityRowsToRecord(form.modelCapabilityRows) === null
+    ? t('addChannel.modelCapabilitiesRowsInvalid')
     : ''
 })
 
@@ -1537,6 +1547,7 @@ const resetForm = () => {
   form.apiKeys = []
   form.modelMapping = {}
   form.modelCapabilitiesText = ''
+  form.modelCapabilityRows = []
   form.defaultContextWindowTokens = null
   form.defaultMaxOutputTokens = null
   form.allowUnknownContext = false
@@ -1587,7 +1598,7 @@ const resetForm = () => {
   originalKeyMap.value.clear()
 
   // 清空模型缓存和状态
-  targetModelOptions.value = []
+  mergeTargetModelOptions([])
   fetchingModels.value = false
   fetchModelsError.value = ''
   keyModelsStatus.value.clear()
@@ -1628,6 +1639,7 @@ const loadChannelData = (channel: Channel) => {
   form.modelCapabilitiesText = Object.keys(channel.modelCapabilities || {}).length > 0
     ? JSON.stringify(normalizeModelCapabilities(channel.modelCapabilities), null, 2)
     : ''
+  form.modelCapabilityRows = modelCapabilitiesToRows(channel.modelCapabilities || {}, nextCapabilityRowId)
   form.defaultContextWindowTokens = channel.defaultCapability?.contextWindowTokens || null
   form.defaultMaxOutputTokens = channel.defaultCapability?.maxOutputTokens || null
   form.allowUnknownContext = !!channel.allowUnknownContext
@@ -1680,7 +1692,7 @@ const loadChannelData = (channel: Channel) => {
   newMapping.target = ''
 
   // 清空模型缓存和状态（切换渠道时重置）
-  targetModelOptions.value = []
+  mergeTargetModelOptions([])
   fetchingModels.value = false
   fetchModelsError.value = ''
   keyModelsStatus.value.clear()
@@ -2111,11 +2123,7 @@ const fetchTargetModels = async () => {
 
   try {
     const results = await Promise.all(keyPromises)
-
-    const allModels = new Set<string>(targetModelOptions.value.map(opt => opt.value))
-    results.forEach(models => models.forEach(m => allModels.add(m.id)))
-
-    targetModelOptions.value = sortModelNamesDesc(Array.from(allModels)).map(id => ({ title: id, value: id }))
+    mergeTargetModelOptions(results.flatMap(models => models.map(m => m.id)))
 
     const allFailed = candidateKeys.every(key => {
       const s = keyModelsStatus.value.get(key)
@@ -2299,7 +2307,7 @@ watch(
     routePrefix: form.routePrefix,
   }),
   () => {
-    targetModelOptions.value = []
+    mergeTargetModelOptions([])
     keyModelsStatus.value.clear()
     hasTriedFetchModels.value = false
     fetchModelsError.value = ''

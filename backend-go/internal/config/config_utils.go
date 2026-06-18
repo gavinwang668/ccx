@@ -315,6 +315,32 @@ func cloneUpstreamModelCapability(capability UpstreamModelCapability) UpstreamMo
 	if capability.ReasoningEfforts != nil {
 		capability.ReasoningEfforts = append([]string(nil), capability.ReasoningEfforts...)
 	}
+	if capability.Capabilities != nil {
+		capabilities := make(map[string]bool, len(capability.Capabilities))
+		for key, value := range capability.Capabilities {
+			capabilities[key] = value
+		}
+		capability.Capabilities = capabilities
+	}
+	if capability.Pricing != nil {
+		pricing := *capability.Pricing
+		if capability.Pricing.InputCacheHitPrice != nil {
+			value := *capability.Pricing.InputCacheHitPrice
+			pricing.InputCacheHitPrice = &value
+		}
+		if capability.Pricing.InputCacheMissPrice != nil {
+			value := *capability.Pricing.InputCacheMissPrice
+			pricing.InputCacheMissPrice = &value
+		}
+		if capability.Pricing.OutputPrice != nil {
+			value := *capability.Pricing.OutputPrice
+			pricing.OutputPrice = &value
+		}
+		capability.Pricing = &pricing
+	}
+	if capability.Sources != nil {
+		capability.Sources = append([]string(nil), capability.Sources...)
+	}
 	return capability
 }
 

@@ -958,5 +958,22 @@
   "capability.genericJobError": "Capability test failed: {message}",
   "capability.redirectTests": "Model Redirect Tests",
   "capability.redirectTestsDesc": "Cross-protocol model mapping verification",
-  "addChannel.quickInputPlaceholder": "Paste config snippet to auto-detect Base URL and API Key (multi-line supported)\nhttps://api.example.com\nhttps://api-backup.example.com\nsk-ant-api03-xxxxxxxxxxxxxxxx\nsk-ant-api03-yyyyyyyyyyyyyyyy"
+  "addChannel.quickInputPlaceholder": "Paste config snippet to auto-detect Base URL and API Key (multi-line supported)\nhttps://api.example.com\nhttps://api-backup.example.com\nsk-ant-api03-xxxxxxxxxxxxxxxx\nsk-ant-api03-yyyyyyyyyyyyyyyy",
+  "addChannel.syncModelList": "Sync models",
+  "addChannel.modelCapabilitiesRowsHint": "Pick the actual upstream model from /models. Built-in presets fill context, output, thinking, and pricing; you can still edit them.",
+  "addChannel.modelCapabilitiesConfigured": "Configured model capabilities",
+  "addChannel.modelCapabilityModelLabel": "Actual model",
+  "addChannel.modelCapabilityModelPlaceholder": "Select or enter an upstream model",
+  "addChannel.contextTokensShort": "Context",
+  "addChannel.outputTokensShort": "Output",
+  "addChannel.thinkingModeLabel": "Thinking mode",
+  "addChannel.reasoningEffortsLabel": "Reasoning efforts",
+  "addChannel.modelCapabilityBuiltinMatched": "Matched built-in preset: {pattern}",
+  "addChannel.modelCapabilitiesRowsInvalid": "Check model capability rows. Model names are required; token and price values must be non-negative.",
+  "addChannel.inputCacheHitPriceLabel": "Cache-hit input",
+  "addChannel.inputCacheMissPriceLabel": "Cache-miss input",
+  "addChannel.outputPriceLabel": "Output price",
+  "addChannel.defaultOutputTokensMeta": "Default output {tokens}",
+  "addChannel.recommendedOutputTokensMeta": "Recommended output {tokens}",
+  "addChannel.modelPricingUnitHint": "USD / 1M tokens"
 }

@@ -8,7 +8,12 @@ import {
 import { useConsoleChannels } from '@/composables/useConsoleChannels'
 import { useLanguage } from '@/composables/useLanguage'
 import { AdminApiError } from '@/composables/useAdminApi'
-import { buildChannelPayload, parseModelCapabilitiesText } from '@/utils/channel-payload'
+import {
+  buildChannelPayload,
+  modelCapabilitiesToRows,
+  modelCapabilityRowsToRecord,
+  type ModelCapabilityRow,
+} from '@/utils/channel-payload'
 import { supportsAdvancedChannelOptions, supportsReasoningMapping } from '@/utils/channel-advanced-options'
 import {
   extractChannelNamePrefix,
@@ -130,6 +135,7 @@ function updateActiveSectionFromScroll() {
   }
 }
 const modelMappingRows = ref<ModelMappingRow[]>([])
+const modelCapabilityRows = ref<ModelCapabilityRow[]>([])
 const newModelMapping = reactive<ModelMappingRow>({ id: 0, source: '', target: '', reasoning: '', noVision: false })
 const headerRows = ref<HeaderRow[]>([])
 const newHeader = reactive<HeaderRow>({ id: 0, key: '', value: '' })
@@ -252,6 +258,7 @@ const form = reactive({
   customHeadersText: '{}',
   modelMappingText: '{}',
   modelCapabilitiesText: '',
+  modelCapabilityRows: [] as ModelCapabilityRow[],
   defaultContextWindowTokens: '' as string | number,
   defaultMaxOutputTokens: '' as string | number,
   allowUnknownContext: false,
@@ -341,6 +348,7 @@ function resetForm() {
   form.customHeadersText = '{}'
   form.modelMappingText = '{}'
   form.modelCapabilitiesText = ''
+  form.modelCapabilityRows = []
   form.defaultContextWindowTokens = ''
   form.defaultMaxOutputTokens = ''
   form.allowUnknownContext = false
@@ -376,6 +384,7 @@ function resetForm() {
   keyModelsStatus.value.clear()
   localRestoredKeys.value = new Set()
   modelMappingRows.value = []
+  modelCapabilityRows.value = []
   headerRows.value = []
   error.value = ''
 }
@@ -416,6 +425,8 @@ function populateFromChannel(ch: Channel) {
   keyModelsStatus.value.clear()
   localRestoredKeys.value = new Set()
   modelMappingRows.value = modelMappingFromChannel(ch)
+  modelCapabilityRows.value = modelCapabilitiesToRows(ch.modelCapabilities || {}, () => ++rowId)
+  form.modelCapabilityRows = modelCapabilityRows.value
   headerRows.value = headerRowsFromChannel(ch)
   form.customHeadersText = stringifyJson(ch.customHeaders)
   form.modelMappingText = stringifyJson(ch.modelMapping)
@@ -504,8 +515,8 @@ const errors = computed(() => {
       errs.responseHeaderTimeoutMs = tf('channelEditor.transport.responseHeaderTimeout.invalid', '响应头等待超时必须是 1000-300000 之间的毫秒整数')
     }
   }
-  if (parseModelCapabilitiesText(form.modelCapabilitiesText) === null) {
-    errs.modelCapabilitiesText = t('addChannel.modelCapabilitiesJsonInvalid')
+  if (modelCapabilityRowsToRecord(modelCapabilityRows.value) === null) {
+    errs.modelCapabilitiesText = t('addChannel.modelCapabilitiesRowsInvalid')
   }
   return errs
 })
@@ -577,7 +588,7 @@ function buildSubmitPayload() {
         description: form.description,
         apiKeys: getSubmitApiKeys(),
         modelMapping: parseJsonObject<Record<string, string>>(form.modelMappingText, 'Model mapping'),
-        modelCapabilitiesText: form.modelCapabilitiesText,
+        modelCapabilityRows: modelCapabilityRows.value,
         defaultContextWindowTokens: form.defaultContextWindowTokens,
         defaultMaxOutputTokens: form.defaultMaxOutputTokens,
         allowUnknownContext: form.allowUnknownContext,
@@ -1022,8 +1033,8 @@ const codexResponsesPresets: Record<string, {
   },
   kimi: {
     mapping: [
-      { source: 'codex', target: 'kimi-k2.7' },
-      { source: 'gpt', target: 'kimi-k2.7' },
+      { source: 'codex', target: 'kimi-k2.7-code' },
+      { source: 'gpt', target: 'kimi-k2.7-code' },
     ],
     reasoningParamStyle: '',
     codexNativeToolPassthrough: false,
@@ -1228,8 +1239,41 @@ const sourceModelOptions = computed(() => {
   return ['fable', 'opus', 'sonnet', 'haiku']
 })
 
-// Target 模型只展示 /models 接口返回结果；源模型才保留内置候选。
-const targetModelDatalist = computed(() => targetModelOptions.value)
+const commonTargetModelPresets = [
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'glm-5.2',
+  'glm-5.1',
+  'zai/glm-5',
+  'qwen3.5-plus',
+  'qwen3-coder-plus',
+  'qwen3-max',
+  'deepseek-v4-pro',
+  'deepseek-v4-flash',
+  'deepseek-v3.2',
+  'deepseek-reasoner',
+  'kimi-k2.7-code',
+  'kimi-k2.7-code-highspeed',
+  'kimi-k2.6',
+  'kimi-k2.5',
+  'MiniMax-M3',
+  'MiniMax-M2.5',
+  'MiniMax-M2.1',
+  'mimo-v2.5',
+  'mimo-v2.5-pro',
+  'mimo-v2-flash',
+  'doubao-seed-2-0-pro',
+  'doubao-seed-2-0-code-preview',
+  'ernie-4.5-21B-a3b-thinking',
+  'baichuan-m2-32b',
+  'yi-34b-200k-capybara',
+]
+
+const targetModelDatalist = computed(() => {
+  const allModels = new Set([...targetModelOptions.value, ...commonTargetModelPresets])
+  return Array.from(allModels).sort()
+})
 
 const commonSupportedModelFilters = ['claude-*', 'gpt-5*', 'gpt-image-2', 'grok-4*', 'gemini-3*', '!*image*']
 const normalizedSupportedModelState = computed(() => {
@@ -1315,7 +1359,7 @@ async function fetchTargetModels() {
   const keys = getSubmitApiKeys()
   const uncheckedKeys = keys.filter(key => !keyModelsStatus.value.has(key))
   if (uncheckedKeys.length === 0) {
-    showTargetSuggestions.value = !!activeTargetInputId.value && targetModelOptions.value.length > 0
+    showTargetSuggestions.value = !!activeTargetInputId.value && targetModelDatalist.value.length > 0
     return
   }
 
@@ -1378,7 +1422,7 @@ async function fetchTargetModels() {
       .filter(Boolean)
       .forEach(model => allModels.add(model))
     targetModelOptions.value = Array.from(allModels).sort()
-    showTargetSuggestions.value = !!activeTargetInputId.value && targetModelOptions.value.length > 0
+    showTargetSuggestions.value = !!activeTargetInputId.value && targetModelDatalist.value.length > 0
 
     const allFailed = keys.every(key => {
       const status = keyModelsStatus.value.get(key)
@@ -1505,6 +1549,11 @@ function updateMappingRow(id: number, field: keyof ModelMappingRow, value: any) 
   }
 }
 
+function updateModelCapabilityRows(rows: ModelCapabilityRow[]) {
+  modelCapabilityRows.value = rows
+  form.modelCapabilityRows = rows
+}
+
 // ── Custom Headers 行操作 ──
 
 function headerRowsFromChannel(ch: Channel) {
@@ -1571,7 +1620,7 @@ function buildCurrentPayload() {
     description: form.description,
     apiKeys: getSubmitApiKeys(),
     modelMapping,
-    modelCapabilitiesText: form.modelCapabilitiesText,
+    modelCapabilityRows: modelCapabilityRows.value,
     defaultContextWindowTokens: form.defaultContextWindowTokens,
     defaultMaxOutputTokens: form.defaultMaxOutputTokens,
     allowUnknownContext: form.allowUnknownContext,
@@ -1780,11 +1829,17 @@ void toggleSupportedModelFilter
                         :form="form"
                         :channel-type="channelType"
                         :model-capabilities-error="errors.modelCapabilitiesText"
+                        :model-capability-rows="modelCapabilityRows"
+                        :target-models="targetModelDatalist"
+                        :fetching-models="fetchingModels"
+                        :fetch-models-error="fetchedModelsError"
                         :supports-open-a-i-advanced-options="supportsOpenAIAdvancedOptions"
                         :supports-chat-role-normalization="supportsChatRoleNormalization"
                         :reasoning-param-style-options="reasoningParamStyleOptions"
                         :text-verbosity-options="textVerbosityOptions"
                         @update:form="(updates) => Object.assign(form, updates)"
+                        @update:model-capability-rows="updateModelCapabilityRows"
+                        @sync-upstream-models="syncUpstreamModels"
                       />
                     </section>
 

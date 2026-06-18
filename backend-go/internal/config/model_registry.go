@@ -215,84 +215,7 @@ func BuiltinAgentModelProfiles() map[string]AgentModelProfile {
 
 // BuiltinUpstreamModelCapabilities 返回 CCX 内置的实际上游模型能力知识库。
 func BuiltinUpstreamModelCapabilities() map[string]UpstreamModelCapability {
-	return map[string]UpstreamModelCapability{
-		"claude-haiku-4-5*": {
-			ContextWindowTokens: 200000,
-			MaxOutputTokens:     64000,
-			ThinkingMode:        "extended",
-		},
-		"claude-sonnet-4-5*": {
-			ContextWindowTokens: 200000,
-			MaxOutputTokens:     64000,
-			ThinkingMode:        "extended",
-		},
-		"claude-opus-4-5*": {
-			ContextWindowTokens: 200000,
-			MaxOutputTokens:     64000,
-			ThinkingMode:        "extended",
-			ReasoningEfforts:    []string{"low", "medium", "high"},
-		},
-		"claude-sonnet-4-6*": {
-			ContextWindowTokens: 1000000,
-			MaxOutputTokens:     64000,
-			ThinkingMode:        "adaptive",
-			ReasoningEfforts:    []string{"low", "medium", "high", "max"},
-		},
-		"claude-opus-4-6*": {
-			ContextWindowTokens: 1000000,
-			MaxOutputTokens:     128000,
-			ThinkingMode:        "adaptive",
-			ReasoningEfforts:    []string{"low", "medium", "high", "max"},
-		},
-		"claude-opus-4-7*": {
-			ContextWindowTokens: 1000000,
-			MaxOutputTokens:     128000,
-			ThinkingMode:        "adaptive_only",
-			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh", "max"},
-		},
-		"claude-opus-4-8*": {
-			ContextWindowTokens: 1000000,
-			MaxOutputTokens:     128000,
-			ThinkingMode:        "adaptive_only",
-			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh", "max"},
-		},
-		"claude-fable-5*": {
-			ContextWindowTokens: 1000000,
-			MaxOutputTokens:     128000,
-			ThinkingMode:        "adaptive_always_on",
-			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh", "max"},
-		},
-		"claude-mythos-5*": {
-			ContextWindowTokens: 1000000,
-			MaxOutputTokens:     128000,
-			ThinkingMode:        "adaptive_always_on",
-			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh", "max"},
-		},
-		"claude-mythos-preview*": {
-			ContextWindowTokens: 1000000,
-			ThinkingMode:        "adaptive",
-			ReasoningEfforts:    []string{"max"},
-		},
-		"gpt-5.2": {
-			ContextWindowTokens: 272000,
-		},
-		"gpt-5.5": {
-			ContextWindowTokens: 272000,
-		},
-		"gpt-5.3-codex": {
-			ContextWindowTokens: 272000,
-		},
-		"gpt-5.4": {
-			ContextWindowTokens: 1000000,
-			MaxOutputTokens:     128000,
-			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh"},
-		},
-		"gpt-5.4-mini": {
-			ContextWindowTokens: 272000,
-			MaxOutputTokens:     128000,
-			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh"},
-		},
-	}
+	return generatedBuiltinUpstreamModelCapabilities()
 }
 
 // ResolveAgentModelProfile 解析下游 agent 模型语义。
@@ -318,7 +241,7 @@ func ResolveUpstreamCapability(requestModel string, upstream *UpstreamConfig, gl
 	if capability, pattern, ok := resolveCapabilityForModels(actualModel, requestModel, global); ok {
 		return ResolvedUpstreamCapability{Capability: capability, RequestModel: requestModel, ActualModel: actualModel, MatchedPattern: pattern, Source: "global", Known: true}
 	}
-	if capability, pattern, ok := resolveCapabilityForModels(actualModel, requestModel, BuiltinUpstreamModelCapabilities()); ok {
+	if capability, pattern, ok := resolveCapabilityForModelsFold(actualModel, requestModel, BuiltinUpstreamModelCapabilities()); ok {
 		return ResolvedUpstreamCapability{Capability: capability, RequestModel: requestModel, ActualModel: actualModel, MatchedPattern: pattern, Source: "builtin", Known: true}
 	}
 	if upstream != nil && (upstream.DefaultCapability.ContextWindowTokens > 0 || upstream.DefaultCapability.MaxOutputTokens > 0) {
@@ -333,6 +256,18 @@ func resolveCapabilityForModels(actualModel, requestModel string, capabilities m
 	}
 	if requestModel != actualModel {
 		if capability, pattern, ok := resolvePatternValue(requestModel, capabilities); ok {
+			return capability, pattern, true
+		}
+	}
+	return UpstreamModelCapability{}, "", false
+}
+
+func resolveCapabilityForModelsFold(actualModel, requestModel string, capabilities map[string]UpstreamModelCapability) (UpstreamModelCapability, string, bool) {
+	if capability, pattern, ok := resolvePatternValueFold(actualModel, capabilities); ok {
+		return capability, pattern, true
+	}
+	if requestModel != actualModel {
+		if capability, pattern, ok := resolvePatternValueFold(requestModel, capabilities); ok {
 			return capability, pattern, true
 		}
 	}
@@ -371,4 +306,47 @@ func resolvePatternValue[T any](model string, values map[string]T) (T, string, b
 		}
 	}
 	return zero, "", false
+}
+
+func resolvePatternValueFold[T any](model string, values map[string]T) (T, string, bool) {
+	var zero T
+	model = strings.TrimSpace(model)
+	if model == "" || len(values) == 0 {
+		return zero, "", false
+	}
+	if value, ok := values[model]; ok {
+		return value, model, true
+	}
+	for pattern, value := range values {
+		if strings.EqualFold(pattern, model) {
+			return value, pattern, true
+		}
+	}
+
+	patterns := make([]string, 0, len(values))
+	for pattern := range values {
+		if strings.EqualFold(pattern, model) {
+			continue
+		}
+		if isValidSupportedModelPattern(pattern) {
+			patterns = append(patterns, pattern)
+		}
+	}
+	sort.Slice(patterns, func(i, j int) bool {
+		if len(patterns[i]) == len(patterns[j]) {
+			return patterns[i] < patterns[j]
+		}
+		return len(patterns[i]) > len(patterns[j])
+	})
+
+	for _, pattern := range patterns {
+		if matchSupportedModelPatternFold(pattern, model) {
+			return values[pattern], pattern, true
+		}
+	}
+	return zero, "", false
+}
+
+func matchSupportedModelPatternFold(pattern, model string) bool {
+	return matchSupportedModelPattern(strings.ToLower(pattern), strings.ToLower(model))
 }

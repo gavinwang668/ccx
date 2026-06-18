@@ -52,8 +52,24 @@ export interface DisabledKeyInfo {
 export interface UpstreamModelCapability {
   contextWindowTokens?: number
   maxOutputTokens?: number
+  defaultOutputTokens?: number
+  recommendedOutputTokens?: number
   thinkingMode?: string
   reasoningEfforts?: string[]
+  provider?: string
+  displayName?: string
+  description?: string
+  capabilities?: Record<string, boolean>
+  pricing?: ModelPricing
+  sources?: string[]
+}
+
+export interface ModelPricing {
+  unit?: string
+  currency?: string
+  inputCacheHitPrice?: number
+  inputCacheMissPrice?: number
+  outputPrice?: number
 }
 
 export interface Channel {

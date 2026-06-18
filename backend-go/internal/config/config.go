@@ -126,10 +126,27 @@ type AgentModelProfile struct {
 
 // UpstreamModelCapability 描述实际发送给上游的模型能力。
 type UpstreamModelCapability struct {
-	ContextWindowTokens int      `json:"contextWindowTokens,omitempty"`
-	MaxOutputTokens     int      `json:"maxOutputTokens,omitempty"`
-	ThinkingMode        string   `json:"thinkingMode,omitempty"`
-	ReasoningEfforts    []string `json:"reasoningEfforts,omitempty"`
+	ContextWindowTokens     int             `json:"contextWindowTokens,omitempty"`
+	MaxOutputTokens         int             `json:"maxOutputTokens,omitempty"`
+	DefaultOutputTokens     int             `json:"defaultOutputTokens,omitempty"`
+	RecommendedOutputTokens int             `json:"recommendedOutputTokens,omitempty"`
+	ThinkingMode            string          `json:"thinkingMode,omitempty"`
+	ReasoningEfforts        []string        `json:"reasoningEfforts,omitempty"`
+	Provider                string          `json:"provider,omitempty"`
+	DisplayName             string          `json:"displayName,omitempty"`
+	Description             string          `json:"description,omitempty"`
+	Capabilities            map[string]bool `json:"capabilities,omitempty"`
+	Pricing                 *ModelPricing   `json:"pricing,omitempty"`
+	Sources                 []string        `json:"sources,omitempty"`
+}
+
+// ModelPricing 描述模型公开计费信息，单位默认为每 1M tokens 的美元价格。
+type ModelPricing struct {
+	Unit                string   `json:"unit,omitempty"`
+	Currency            string   `json:"currency,omitempty"`
+	InputCacheHitPrice  *float64 `json:"inputCacheHitPrice,omitempty"`
+	InputCacheMissPrice *float64 `json:"inputCacheMissPrice,omitempty"`
+	OutputPrice         *float64 `json:"outputPrice,omitempty"`
 }
 
 // ContextRoutingConfig 控制上下文路由过滤。
