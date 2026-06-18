@@ -348,10 +348,10 @@ function handleSaved() {
   refreshCurrentChannels()
 }
 
-function handleEditTestCapability(channel: Channel) {
+async function handleEditTestCapability(channel: Channel) {
   showChannelEditor.value = false
-  void refreshCurrentChannels()
-  capabilityChannel.value = channel
+  await refreshCurrentChannels()
+  capabilityChannel.value = channels.value.find(ch => ch.index === channel.index) ?? channel
   showCapabilityDialog.value = true
 }
 

@@ -30,13 +30,13 @@ const {
   snapshot,
   cancelling,
   error,
-  startTest,
+  prepareChannelSession,
   startProtocolTest,
   fetchSnapshot,
   cancelTest,
   retryModelForProtocol,
   copyToTab,
-  reset,
+  closeDialog,
   protocolResults,
   compatibleProtocols,
   outcome,
@@ -51,10 +51,11 @@ const rpmValue = ref(10)
 watch(() => props.open, async (isOpen) => {
   if (isOpen) {
     window.addEventListener('keydown', onKeyDown)
-    await fetchSnapshot(props.channelType, props.channelId, props.channelType)
+    prepareChannelSession(props.channelType, props.channelId, props.channelName)
+    await fetchSnapshot(props.channelType, props.channelId, props.channelType, props.channelName)
   } else {
     window.removeEventListener('keydown', onKeyDown)
-    reset()
+    closeDialog()
   }
 }, { immediate: true })
 
@@ -110,7 +111,7 @@ function getProtocolDisplayName(proto: string): string {
 // ── 协议状态判定 ──
 
 function isProtocolBusy(test: CapabilityProtocolJobResult): boolean {
-  return test.status === 'running' || test.status === 'queued'
+  return test.lifecycle === 'active' || test.lifecycle === 'pending' || test.status === 'running' || test.status === 'queued'
 }
 
 function isProtocolFailed(test: CapabilityProtocolJobResult): boolean {
@@ -118,16 +119,21 @@ function isProtocolFailed(test: CapabilityProtocolJobResult): boolean {
 }
 
 function shouldShowTestProtocolButton(test: CapabilityProtocolJobResult): boolean {
-  return test.status === 'idle' || test.status === 'failed'
+  return !isProtocolBusy(test)
 }
 
 function isCurrentTabProtocol(proto: string): boolean {
-  const map: Record<string, string> = { messages: 'messages', chat: 'chat', responses: 'responses', gemini: 'gemini', images: 'images' }
-  return proto === (map[props.channelType] ?? props.channelType)
+  const currentProtocol = props.channelType
+  if (proto === currentProtocol) return true
+  if (proto.includes('->')) {
+    const [from] = proto.split('->')
+    return from === currentProtocol
+  }
+  return false
 }
 
 function getSuccessfulProtocols(): string[] {
-  return sortedTests.value.filter(t => t.success).map(t => t.protocol)
+  return sortedTests.value.filter(t => t.success && !t.protocol.includes('->')).map(t => t.protocol)
 }
 
 // ── 表格指标 ──
@@ -159,15 +165,6 @@ function hasProtocolLatency(test: CapabilityProtocolJobResult): boolean {
 }
 
 // ── Actions ──
-
-async function handleStart() {
-  isStarting.value = true
-  try {
-    await startTest(props.channelType, props.channelId, { rpm: rpmValue.value })
-  } finally {
-    isStarting.value = false
-  }
-}
 
 async function handleTestProtocol(protocol: string) {
   isStarting.value = true
@@ -220,7 +217,7 @@ function onKeyDown(e: KeyboardEvent) {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
-  reset()
+  closeDialog()
 })
 </script>
 
@@ -297,18 +294,13 @@ onBeforeUnmount(() => {
               </div>
 
               <!-- 无任务 -->
-              <div v-if="state === 'idle' && !isActive" class="flex flex-col items-center py-6 gap-3">
+              <div v-if="state === 'idle' && !isActive && sortedTests.length === 0" class="flex flex-col items-center py-6 gap-3">
                 <p v-if="protocolResults.length > 0" class="text-sm text-muted-foreground">{{ tf('capability.lastResults', '上次测试结果') }}</p>
                 <p v-else class="text-sm text-muted-foreground">{{ tf('capability.noResults', '尚未进行能力测试') }}</p>
-                <Button :disabled="isStarting" @click="handleStart">
-                  <Loader2 v-if="isStarting" class="h-4 w-4 mr-2 animate-spin" />
-                  <Play v-else class="h-4 w-4 mr-2" />
-                  {{ tf('capability.startTest', '开始测试') }}
-                </Button>
               </div>
 
               <!-- 协议表格 -->
-              <div v-if="sortedTests.length > 0 && state !== 'idle'" class="border border-border overflow-hidden">
+              <div v-if="sortedTests.length > 0" class="border border-border overflow-hidden">
                 <table class="w-full text-xs">
                   <thead class="bg-secondary/40 border-b border-border">
                     <tr>

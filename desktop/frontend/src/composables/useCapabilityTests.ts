@@ -1,11 +1,12 @@
 import { ref, computed } from 'vue'
-import { useAdminApi } from '@/composables/useAdminApi'
+import { AdminApiError, useAdminApi } from '@/composables/useAdminApi'
 import { useConsoleChannels } from '@/composables/useConsoleChannels'
 import type {
   CapabilitySnapshot,
   CapabilityTestJob,
   CapabilityTestJobStartResponse,
   CapabilityProtocolJobResult,
+  CapabilityModelJobResult,
   CapabilityLifecycle,
   CapabilityOutcome,
 } from '@/services/admin-api'
@@ -21,6 +22,322 @@ const cancelling = ref(false)
 const error = ref('')
 const pollers = new Map<string, ReturnType<typeof setInterval>>()
 const POLL_INTERVAL = 1000
+const BASE_PROTOCOL_ORDER = ['messages', 'responses', 'chat', 'gemini'] as const
+type CapabilityChannelKind = typeof BASE_PROTOCOL_ORDER[number]
+const PLACEHOLDER_MODELS: Record<string, string[]> = {
+  // 修改此处时需要同步后端 backend-go/internal/handlers/capability_probe_models.go
+  messages: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001'],
+  chat: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'codex-auto-review'],
+  responses: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'codex-auto-review'],
+  gemini: ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'],
+}
+
+function isCapabilityChannelKind(value: string): value is CapabilityChannelKind {
+  return BASE_PROTOCOL_ORDER.includes(value as CapabilityChannelKind)
+}
+
+function isCapabilityProtocol(protocol: string): boolean {
+  if (BASE_PROTOCOL_ORDER.includes(protocol as CapabilityChannelKind)) return true
+  if (protocol.includes('->')) {
+    const [from] = protocol.split('->')
+    return BASE_PROTOCOL_ORDER.includes(from as CapabilityChannelKind)
+  }
+  return false
+}
+
+function buildCapabilityModels(protocol: string, status: CapabilityModelJobResult['status'], models?: string[]): CapabilityModelJobResult[] {
+  const now = new Date().toISOString()
+  const targetModels = models ?? getPlaceholderModelsForProtocol(protocol)
+  return targetModels.map(model => ({
+    model,
+    status,
+    lifecycle: status === 'running' ? 'active' : 'pending',
+    outcome: 'unknown',
+    success: false,
+    latency: 0,
+    streamingSupported: false,
+    testedAt: now,
+  }))
+}
+
+function getPlaceholderModelsForProtocol(protocol: string): string[] {
+  if (protocol.includes('->')) {
+    const [from] = protocol.split('->')
+    return PLACEHOLDER_MODELS[from] ?? []
+  }
+  return PLACEHOLDER_MODELS[protocol] ?? []
+}
+
+function buildCapabilityProtocolResult(
+  protocol: string,
+  status: CapabilityProtocolJobResult['status'],
+  models?: string[],
+): CapabilityProtocolJobResult {
+  const now = new Date().toISOString()
+  const modelStatus: CapabilityModelJobResult['status'] = status === 'running' ? 'running' : status === 'queued' ? 'queued' : 'idle'
+  const modelResults = buildCapabilityModels(protocol, modelStatus, models)
+  return {
+    protocol,
+    status,
+    lifecycle: status === 'running' ? 'active' : 'pending',
+    outcome: 'unknown',
+    success: false,
+    latency: 0,
+    streamingSupported: false,
+    testedModel: '',
+    modelResults,
+    successCount: 0,
+    attemptedModels: modelResults.length,
+    testedAt: now,
+  }
+}
+
+function isIdleCapabilityTest(test: CapabilityProtocolJobResult): boolean {
+  return (test.status as string) === 'idle'
+}
+
+function isActiveCapabilityTest(test: CapabilityProtocolJobResult): boolean {
+  return !isIdleCapabilityTest(test) && (test.lifecycle === 'active' || test.status === 'running')
+}
+
+function isPendingCapabilityTest(test: CapabilityProtocolJobResult): boolean {
+  return !isIdleCapabilityTest(test) && (test.lifecycle === 'pending' || test.status === 'queued')
+}
+
+function isSuccessfulCapabilityTest(test: CapabilityProtocolJobResult): boolean {
+  return test.success || test.outcome === 'success'
+}
+
+function mergeCapabilityProtocolResult(baseTest: CapabilityProtocolJobResult, incomingTest: CapabilityProtocolJobResult): CapabilityProtocolJobResult {
+  const modelResultsByModel = new Map<string, CapabilityModelJobResult>()
+  for (const modelResult of baseTest.modelResults ?? []) {
+    modelResultsByModel.set(modelResult.model, modelResult)
+  }
+  for (const modelResult of incomingTest.modelResults ?? []) {
+    modelResultsByModel.set(modelResult.model, modelResult)
+  }
+  const modelResults = Array.from(modelResultsByModel.values())
+
+  return {
+    ...baseTest,
+    ...incomingTest,
+    modelResults,
+    attemptedModels: modelResults.filter(modelResult => (modelResult.status as string) !== 'idle').length,
+    successCount: modelResults.filter(modelResult => modelResult.status === 'success' || modelResult.outcome === 'success').length,
+  }
+}
+
+function normalizeCapabilityTests(tests: CapabilityProtocolJobResult[]): CapabilityProtocolJobResult[] {
+  const testsByProtocol = new Map<string, CapabilityProtocolJobResult>()
+
+  for (const test of tests) {
+    if (!isCapabilityProtocol(test.protocol)) continue
+    const existingTest = testsByProtocol.get(test.protocol)
+    testsByProtocol.set(test.protocol, existingTest ? mergeCapabilityProtocolResult(existingTest, test) : test)
+  }
+
+  const compositeTests = Array.from(testsByProtocol.values()).filter(test => test.protocol.includes('->'))
+  const baseTests = BASE_PROTOCOL_ORDER.map(protocol =>
+    testsByProtocol.get(protocol) ?? buildCapabilityProtocolResult(protocol, 'idle')
+  )
+
+  return [...compositeTests, ...baseTests]
+}
+
+function buildCapabilityProgress(tests: CapabilityProtocolJobResult[]) {
+  const progress = {
+    totalModels: 0,
+    queuedModels: 0,
+    runningModels: 0,
+    successModels: 0,
+    failedModels: 0,
+    skippedModels: 0,
+    completedModels: 0,
+  }
+
+  for (const test of tests) {
+    for (const modelResult of test.modelResults ?? []) {
+      progress.totalModels += 1
+      if ((modelResult.status as string) === 'idle') continue
+      if (modelResult.lifecycle === 'active' || modelResult.status === 'running') {
+        progress.runningModels += 1
+        continue
+      }
+      if (modelResult.lifecycle === 'pending') {
+        progress.queuedModels += 1
+        continue
+      }
+      if (modelResult.status === 'success' || modelResult.outcome === 'success') {
+        progress.successModels += 1
+        progress.completedModels += 1
+        continue
+      }
+      if (modelResult.status === 'skipped' || modelResult.lifecycle === 'cancelled') {
+        progress.skippedModels += 1
+        progress.completedModels += 1
+        continue
+      }
+      progress.failedModels += 1
+      progress.completedModels += 1
+    }
+  }
+
+  return progress
+}
+
+function getCapabilityAggregateState(tests: CapabilityProtocolJobResult[]): {
+  status: CapabilityTestJob['status']
+  lifecycle: CapabilityTestJob['lifecycle']
+  outcome: CapabilityTestJob['outcome']
+  activeOperations: number
+} {
+  const nonIdleTests = tests.filter(test => !isIdleCapabilityTest(test))
+  const activeOperations = tests.filter(isActiveCapabilityTest).length
+  if (nonIdleTests.length === 0) {
+    return { status: 'idle', lifecycle: 'pending', outcome: 'unknown', activeOperations: 0 }
+  }
+  if (activeOperations > 0) {
+    return { status: 'running', lifecycle: 'active', outcome: 'unknown', activeOperations }
+  }
+  if (tests.some(isPendingCapabilityTest)) {
+    return { status: 'queued', lifecycle: 'pending', outcome: 'unknown', activeOperations: 0 }
+  }
+
+  const cancelledCount = nonIdleTests.filter(test => test.lifecycle === 'cancelled' || test.outcome === 'cancelled').length
+  if (cancelledCount === nonIdleTests.length) {
+    return { status: 'cancelled', lifecycle: 'cancelled', outcome: 'cancelled', activeOperations: 0 }
+  }
+
+  const successCount = nonIdleTests.filter(isSuccessfulCapabilityTest).length
+  if (successCount === 0) {
+    return { status: 'failed', lifecycle: 'done', outcome: 'failed', activeOperations: 0 }
+  }
+
+  return {
+    status: 'completed',
+    lifecycle: 'done',
+    outcome: successCount === nonIdleTests.length ? 'success' : 'partial',
+    activeOperations: 0,
+  }
+}
+
+function buildCapabilityIdleJob(channelType: string, channelId: number, channelName: string): CapabilityTestJob {
+  const now = new Date().toISOString()
+  const channelKind = isCapabilityChannelKind(channelType) ? channelType : 'messages'
+  const tests = BASE_PROTOCOL_ORDER.map(protocol => buildCapabilityProtocolResult(protocol, 'idle'))
+  return {
+    jobId: '',
+    channelId,
+    channelName,
+    channelKind,
+    sourceType: '',
+    status: 'idle',
+    lifecycle: 'pending',
+    outcome: 'unknown',
+    runMode: 'fresh',
+    tests,
+    compatibleProtocols: [],
+    totalDuration: 0,
+    updatedAt: now,
+    targetProtocols: [...BASE_PROTOCOL_ORDER],
+    progress: buildCapabilityProgress(tests),
+  }
+}
+
+function mergeCapabilityJob(baseJob: CapabilityTestJob, incomingJob: CapabilityTestJob): CapabilityTestJob {
+  const tests = normalizeCapabilityTests([
+    ...baseJob.tests,
+    ...incomingJob.tests,
+  ])
+  const aggregate = getCapabilityAggregateState(tests)
+  const protocolsInIncoming = incomingJob.tests
+    .map(test => test.protocol)
+    .filter(isCapabilityProtocol)
+  const protocolJobIds = { ...(baseJob.protocolJobIds ?? {}), ...(incomingJob.protocolJobIds ?? {}) }
+  const protocolJobRefs = { ...(baseJob.protocolJobRefs ?? {}), ...(incomingJob.protocolJobRefs ?? {}) }
+
+  if (incomingJob.jobId) {
+    for (const protocol of protocolsInIncoming) {
+      const incomingProtocolJobId = incomingJob.protocolJobRefs?.[protocol]?.jobId || incomingJob.protocolJobIds?.[protocol] || incomingJob.jobId
+      protocolJobIds[protocol] = incomingProtocolJobId
+      protocolJobRefs[protocol] = incomingJob.protocolJobRefs?.[protocol] ?? {
+        jobId: incomingProtocolJobId,
+        channelKind: incomingJob.channelKind as CapabilityChannelKind,
+        channelId: incomingJob.channelId,
+      }
+    }
+  }
+
+  return {
+    ...baseJob,
+    ...incomingJob,
+    protocolJobIds,
+    protocolJobRefs,
+    status: aggregate.status,
+    lifecycle: aggregate.lifecycle,
+    outcome: aggregate.outcome,
+    activeOperations: aggregate.activeOperations,
+    tests,
+    compatibleProtocols: tests.filter(isSuccessfulCapabilityTest).map(test => test.protocol),
+    progress: buildCapabilityProgress(tests),
+    targetProtocols: [...BASE_PROTOCOL_ORDER],
+    updatedAt: incomingJob.updatedAt || baseJob.updatedAt || new Date().toISOString(),
+  }
+}
+
+function getCapabilitySnapshotJobId(snapshot: CapabilitySnapshot): string {
+  const activeProtocol = snapshot.tests.find(test => test.lifecycle === 'active' || test.lifecycle === 'pending')?.protocol
+  if (activeProtocol) {
+    return snapshot.protocolJobRefs?.[activeProtocol]?.jobId || snapshot.protocolJobIds?.[activeProtocol] || ''
+  }
+  return Object.values(snapshot.protocolJobIds ?? {})[0] ?? ''
+}
+
+function buildCapabilityJobFromSnapshot(
+  snapshotValue: CapabilitySnapshot,
+  channelType: string,
+  channelId: number,
+  channelName: string,
+): CapabilityTestJob {
+  const baseJob = buildCapabilityIdleJob(channelType, channelId, channelName)
+  const snapshotJobId = getCapabilitySnapshotJobId(snapshotValue)
+  const snapshotJob: CapabilityTestJob = {
+    ...baseJob,
+    jobId: snapshotJobId,
+    protocolJobIds: snapshotValue.protocolJobIds,
+    protocolJobRefs: snapshotValue.protocolJobRefs,
+    sourceType: snapshotValue.sourceType,
+    tests: snapshotValue.tests,
+    compatibleProtocols: snapshotValue.compatibleProtocols,
+    totalDuration: snapshotValue.totalDuration,
+    progress: snapshotValue.progress,
+    lifecycle: snapshotValue.lifecycle,
+    outcome: snapshotValue.outcome,
+    status: snapshotValue.lifecycle === 'active' ? 'running' : snapshotValue.lifecycle === 'cancelled' ? 'cancelled' : snapshotValue.lifecycle === 'done' ? 'completed' : 'queued',
+    updatedAt: snapshotValue.updatedAt,
+    snapshotUpdatedAt: snapshotValue.updatedAt,
+  }
+  return {
+    ...mergeCapabilityJob(baseJob, snapshotJob),
+    snapshotUpdatedAt: snapshotValue.updatedAt,
+  }
+}
+
+function isCapabilityJobTerminal(job: CapabilityTestJob | null | undefined): boolean {
+  return !!job && (job.lifecycle === 'done' || job.lifecycle === 'cancelled')
+}
+
+function collectActiveJobIds(job: CapabilityTestJob | null): string[] {
+  if (!job) return []
+  const seen = new Set<string>()
+  for (const test of job.tests) {
+    if (test.lifecycle === 'active' || test.lifecycle === 'pending') {
+      const jobId = job.protocolJobRefs?.[test.protocol]?.jobId || job.protocolJobIds?.[test.protocol]
+      if (jobId) seen.add(jobId)
+    }
+  }
+  return Array.from(seen)
+}
 
 export function useCapabilityTests() {
   const api = useAdminApi()
@@ -31,6 +348,15 @@ export function useCapabilityTests() {
   }
 
   // ── 基础 CRUD ──
+
+  function prepareChannelSession(channelType: string, channelId: number, channelName: string) {
+    stopAllPolling()
+    snapshot.value = null
+    activeJob.value = buildCapabilityIdleJob(channelType, channelId, channelName)
+    loading.value = false
+    cancelling.value = false
+    clearError()
+  }
 
   async function startTest(
     channelType: string,
@@ -44,7 +370,12 @@ export function useCapabilityTests() {
         `/api/${channelType}/channels/${channelId}/capability-test`,
         options,
       )
-      activeJob.value = resp.job || null
+      if (resp.job) {
+        const baseJob = activeJob.value && activeJob.value.channelId === channelId
+          ? activeJob.value
+          : buildCapabilityIdleJob(channelType, channelId, resp.job.channelName || '')
+        activeJob.value = mergeCapabilityJob(baseJob, resp.job)
+      }
       if (resp.jobId) {
         startPolling(channelType, channelId, resp.jobId)
       }
@@ -79,17 +410,26 @@ export function useCapabilityTests() {
       models,
       rpm,
       sourceTab: channelType,
+      previousJobId: getPreviousJobId(protocol),
     })
   }
 
-  async function fetchSnapshot(channelType: string, channelId: number, sourceTab?: string) {
+  async function fetchSnapshot(channelType: string, channelId: number, sourceTab?: string, channelName = '') {
     try {
       const url = sourceTab
         ? `/api/${channelType}/channels/${channelId}/capability-snapshot?sourceTab=${sourceTab}`
         : `/api/${channelType}/channels/${channelId}/capability-snapshot`
       snapshot.value = await api.get<CapabilitySnapshot>(url)
-    } catch {
-      // snapshot 可能不存在，静默
+      const snapshotJob = buildCapabilityJobFromSnapshot(snapshot.value, channelType, channelId, channelName || activeJob.value?.channelName || '')
+      activeJob.value = snapshotJob
+      if (!isCapabilityJobTerminal(snapshotJob)) {
+        for (const jobId of collectActiveJobIds(snapshotJob)) {
+          startPolling(channelType, channelId, jobId)
+        }
+      }
+    } catch (e) {
+      if (e instanceof AdminApiError && e.status === 404) return
+      error.value = e instanceof Error ? e.message : String(e)
     }
   }
 
@@ -97,7 +437,10 @@ export function useCapabilityTests() {
     const job = await api.get<CapabilityTestJob>(
       `/api/${channelType}/channels/${channelId}/capability-test/${jobId}`,
     )
-    activeJob.value = job
+    const baseJob = activeJob.value && activeJob.value.channelId === channelId
+      ? activeJob.value
+      : buildCapabilityIdleJob(channelType, channelId, job.channelName || '')
+    activeJob.value = mergeCapabilityJob(baseJob, job)
     if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
       stopPoller(jobId)
     }
@@ -133,6 +476,19 @@ export function useCapabilityTests() {
     for (const timer of pollers.values()) clearInterval(timer)
     pollers.clear()
     polling.value = false
+  }
+
+  function closeDialog() {
+    stopAllPolling()
+    loading.value = false
+    cancelling.value = false
+    clearError()
+  }
+
+  function getPreviousJobId(protocol: string): string | undefined {
+    return activeJob.value?.protocolJobRefs?.[protocol]?.jobId ||
+      activeJob.value?.protocolJobIds?.[protocol] ||
+      undefined
   }
 
   // ── 取消 ──
@@ -271,6 +627,7 @@ export function useCapabilityTests() {
   const state = computed<'initializing' | 'error' | 'idle' | 'pending' | 'running' | 'completed' | 'cancelled'>(() => {
     if (error.value) return 'error'
     if (loading.value && !activeJob.value && !snapshot.value) return 'initializing'
+    if (activeJob.value?.status === 'idle') return 'idle'
     const l = lifecycle.value
     if (l === 'pending') return 'pending'
     if (l === 'active') return 'running'
@@ -293,6 +650,7 @@ export function useCapabilityTests() {
     cancelling,
     error,
     clearError,
+    prepareChannelSession,
     startTest,
     startProtocolTest,
     fetchSnapshot,
@@ -301,6 +659,7 @@ export function useCapabilityTests() {
     retryModel,
     retryModelForProtocol,
     copyToTab,
+    closeDialog,
     reset,
     // computed helpers
     protocolResults,
