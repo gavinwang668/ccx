@@ -24,6 +24,7 @@ func TestBuildPayload(t *testing.T) {
 		wantFallback       string
 		wantNormalize      bool
 		wantNoVisionModels []string
+		wantAuthHeader     string
 	}{
 		{
 			name:         "deepseek messages (anthropic endpoint)",
@@ -365,6 +366,7 @@ func TestBuildPayload(t *testing.T) {
 				"opus":   "max",
 				"sonnet": "max",
 			},
+			wantAuthHeader: "x-api-key",
 		},
 		{
 			name:          "opencode zen chat",
@@ -538,6 +540,9 @@ func TestBuildPayload(t *testing.T) {
 			}
 			if got.ServiceType != tt.wantService {
 				t.Fatalf("ServiceType = %q, want %q", got.ServiceType, tt.wantService)
+			}
+			if got.AuthHeader != tt.wantAuthHeader {
+				t.Fatalf("AuthHeader = %q, want %q", got.AuthHeader, tt.wantAuthHeader)
 			}
 			if got.NoVision != tt.wantVision {
 				t.Fatalf("NoVision = %v, want %v", got.NoVision, tt.wantVision)

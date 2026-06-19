@@ -96,6 +96,7 @@ type ChannelPayload struct {
 	Description                   string            `json:"description,omitempty"`
 	Website                       string            `json:"website,omitempty"`
 	ServiceType                   string            `json:"serviceType"`
+	AuthHeader                    string            `json:"authHeader,omitempty"`
 	BaseURL                       string            `json:"baseUrl"`
 	APIKeys                       []string          `json:"apiKeys"`
 	ModelMapping                  map[string]string `json:"modelMapping,omitempty"`
@@ -1079,6 +1080,9 @@ func applyTargetDefaults(payload *ChannelPayload, provider string, target string
 		payload.ServiceType = "claude"
 		payload.StripEmptyTextBlocks = true
 		payload.StripThoughtSignature = true
+		if provider == ProviderOpenCodeGo {
+			payload.AuthHeader = "x-api-key"
+		}
 		if provider == ProviderRunAPI {
 			payload.NormalizeMetadataUserId = boolRef(false)
 		}
