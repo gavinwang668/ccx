@@ -135,7 +135,6 @@ function generateGo(patternMap) {
     lines.push(`\t\t${quoteGoString(pattern)}: ${formatGoCapability(toGoCapability(patternMap[pattern]))},`)
   }
   lines.push('\t}', '}')
-  lines.push('')
   return `${lines.join('\n')}\n`
 }
 

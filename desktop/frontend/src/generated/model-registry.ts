@@ -318,11 +318,185 @@ export const builtinUpstreamModelCapabilities: Record<string, UpstreamModelCapab
       "https://www.alibabacloud.com/help/en/model-studio/models"
     ]
   },
-  "*deepseek-v4*": {
+  "deepseek-v4-flash": {
     "provider": "deepseek",
-    "displayName": "DeepSeek V4",
+    "displayName": "DeepSeek V4 Flash",
+    "description": "Supports thinking and non-thinking modes. deepseek-chat is a deprecated compatibility alias for the non-thinking mode.",
     "contextWindowTokens": 1000000,
-    "maxOutputTokens": 8192
+    "maxOutputTokens": 384000,
+    "thinkingMode": "thinking",
+    "reasoningEfforts": [
+      "high",
+      "max"
+    ],
+    "capabilities": {
+      "jsonOutput": true,
+      "toolCalls": true,
+      "prefixCompletion": true,
+      "fimCompletion": true,
+      "contextCaching": true
+    },
+    "pricing": {
+      "unit": "per_1m_tokens_cny",
+      "currency": "CNY",
+      "inputCacheHitPrice": 0.02,
+      "inputCacheMissPrice": 1,
+      "outputPrice": 2
+    },
+    "sources": [
+      "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+    ]
+  },
+  "*deepseek-v4-flash*": {
+    "provider": "deepseek",
+    "displayName": "DeepSeek V4 Flash",
+    "description": "Supports thinking and non-thinking modes. deepseek-chat is a deprecated compatibility alias for the non-thinking mode.",
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 384000,
+    "thinkingMode": "thinking",
+    "reasoningEfforts": [
+      "high",
+      "max"
+    ],
+    "capabilities": {
+      "jsonOutput": true,
+      "toolCalls": true,
+      "prefixCompletion": true,
+      "fimCompletion": true,
+      "contextCaching": true
+    },
+    "pricing": {
+      "unit": "per_1m_tokens_cny",
+      "currency": "CNY",
+      "inputCacheHitPrice": 0.02,
+      "inputCacheMissPrice": 1,
+      "outputPrice": 2
+    },
+    "sources": [
+      "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+    ]
+  },
+  "deepseek-chat": {
+    "provider": "deepseek",
+    "displayName": "DeepSeek V4 Flash",
+    "description": "Supports thinking and non-thinking modes. deepseek-chat is a deprecated compatibility alias for the non-thinking mode.",
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 384000,
+    "thinkingMode": "thinking",
+    "reasoningEfforts": [
+      "high",
+      "max"
+    ],
+    "capabilities": {
+      "jsonOutput": true,
+      "toolCalls": true,
+      "prefixCompletion": true,
+      "fimCompletion": true,
+      "contextCaching": true
+    },
+    "pricing": {
+      "unit": "per_1m_tokens_cny",
+      "currency": "CNY",
+      "inputCacheHitPrice": 0.02,
+      "inputCacheMissPrice": 1,
+      "outputPrice": 2
+    },
+    "sources": [
+      "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+    ]
+  },
+  "deepseek-v4-pro": {
+    "provider": "deepseek",
+    "displayName": "DeepSeek V4 Pro",
+    "description": "Supports thinking and non-thinking modes. deepseek-reasoner is a deprecated compatibility alias for the thinking mode.",
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 384000,
+    "thinkingMode": "thinking",
+    "reasoningEfforts": [
+      "high",
+      "max"
+    ],
+    "capabilities": {
+      "jsonOutput": true,
+      "toolCalls": true,
+      "prefixCompletion": true,
+      "fimCompletion": true,
+      "contextCaching": true
+    },
+    "pricing": {
+      "unit": "per_1m_tokens_cny",
+      "currency": "CNY",
+      "inputCacheHitPrice": 0.025,
+      "inputCacheMissPrice": 3,
+      "outputPrice": 6
+    },
+    "sources": [
+      "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+    ]
+  },
+  "*deepseek-v4-pro*": {
+    "provider": "deepseek",
+    "displayName": "DeepSeek V4 Pro",
+    "description": "Supports thinking and non-thinking modes. deepseek-reasoner is a deprecated compatibility alias for the thinking mode.",
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 384000,
+    "thinkingMode": "thinking",
+    "reasoningEfforts": [
+      "high",
+      "max"
+    ],
+    "capabilities": {
+      "jsonOutput": true,
+      "toolCalls": true,
+      "prefixCompletion": true,
+      "fimCompletion": true,
+      "contextCaching": true
+    },
+    "pricing": {
+      "unit": "per_1m_tokens_cny",
+      "currency": "CNY",
+      "inputCacheHitPrice": 0.025,
+      "inputCacheMissPrice": 3,
+      "outputPrice": 6
+    },
+    "sources": [
+      "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+    ]
+  },
+  "deepseek-reasoner": {
+    "provider": "deepseek",
+    "displayName": "DeepSeek V4 Pro",
+    "description": "Supports thinking and non-thinking modes. deepseek-reasoner is a deprecated compatibility alias for the thinking mode.",
+    "contextWindowTokens": 1000000,
+    "maxOutputTokens": 384000,
+    "thinkingMode": "thinking",
+    "reasoningEfforts": [
+      "high",
+      "max"
+    ],
+    "capabilities": {
+      "jsonOutput": true,
+      "toolCalls": true,
+      "prefixCompletion": true,
+      "fimCompletion": true,
+      "contextCaching": true
+    },
+    "pricing": {
+      "unit": "per_1m_tokens_cny",
+      "currency": "CNY",
+      "inputCacheHitPrice": 0.025,
+      "inputCacheMissPrice": 3,
+      "outputPrice": 6
+    },
+    "sources": [
+      "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "https://api-docs.deepseek.com/zh-cn/guides/thinking_mode"
+    ]
   },
   "*deepseek-v3.2*": {
     "provider": "deepseek",
@@ -343,28 +517,6 @@ export const builtinUpstreamModelCapabilities: Record<string, UpstreamModelCapab
     },
     "sources": [
       "https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json"
-    ]
-  },
-  "*deepseek-reasoner*": {
-    "provider": "deepseek",
-    "displayName": "DeepSeek Reasoner",
-    "contextWindowTokens": 131072,
-    "maxOutputTokens": 65536,
-    "reasoningEfforts": [
-      "low",
-      "medium",
-      "high",
-      "max"
-    ],
-    "pricing": {
-      "unit": "per_1m_tokens_usd",
-      "currency": "USD",
-      "inputCacheHitPrice": 0.028,
-      "inputCacheMissPrice": 0.28,
-      "outputPrice": 0.42
-    },
-    "sources": [
-      "https://api-docs.deepseek.com/quick_start/pricing"
     ]
   },
   "*kimi-k2.7-code-highspeed*": {
