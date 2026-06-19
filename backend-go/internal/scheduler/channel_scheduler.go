@@ -211,9 +211,6 @@ func (r *ContextRequirement) effectiveWindowTokens() int {
 	if r == nil {
 		return 0
 	}
-	if r.MinimumContextWindowTokens > r.RequiredTokens {
-		return r.MinimumContextWindowTokens
-	}
 	return r.RequiredTokens
 }
 

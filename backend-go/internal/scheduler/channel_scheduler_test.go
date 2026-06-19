@@ -1181,7 +1181,7 @@ func TestSelectChannelFiltersByContextWindowStableOrder(t *testing.T) {
 	}
 }
 
-func TestSelectChannelUsesAgentProfileMinimumWindow(t *testing.T) {
+func TestSelectChannelDoesNotUseAgentProfileAsHardMinimumWindow(t *testing.T) {
 	cfg := config.Config{
 		Upstream: []config.UpstreamConfig{
 			{
@@ -1231,8 +1231,8 @@ func TestSelectChannelUsesAgentProfileMinimumWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sonnet SelectChannelWithOptions() error = %v", err)
 	}
-	if sonnet.Upstream.Name != "modern-1m" {
-		t.Fatalf("sonnet selected channel = %q, want modern-1m", sonnet.Upstream.Name)
+	if sonnet.Upstream.Name != "legacy-200k" {
+		t.Fatalf("sonnet selected channel = %q, want legacy-200k", sonnet.Upstream.Name)
 	}
 
 	haikuProfile := config.ResolveAgentModelProfile("haiku", nil)

@@ -142,6 +142,7 @@ func handleMultiChannel(
 	cfg := cfgManager.GetConfig()
 	contextRequirement := common.BuildGeminiContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, model, cfg)
+	common.LogContextEstimate(c, "Gemini", contextRequirement)
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -253,6 +254,7 @@ func handleSingleChannel(
 	cfg := cfgManager.GetConfig()
 	contextRequirement := common.BuildGeminiContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, model, cfg)
+	common.LogContextEstimate(c, "Gemini", contextRequirement)
 	if err := channelScheduler.ValidateUpstreamContext(scheduler.ChannelKindGemini, model, upstream, contextRequirement); err != nil {
 		c.JSON(400, types.GeminiError{
 			Error: types.GeminiErrorDetail{

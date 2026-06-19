@@ -118,6 +118,7 @@ func handleMultiChannel(
 	cfg := cfgManager.GetConfig()
 	contextRequirement := common.BuildChatContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, model, cfg)
+	common.LogContextEstimate(c, "Chat", contextRequirement)
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -219,6 +220,7 @@ func handleSingleChannel(
 	cfg := cfgManager.GetConfig()
 	contextRequirement := common.BuildChatContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, model, cfg)
+	common.LogContextEstimate(c, "Chat", contextRequirement)
 	if err := channelScheduler.ValidateUpstreamContext(scheduler.ChannelKindChat, model, upstream, contextRequirement); err != nil {
 		chatErrorResponse(c, 400, err.Error(), "context_window_exceeded")
 		return

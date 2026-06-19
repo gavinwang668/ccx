@@ -114,6 +114,7 @@ func handleMultiChannel(
 	if isCompactionV2 && contextRequirement != nil {
 		contextRequirement.SkipWindowValidation = true
 	}
+	common.LogContextEstimate(c, "Responses", contextRequirement)
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -251,6 +252,7 @@ func handleSingleChannel(
 	if isCompactionV2 && contextRequirement != nil {
 		contextRequirement.SkipWindowValidation = true
 	}
+	common.LogContextEstimate(c, "Responses", contextRequirement)
 	if err := channelScheduler.ValidateUpstreamContext(scheduler.ChannelKindResponses, responsesReq.Model, upstream, contextRequirement); err != nil {
 		c.JSON(400, gin.H{
 			"error": err.Error(),

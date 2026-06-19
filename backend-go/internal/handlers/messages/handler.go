@@ -110,6 +110,7 @@ func handleMultiChannel(
 	cfg := cfgManager.GetConfig()
 	contextRequirement := common.BuildMessagesContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, claudeReq.Model, cfg)
+	common.LogContextEstimate(c, "Messages", contextRequirement)
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -238,6 +239,7 @@ func handleSingleChannel(
 	cfg := cfgManager.GetConfig()
 	contextRequirement := common.BuildMessagesContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, claudeReq.Model, cfg)
+	common.LogContextEstimate(c, "Messages", contextRequirement)
 	if err := channelScheduler.ValidateUpstreamContext(scheduler.ChannelKindMessages, claudeReq.Model, upstream, contextRequirement); err != nil {
 		c.JSON(400, gin.H{
 			"error": err.Error(),
