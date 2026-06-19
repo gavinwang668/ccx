@@ -9,7 +9,7 @@ inputs:
     description: Directory used to download the signed artifact from SignPath.
     required: true
   artifact-name:
-    description: Unique GitHub Actions artifact name used for the unsigned file upload.
+    description: Unique, filesystem-safe GitHub Actions artifact name used for the unsigned file upload.
     required: true
   api-token:
     description: SignPath API token.
@@ -43,12 +43,45 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Prepare unsigned artifact
+      id: prepare
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        file_pattern='${{ inputs.file }}'
+        artifact_name='${{ inputs.artifact-name }}'
+
+        mapfile -t matches < <(compgen -G "$file_pattern")
+        if [ "${#matches[@]}" -ne 1 ]; then
+          echo "Expected exactly one file for '$file_pattern', got ${#matches[@]}" >&2
+          exit 1
+        fi
+
+        original="${matches[0]}"
+        original_name="$(basename "$original")"
+        extension=""
+        if [[ "$original_name" == *.* ]]; then
+          extension=".${original_name##*.}"
+        fi
+
+        staging_directory=".signpath/upload"
+        staged_file="${staging_directory}/${artifact_name}${extension}"
+        mkdir -p "$staging_directory"
+        cp "$original" "$staged_file"
+
+        {
+          echo "original=${original}"
+          echo "staged-file=${staged_file}"
+          echo "staged-basename=$(basename "$staged_file")"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Upload unsigned artifact
       id: upload
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}
-        path: ${{ inputs.file }}
+        path: ${{ steps.prepare.outputs.staged-file }}
         archive: false
         if-no-files-found: error
         overwrite: true
@@ -87,23 +120,18 @@ runs:
 
     - name: Replace original with signed artifact
       shell: bash
+      env:
+        ORIGINAL_FILE: ${{ steps.prepare.outputs.original }}
+        OUTPUT_DIRECTORY: ${{ inputs.output-directory }}
+        STAGED_BASENAME: ${{ steps.prepare.outputs.staged-basename }}
       run: |
         set -euo pipefail
 
-        file_pattern='${{ inputs.file }}'
-        output_directory='${{ inputs.output-directory }}'
-
-        mapfile -t matches < <(compgen -G "$file_pattern")
-        if [ "${#matches[@]}" -ne 1 ]; then
-          echo "Expected exactly one file for '$file_pattern', got ${#matches[@]}" >&2
-          exit 1
-        fi
-
-        original="${matches[0]}"
-        signed_file="${output_directory}/$(basename "$original")"
+        original="$ORIGINAL_FILE"
+        signed_file="${OUTPUT_DIRECTORY}/${STAGED_BASENAME}"
         if [ ! -f "$signed_file" ]; then
           echo "Signed artifact not found: $signed_file" >&2
-          find "$output_directory" -type f -print >&2 || true
+          find "$OUTPUT_DIRECTORY" -type f -print >&2 || true
           exit 1
         fi
 
