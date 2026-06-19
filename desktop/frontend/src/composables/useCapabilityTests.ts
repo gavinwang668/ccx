@@ -556,6 +556,7 @@ export function useCapabilityTests() {
     sourceChannelType: string,
     channelId: number,
     targetProtocol: string,
+    serviceProtocol = targetProtocol,
   ) {
     // 先获取当前渠道完整数据
     const typeApi = getChannelTypeApi(sourceChannelType as ManagedChannelType)
@@ -574,8 +575,8 @@ export function useCapabilityTests() {
         payload[k] = v
       }
     }
-    // 调整 serviceType 以适配目标协议
-    payload.serviceType = getNativeServiceType(targetProtocol)
+    // targetProtocol 决定复制到哪个 Tab，serviceProtocol 决定该副本实际使用哪种上游协议。
+    payload.serviceType = getNativeServiceType(serviceProtocol)
 
     const targetApi = getChannelTypeApi(targetProtocol as ManagedChannelType)
     await targetApi.addChannel(payload as any)
@@ -677,5 +678,6 @@ function getNativeServiceType(protocol: string): string {
   if (protocol === 'chat') return 'openai'
   if (protocol === 'responses') return 'responses'
   if (protocol === 'gemini') return 'gemini'
+  if (protocol === 'images') return 'openai'
   return 'openai'
 }

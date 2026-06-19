@@ -54,11 +54,18 @@ function getModelBadgeClasses(result: CapabilityModelJobResult) {
   if (result.status === 'running') return `${base} bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/20`
   if (result.status === 'queued') return `${base} bg-muted/30 text-muted-foreground border border-border`
   // idle / skipped / cancelled
-  return `${base} bg-muted/20 text-muted-foreground border border-border`
+  const retry = props.retryEnabled && canRetry(result)
+  return `${base} bg-muted/20 text-muted-foreground border border-border ${retry ? 'cursor-pointer hover:border-blue-500/40 hover:bg-blue-500/10' : ''}`
 }
 
 function canRetry(result: CapabilityModelJobResult) {
   return result.status === 'failed' || result.status === 'idle'
+}
+
+function getRetryHint(result: CapabilityModelJobResult) {
+  return result.status === 'idle'
+    ? tf('capability.testModel', '点击测试')
+    : tf('capability.retryModel', '重试')
 }
 
 function isRedirected(result: CapabilityModelJobResult) {
@@ -111,7 +118,7 @@ function handleBadgeClick(result: CapabilityModelJobResult) {
           ? `${result.model}${result.actualModel && result.actualModel !== result.model ? ` → ${result.actualModel}` : ''} | ${getModelTooltipLatencyText(result)} | Streaming: ${formatStreaming(result)}`
           : getModelTooltipView(result) === 'pending'
           ? `${result.model} — ${result.status}`
-          : `${result.model}${result.error ? ` — ${result.error}` : ''}${canRetry(result) ? ` | ${tf('capability.retryModel', '重试')}` : ''}`"
+          : `${result.model}${result.error ? ` — ${result.error}` : ''}${canRetry(result) ? ` | ${getRetryHint(result)}` : ''}`"
         @click="handleBadgeClick(result)"
       >
         <span>{{ result.model }}</span>

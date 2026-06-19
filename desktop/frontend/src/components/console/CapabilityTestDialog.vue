@@ -108,14 +108,39 @@ function getProtocolDisplayName(proto: string): string {
   return map[proto] ?? proto
 }
 
+type ProtocolDisplayState = 'idle' | 'pending' | 'running' | 'success' | 'partial' | 'cancelled' | 'failed'
+
 // ── 协议状态判定 ──
 
+function getProtocolDisplayState(test: CapabilityProtocolJobResult): ProtocolDisplayState {
+  if ((test.status as string) === 'idle') return 'idle'
+  if (test.lifecycle === 'active' || test.status === 'running') return 'running'
+  if (test.lifecycle === 'pending' || test.status === 'queued') return 'pending'
+  if (test.lifecycle === 'cancelled' || test.outcome === 'cancelled') return 'cancelled'
+  if (test.outcome === 'partial') return 'partial'
+  if (test.success || test.outcome === 'success') return 'success'
+  return 'failed'
+}
+
 function isProtocolBusy(test: CapabilityProtocolJobResult): boolean {
-  return test.lifecycle === 'active' || test.lifecycle === 'pending' || test.status === 'running' || test.status === 'queued'
+  const displayState = getProtocolDisplayState(test)
+  return displayState === 'pending' || displayState === 'running'
 }
 
 function isProtocolFailed(test: CapabilityProtocolJobResult): boolean {
-  return test.status === 'failed'
+  return getProtocolDisplayState(test) === 'failed'
+}
+
+function getProtocolStatusLabel(test: CapabilityProtocolJobResult): string {
+  switch (getProtocolDisplayState(test)) {
+    case 'idle': return tf('capability.notStarted', '未开始')
+    case 'pending': return tf('capability.modelQueued', '排队中')
+    case 'running': return tf('capability.protocolRunning', '测试中')
+    case 'success': return tf('capability.success', '成功')
+    case 'partial': return tf('capability.partial', '部分可用')
+    case 'cancelled': return tf('capability.cancelled', '已取消')
+    default: return test.error || tf('capability.failed', '失败')
+  }
 }
 
 function shouldShowTestProtocolButton(test: CapabilityProtocolJobResult): boolean {
@@ -190,7 +215,7 @@ async function handleRetryModel(protocol: string, model: string) {
 }
 
 function handleCopyToTab(targetProtocol: string, serviceProtocol: string) {
-  void copyToTab(props.channelType, props.channelId, targetProtocol)
+  void copyToTab(props.channelType, props.channelId, targetProtocol, serviceProtocol)
 }
 
 function handleRpmBlur() {
@@ -233,7 +258,7 @@ onBeforeUnmount(() => {
             <div class="flex items-center gap-2">
               <Play class="h-4 w-4 text-primary" />
               <h3 class="text-sm font-semibold">
-                {{ tf('capability.title', '能力测试') }}: {{ channelName }}
+                {{ tf('capability.title', '能力测试 - {channel}', { channel: channelName }) }}
               </h3>
             </div>
             <div class="flex items-center gap-2">
@@ -279,7 +304,7 @@ onBeforeUnmount(() => {
                 </span>
 
                 <span v-if="currentJob?.snapshotUpdatedAt" class="text-[10px] text-muted-foreground">
-                  {{ tf('capability.snapshotUpdated', '更新时间') }}: {{ currentJob.snapshotUpdatedAt }}
+                  {{ tf('capability.snapshotUpdated', '更新时间：{time}', { time: currentJob.snapshotUpdatedAt }) }}
                 </span>
 
                 <Button v-if="state === 'pending' || state === 'running'" variant="destructive" size="sm" :disabled="cancelling" @click="handleCancel">
@@ -324,7 +349,7 @@ onBeforeUnmount(() => {
                             <XCircle v-else-if="test.status === 'failed'" class="h-3.5 w-3.5 text-rose-500" />
                             <Loader2 v-else-if="isProtocolBusy(test)" class="h-3.5 w-3.5 animate-spin text-primary" />
                             <Clock v-else class="h-3.5 w-3.5 text-muted-foreground" />
-                            <span class="text-xs">{{ test.status }}</span>
+                            <span class="text-xs">{{ getProtocolStatusLabel(test) }}</span>
                           </div>
                           <div v-else class="flex items-center gap-1.5 text-rose-600 dark:text-rose-400" :title="test.error">
                             <XCircle class="h-3.5 w-3.5" />
@@ -349,7 +374,7 @@ onBeforeUnmount(() => {
                         </td>
                         <td class="px-3 py-2 text-right">
                           <div class="flex items-center justify-end gap-1 flex-wrap">
-                            <Button v-if="shouldShowTestProtocolButton(test)" variant="outline" size="sm" class="h-5 text-[10px]" :disabled="isActive || isStarting" @click="handleTestProtocol(test.protocol)">
+                            <Button v-if="shouldShowTestProtocolButton(test)" variant="outline" size="sm" class="h-5 text-[10px]" :disabled="isStarting || isProtocolBusy(test)" @click="handleTestProtocol(test.protocol)">
                               <Play class="h-3 w-3" />{{ tf('capability.startTest', '开始测试') }}
                             </Button>
                             <Button v-if="test.success && !isCurrentTabProtocol(test.protocol)" variant="outline" size="sm" class="h-5 text-[10px]" @click="handleCopyToTab(test.protocol, test.protocol)">
