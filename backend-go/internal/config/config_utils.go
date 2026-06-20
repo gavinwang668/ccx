@@ -341,6 +341,21 @@ func applyModelCapabilityUpdates(upstream *UpstreamConfig, updates UpstreamUpdat
 	}
 }
 
+
+// applyAPIKeyConfigUpdate 根据 UpstreamUpdate 同步 upstream.APIKeyConfigs：
+//   - updates.APIKeyConfigs != nil：以新值为准，按当前 APIKeys 归一化（保留 orphan）
+//   - updates.APIKeyConfigs == nil 但 updates.APIKeys != nil：仅按新 APIKeys 重新归一化原有 configs
+//   - 两者都为 nil：不动 APIKeyConfigs
+//
+// 五类渠道 Update 函数共用，避免新增字段时遗漏其中某一处。
+func applyAPIKeyConfigUpdate(upstream *UpstreamConfig, updates UpstreamUpdate) {
+	if updates.APIKeyConfigs != nil {
+		upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, updates.APIKeyConfigs)
+	} else if updates.APIKeys != nil {
+		upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, upstream.APIKeyConfigs)
+	}
+}
+
 func cloneAPIKeyConfig(cfg APIKeyConfig) APIKeyConfig {
 	if cfg.Enabled != nil {
 		v := *cfg.Enabled

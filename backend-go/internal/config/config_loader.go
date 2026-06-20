@@ -16,6 +16,10 @@ const (
 	maxBackups      = 10
 	keyRecoveryTime = 5 * time.Minute
 	maxFailureCount = 3
+
+	// configReloadDebounce 是 watcher 收到文件变更后的防抖窗口：
+	// 在窗口内的连续事件合并为一次 loadConfig，避免编辑器原子保存或快速多次写入触发多次重载。
+	configReloadDebounce = 100 * time.Millisecond
 )
 
 // NewConfigManager 创建配置管理器
@@ -598,8 +602,13 @@ func (cm *ConfigManager) startWatcher() error {
 				if !ok {
 					return
 				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					// watcher 回调只发送重载信号，避免后台 goroutine 调用 log 导致测试中的 log 重定向竞态。
+				// 覆盖三种文件变更事件：直接写、原子保存（vim/VSCode 走 RENAME+CREATE）。
+				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
+					// 原子保存的 RENAME 会让 inode 失效，需要重新 Add 才能继续收到事件。
+					if event.Op&fsnotify.Rename == fsnotify.Rename {
+						_ = watcher.Add(cm.configFile)
+					}
+					// 仅发送信号，由独立 goroutine 负责防抖与重载，避免 watcher 回调内做 IO。
 					select {
 					case cm.reloadCh <- struct{}{}:
 					default:
@@ -617,12 +626,34 @@ func (cm *ConfigManager) startWatcher() error {
 	cm.backgroundWG.Add(1)
 	go func() {
 		defer cm.backgroundWG.Done()
+		// debounce: 收到第一个信号后启动 timer；后续信号 reset timer，
+		// 直至连续 configReloadDebounce 内无新信号才触发实际 loadConfig。
+		// 这样可以合并编辑器原子保存、CI 多次写入等多事件场景。
+		var timer *time.Timer
+		var timerC <-chan time.Time
 		for {
 			select {
 			case <-cm.stopChan:
+				if timer != nil {
+					timer.Stop()
+				}
 				return
 			case <-cm.reloadCh:
-				time.Sleep(100 * time.Millisecond)
+				if timer == nil {
+					timer = time.NewTimer(configReloadDebounce)
+					timerC = timer.C
+				} else {
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(configReloadDebounce)
+				}
+			case <-timerC:
+				timer = nil
+				timerC = nil
 				if err := cm.loadConfig(); err != nil {
 					log.Printf("[Config-Watcher] 警告: 配置重载失败: %v", err)
 				} else {

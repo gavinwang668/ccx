@@ -1,0 +1,65 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestWatcher_DebouncesRapidWrites 验证 watcher 在 debounce 窗口内的多次写入合并为一次 loadConfig。
+// 通过 RegisterOnConfigChange 计数实际触发次数。
+func TestWatcher_DebouncesRapidWrites(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	initial := `{"upstream":[{"name":"a","baseUrl":"https://x.example","apiKeys":["k1"],"serviceType":"claude"}]}`
+	if err := os.WriteFile(configPath, []byte(initial), 0644); err != nil {
+		t.Fatalf("初始配置写入失败: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath, "")
+	if err != nil {
+		t.Fatalf("NewConfigManager() error = %v", err)
+	}
+	defer cm.CloseWatcher()
+
+	callbackCount := 0
+	done := make(chan struct{}, 1)
+	cm.RegisterOnConfigChange(func(_ Config) {
+		callbackCount++
+		select {
+		case done <- struct{}{}:
+		default:
+		}
+	})
+
+	// 在 debounce 窗口（100ms）内连续写入多次，期望最终只触发一次重载。
+	// 通过修改 name 字段（仍是合法 JSON）来制造多次合法变更。
+	for i := 0; i < 5; i++ {
+		newName := "ch-" + strings.Repeat("x", i+1)
+		updated := strings.Replace(initial, `"name":"a"`, `"name":"`+newName+`"`, 1)
+		if err := os.WriteFile(configPath, []byte(updated), 0644); err != nil {
+			t.Fatalf("写入 %d 失败: %v", i, err)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+
+	// 等待 debounce 触发（最长 1s 兜底）
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("未收到任何 change 回调")
+	}
+
+	// 再等待一段时间确保后续没有多次触发
+	time.Sleep(200 * time.Millisecond)
+
+	if callbackCount > 2 {
+		// 允许极端环境下 2 次（首批 + 末尾边界），但不应等于 5
+		t.Fatalf("callback 触发 %d 次，期望 1-2 次（debounce 合并失败）", callbackCount)
+	}
+	if callbackCount == 0 {
+		t.Fatal("callback 未触发")
+	}
+}

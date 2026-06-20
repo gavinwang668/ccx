@@ -193,11 +193,7 @@ func (cm *ConfigManager) UpdateChatUpstream(index int, updates UpstreamUpdate) (
 		}
 		upstream.APIKeys = deduplicateStrings(updates.APIKeys)
 	}
-	if updates.APIKeyConfigs != nil {
-		upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, updates.APIKeyConfigs)
-	} else if updates.APIKeys != nil {
-		upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, upstream.APIKeyConfigs)
-	}
+	applyAPIKeyConfigUpdate(upstream, updates)
 	if updates.ModelMapping != nil {
 		upstream.ModelMapping = updates.ModelMapping
 	}
