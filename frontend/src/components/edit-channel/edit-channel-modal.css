@@ -1,4 +1,13 @@
-/* 基础URL下方的提示区域 - 固定高度防止布局跳动 */
+/* 渠道编辑对话框使用视口自适应高度，确保底部操作按钮始终可见 */
+.channel-editor-dialog {
+  max-height: min(820px, calc(100vh - 48px));
+}
+
+.channel-editor-body {
+  height: min(600px, calc(100vh - 220px));
+  min-height: 360px;
+}
+
 .base-url-hint {
   min-height: 20px;
   padding: 4px 12px 8px;

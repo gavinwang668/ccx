@@ -1,6 +1,6 @@
 <template>
-  <v-dialog :model-value="show" max-width="1200" persistent @update:model-value="$emit('update:show', $event)">
-    <v-card rounded="lg" class="add-channel-dialog">
+  <v-dialog :model-value="show" max-width="1200" persistent scrollable @update:model-value="$emit('update:show', $event)">
+    <v-card rounded="lg" class="add-channel-dialog channel-editor-dialog">
       <!-- 头部 -->
       <AddChannelHeader
         :is-editing="isEditing"
@@ -21,9 +21,9 @@
       />
 
       <!-- 主体内容 -->
-      <v-card-text class="pa-0" style="height: 600px;">
+      <v-card-text class="pa-0 channel-editor-body">
         <!-- 左侧导航 + 右侧面板 -->
-        <div class="content-row" style="height: 100%;">
+        <div class="content-row">
           <!-- 左侧垂直导航 -->
           <AddChannelSidebarNav
             :title="t('addChannel.outline')"
