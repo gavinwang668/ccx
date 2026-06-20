@@ -81,7 +81,8 @@ const { t } = useLanguage()
 
 const isSuspended = computed(() => props.channel.status === 'suspended')
 const isDisabled = computed(() => props.channel.status === 'disabled')
-const isTripped = computed(() => isSuspended.value || props.metrics?.circuitState === 'open')
+const isCircuitOpen = computed(() => props.metrics?.circuitState === 'open')
+const isTripped = computed(() => isSuspended.value || isCircuitOpen.value)
 
 const serviceTypeClass = computed(() => {
   const map: Record<string, string> = {
@@ -100,10 +101,16 @@ const statusConfig = computed(() => {
       dot: 'bg-muted-foreground',
     }
   }
-  if (isTripped.value) {
+  if (isCircuitOpen.value) {
     return {
       label: t('status.tripped'),
       dot: 'bg-rose-500 animate-pulse',
+    }
+  }
+  if (isSuspended.value) {
+    return {
+      label: t('status.paused'),
+      dot: 'bg-amber-500',
     }
   }
   return {

@@ -96,7 +96,7 @@
               v-for="row in demoRows"
               :key="row.priority"
               class="demo-row"
-              :class="{ 'is-tripped': row.status === 'suspended' }"
+              :class="{ 'is-paused': row.status === 'suspended' }"
             >
               <span class="demo-handle"><v-icon size="16" color="grey">mdi-drag-vertical</v-icon></span>
               <span class="demo-priority">{{ row.priority }}</span>
@@ -176,10 +176,10 @@ watch(
   },
 )
 
-// 渠道列表示意行：一个正常、一个熔断
+// 渠道列表示意行：一个正常、一个暂停
 const demoRows = computed<Array<{ priority: number; status: ChannelStatus; name: string; keys: number }>>(() => [
   { priority: 1, status: 'active', name: t('guide.channelList.demoNormalName'), keys: 3 },
-  { priority: 2, status: 'suspended', name: t('guide.channelList.demoTrippedName'), keys: 2 },
+  { priority: 2, status: 'suspended', name: t('guide.channelList.demoPausedName'), keys: 2 },
 ])
 
 function prev() {
@@ -332,9 +332,9 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.demo-row.is-tripped {
+.demo-row.is-paused {
   border-color: var(--ccx-status-suspended-fg);
-  background: rgba(var(--v-theme-error), 0.04);
+  background: rgba(var(--v-theme-warning), 0.08);
 }
 
 .demo-handle {

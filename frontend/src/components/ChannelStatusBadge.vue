@@ -43,7 +43,7 @@ import { computed, ref } from 'vue'
 import type { ChannelStatus, ChannelMetrics } from '../services/api'
 import { useI18n } from '../i18n'
 
-type DisplayStatus = 'normal' | 'tripped' | 'disabled' | 'error' | 'unknown'
+type DisplayStatus = 'normal' | 'paused' | 'tripped' | 'disabled' | 'error' | 'unknown'
 
 const props = withDefaults(defineProps<{
   status: ChannelStatus | 'healthy' | 'error' | 'unknown'
@@ -62,7 +62,8 @@ const hovered = ref(false)
 
 const effectiveStatus = computed<DisplayStatus>(() => {
   if (props.status === 'disabled') return 'disabled'
-  if (props.status === 'suspended' || props.metrics?.circuitState === 'open') return 'tripped'
+  if (props.metrics?.circuitState === 'open') return 'tripped'
+  if (props.status === 'suspended') return 'paused'
   if (props.status === 'error') return 'error'
   if (props.status === 'unknown') return 'unknown'
   return 'normal'
@@ -75,6 +76,12 @@ const STATUS_CONFIG: Record<DisplayStatus, { icon: string; color: string; label:
     color: 'success',
     label: 'status.normal',
     class: 'status-normal'
+  },
+  paused: {
+    icon: 'mdi-pause-circle',
+    color: 'warning',
+    label: 'status.paused',
+    class: 'status-paused'
   },
   tripped: {
     icon: 'mdi-alert-octagon',
@@ -201,15 +208,25 @@ const formatTime = (dateStr: string): string => {
   color: var(--ccx-status-active-fg) !important;
 }
 
-.status-tripped .badge-content {
+.status-paused .badge-content {
   background: var(--ccx-status-suspended-bg);
   color: var(--ccx-status-suspended-fg);
   border-color: var(--ccx-status-suspended-fg);
+}
+
+.status-paused .badge-content .status-icon {
+  color: var(--ccx-status-suspended-fg) !important;
+}
+
+.status-tripped .badge-content {
+  background: var(--ccx-status-error-bg);
+  color: var(--ccx-status-error-fg);
+  border-color: var(--ccx-status-error-fg);
   animation: pixel-blink 1.2s step-end infinite;
 }
 
 .status-tripped .badge-content .status-icon {
-  color: var(--ccx-status-suspended-fg) !important;
+  color: var(--ccx-status-error-fg) !important;
 }
 
 .status-disabled .badge-content {
@@ -278,10 +295,27 @@ const formatTime = (dateStr: string): string => {
     animation: pixel-pulse 1s step-end infinite;
   }
 
-  /* 熔断状态 - 橙色像素点 */
-  .status-tripped .badge-content .v-icon {
+  /* 暂停状态 - 橙色像素点 */
+  .status-paused .badge-content .v-icon {
     background: var(--ccx-status-suspended-dot-bg);
     border: 2px solid var(--ccx-status-suspended-dot-border);
+  }
+
+  .status-paused .badge-content .v-icon::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    width: 14px;
+    height: 14px;
+    background: var(--ccx-status-suspended-dot-glow);
+    animation: pixel-pulse 1s step-end infinite;
+  }
+
+  /* 熔断状态 - 红色闪烁像素点 */
+  .status-tripped .badge-content .v-icon {
+    background: var(--ccx-status-breaker-open-dot-bg);
+    border: 2px solid var(--ccx-status-breaker-open-dot-border);
   }
 
   .status-tripped .badge-content .v-icon::after {
@@ -291,7 +325,7 @@ const formatTime = (dateStr: string): string => {
     left: -3px;
     width: 14px;
     height: 14px;
-    background: var(--ccx-status-suspended-dot-glow);
+    background: var(--ccx-status-breaker-open-dot-glow);
     animation: pixel-pulse 0.75s step-end infinite;
   }
 
