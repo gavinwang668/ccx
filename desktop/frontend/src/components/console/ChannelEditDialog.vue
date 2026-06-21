@@ -26,7 +26,6 @@ import {
 import { getChannelTypeApi, type ManagedChannelType } from '@/utils/channel-type-api'
 import { buildExpectedRequestUrls } from '@/utils/expected-request-urls'
 import { parseQuickInput } from '@/utils/quick-input-parser'
-import { maskApiKey } from '@/utils/api-key-mask'
 import type { Channel, DisabledKeyInfo } from '@/services/admin-api'
 import ChannelEditorHeader from './channel-edit/ChannelEditorHeader.vue'
 import QuickCreatePanel from './channel-edit/QuickCreatePanel.vue'
@@ -63,6 +62,8 @@ const quickServiceTypeTouched = ref(false)
 const existingApiKeys = ref<string[]>([])
 const newApiKeysText = ref('')
 const copiedKeyIndex = ref<number | null>(null)
+const duplicateKeyIndex = ref<number | null>(null)
+let duplicateKeyTimer: ReturnType<typeof setTimeout> | null = null
 const localRestoredKeys = ref<Set<string>>(new Set())
 type KeyModelsStatus = {
   loading?: boolean
@@ -343,6 +344,7 @@ watch(detectedServiceType, (serviceType) => {
 })
 
 function resetForm() {
+  clearDuplicateKeyHighlight()
   randomSuffix.value = generateRandomString(6)
   form.name = ''
   form.description = ''
@@ -766,6 +768,7 @@ onBeforeUnmount(() => {
   if (scrollRoot && scrollHandler) {
     scrollRoot.removeEventListener('scroll', scrollHandler)
   }
+  clearDuplicateKeyHighlight()
   scrollRoot = null
   scrollHandler = null
 })
@@ -776,19 +779,36 @@ function findDuplicateKeyIndex(newKey: string): number {
   return existingApiKeys.value.findIndex(k => k === newKey)
 }
 
+function clearDuplicateKeyHighlight() {
+  if (duplicateKeyTimer) {
+    clearTimeout(duplicateKeyTimer)
+    duplicateKeyTimer = null
+  }
+  duplicateKeyIndex.value = null
+}
+
+function setDuplicateKeyHighlight(index: number) {
+  clearDuplicateKeyHighlight()
+  duplicateKeyIndex.value = index
+  duplicateKeyTimer = setTimeout(() => {
+    duplicateKeyIndex.value = null
+    duplicateKeyTimer = null
+  }, 3000)
+}
+
 async function addNewApiKeys() {
   const lines = parseLines(newApiKeysText.value)
-  const errors: string[] = []
   for (const k of lines) {
-    if (findDuplicateKeyIndex(k) !== -1) {
-      errors.push(maskApiKey(k))
-    } else {
-      existingApiKeys.value.push(k)
+    const duplicateIndex = findDuplicateKeyIndex(k)
+    if (duplicateIndex !== -1) {
+      error.value = t('addChannel.duplicateKey')
+      setDuplicateKeyHighlight(duplicateIndex)
+      return
     }
+    existingApiKeys.value.push(k)
   }
-  if (errors.length) {
-    error.value = `重复 key: ${errors.join(', ')}`
-  }
+  clearDuplicateKeyHighlight()
+  error.value = ''
   newApiKeysText.value = ''
 }
 
@@ -1860,13 +1880,14 @@ void toggleSupportedModelFilter
                         :existing-api-keys="existingApiKeys"
                         :new-api-keys-text="newApiKeysText"
                         :copied-key-index="copiedKeyIndex"
+                        :duplicate-key-index="duplicateKeyIndex"
                         :disabled-api-keys="disabledApiKeys"
                         :historical-api-keys="historicalApiKeys"
                         :restoring-key="restoringKey"
                         :local-restored-keys="localRestoredKeys"
                         :key-models-status="keyModelsStatus"
                         :errors="errors"
-                        @update:new-api-keys-text="newApiKeysText = $event"
+                        @update:new-api-keys-text="newApiKeysText = $event; clearDuplicateKeyHighlight()"
                         @add-new-api-keys="addNewApiKeys"
                         @remove-existing-api-key="removeExistingApiKey"
                         @move-api-key-to-top="moveApiKeyToTop"

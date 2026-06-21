@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   CheckCircle2,
@@ -34,6 +35,7 @@ const props = defineProps<{
   existingApiKeys: string[]
   newApiKeysText: string
   copiedKeyIndex: number | null
+  duplicateKeyIndex: number | null
   disabledApiKeys: DisabledKeyInfo[]
   historicalApiKeys: string[]
   restoringKey: string
@@ -53,10 +55,6 @@ const emit = defineEmits<{
 }>()
 
 const { t, tf } = useLanguage()
-
-function findDuplicateKeyIndex(key: string): number {
-  return props.existingApiKeys.indexOf(key)
-}
 
 function getKeyStatus(key: string) {
   return props.keyModelsStatus.get(key)
@@ -103,10 +101,12 @@ const visibleDisabledKeys = computed(() => {
       <div
         v-for="(key, index) in existingApiKeys"
         :key="`${index}-${key}`"
-        class="flex items-center justify-between gap-4 border border-border/60 bg-background/60 hover:bg-background rounded-lg px-3 py-2 text-xs shadow-2xs transition-all group"
+        class="flex items-center justify-between gap-4 rounded-lg px-3 py-2 text-xs shadow-2xs transition-all group"
+        :class="duplicateKeyIndex === index ? 'border-destructive/70 bg-destructive/10 animate-pulse' : 'border border-border/60 bg-background/60 hover:bg-background'"
       >
         <div class="flex min-w-0 items-center gap-2.5">
-          <Key class="h-3.5 w-3.5 shrink-0 text-primary/70" />
+          <AlertTriangle v-if="duplicateKeyIndex === index" class="h-3.5 w-3.5 shrink-0 text-destructive" />
+          <Key v-else class="h-3.5 w-3.5 shrink-0 text-primary/70" />
           <code class="font-mono text-muted-foreground font-medium select-all">{{ maskApiKey(key) }}</code>
           <span
             v-if="getKeyStatus(key)?.loading"
@@ -128,10 +128,10 @@ const visibleDisabledKeys = computed(() => {
             models {{ getKeyStatus(key)?.statusCode || 'ERR' }}
           </span>
           <span
-            v-if="findDuplicateKeyIndex(key) !== index && existingApiKeys.indexOf(key) !== index"
-            class="text-[10px] text-amber-600 shrink-0"
+            v-if="duplicateKeyIndex === index"
+            class="text-[10px] text-destructive shrink-0"
           >
-            {{ t('addChannel.duplicateKey') }}
+            {{ t('channelEditor.auth.duplicateKey') }}
           </span>
         </div>
         <div class="flex shrink-0 items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
@@ -187,6 +187,7 @@ const visibleDisabledKeys = computed(() => {
         :model-value="newApiKeysText"
         class="h-9 flex-1 rounded-lg border border-input bg-background/40 px-3 font-mono text-xs placeholder:text-muted-foreground/60 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
         :placeholder="t('channelEditor.auth.addNewApiKey.placeholder')"
+        :aria-invalid="duplicateKeyIndex !== null"
         @update:model-value="(val) => emit('update:newApiKeysText', val as string)"
         @keydown.enter.prevent="emit('addNewApiKeys')"
       />
