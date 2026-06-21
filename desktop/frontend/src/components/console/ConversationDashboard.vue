@@ -160,9 +160,9 @@ function toggleExpand(id: string) {
   expandedCards.value = next
 }
 
-async function handleSetOverride(conversationId: string, sequence: ChannelSequenceEntry[]) {
+async function handleSetOverride(conversationId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]) {
   try {
-    await setOverride(conversationId, sequence, overrideDurationAsNumber())
+    await setOverride(conversationId, sequence, overrideDurationAsNumber(), subagentSequence)
   } catch (e) {
     showNotice('destructive', e instanceof Error ? e.message : String(e))
   }

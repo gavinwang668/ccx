@@ -1,6 +1,14 @@
 package types
 
 // ClaudeRequest Claude 请求结构
+// AgentContext 请求的代理上下文信息，用于 subagent 观测与角色路由
+type AgentContext struct {
+	AgentRole      string `json:"agentRole,omitempty"`      // "main" | "subagent"
+	AgentType      string `json:"agentType,omitempty"`       // "codex_subagent" | "claude_code_subagent"
+	ParentThreadID string `json:"parentThreadId,omitempty"`  // Codex parent thread id
+	Confidence     string `json:"agentConfidence,omitempty"` // "exact" | "heuristic"
+}
+
 type ClaudeRequest struct {
 	Model             string                 `json:"model"`
 	Messages          []ClaudeMessage        `json:"messages"`

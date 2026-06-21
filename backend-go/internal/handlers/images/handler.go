@@ -63,7 +63,9 @@ func Handler(
 		}
 
 		userID := utils.ExtractUnifiedSessionID(c, bodyBytes)
-		common.SetRequestLogContext(c, userID, 0)
+		agentCtx := utils.ExtractAgentContext(c, bodyBytes)
+		c.Set("agentContext", agentCtx)
+		common.SetRequestLogContextWithAgent(c, userID, 0, agentCtx)
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Images")
 
 		if channelScheduler.IsMultiChannelMode(scheduler.ChannelKindImages) {
@@ -215,6 +217,10 @@ func handleMultiChannel(
 	isStream bool,
 ) {
 	metricsManager := channelScheduler.GetImagesMetricsManager()
+	agentRole := ""
+	if ac := common.AgentContextFromGin(c); ac != nil {
+		agentRole = ac.AgentRole
+	}
 	common.HandleMultiChannelFailover(
 		c,
 		envCfg,
@@ -223,6 +229,7 @@ func handleMultiChannel(
 		"Images",
 		userID,
 		model,
+		agentRole,
 		func(selection *scheduler.SelectionResult) common.MultiChannelAttemptResult {
 			upstream := selection.Upstream
 			channelIndex := selection.ChannelIndex

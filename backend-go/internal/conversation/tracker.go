@@ -28,6 +28,12 @@ type Conversation struct {
 	Status         string    `json:"status"`
 	LastModel      string    `json:"lastModel"`
 	LastRequestID  string    `json:"lastRequestId"`
+
+	// subagent 观测（仅展示，不影响路由）
+	HasSubagents    bool `json:"hasSubagents,omitempty"`
+	SubagentCount   int  `json:"subagentCount,omitempty"`
+	MainChannel     int  `json:"mainChannel,omitempty"`
+	SubagentChannel int  `json:"subagentChannel,omitempty"`
 }
 
 func (conv *Conversation) recomputeTitle() {
@@ -92,7 +98,7 @@ func NewConversationTracker(idleTTL, expireTTL time.Duration, persistPath ...str
 	return ct
 }
 
-func (ct *ConversationTracker) Track(kind, userID, model string, channelIndex int, channelName, sessionID, lastUserMessage string, userMessageCount int) {
+func (ct *ConversationTracker) Track(kind, userID, model string, channelIndex int, channelName, sessionID, lastUserMessage string, userMessageCount int, agentRole string) {
 	if userID == "" {
 		return
 	}
@@ -141,6 +147,15 @@ func (ct *ConversationTracker) Track(kind, userID, model string, channelIndex in
 	conv.ChannelName = channelName
 	conv.LastModel = model
 	conv.Status = "active"
+
+	// 角色观测：subagent 单独累计，主对话记录主渠道
+	if agentRole == "subagent" {
+		conv.HasSubagents = true
+		conv.SubagentCount++
+		conv.SubagentChannel = channelIndex
+	} else {
+		conv.MainChannel = channelIndex
+	}
 
 	if !containsString(conv.Models, model) {
 		conv.Models = append(conv.Models, model)

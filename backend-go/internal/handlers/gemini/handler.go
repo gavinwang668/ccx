@@ -82,7 +82,9 @@ func Handler(
 
 		// 提取统一会话标识用于 Trace 亲和性
 		userID := utils.ExtractUnifiedSessionID(c, bodyBytes)
-		common.SetRequestLogContext(c, userID, countGeminiUserContents(geminiReq))
+		agentCtx := utils.ExtractAgentContext(c, bodyBytes)
+		c.Set("agentContext", agentCtx)
+		common.SetRequestLogContextWithAgent(c, userID, countGeminiUserContents(geminiReq), agentCtx)
 
 		// 记录原始请求信息
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Gemini")
@@ -143,6 +145,10 @@ func handleMultiChannel(
 	contextRequirement := common.BuildGeminiContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, model, cfg)
 	common.LogContextEstimate(c, "Gemini", contextRequirement)
+	agentRole := ""
+	if ac := common.AgentContextFromGin(c); ac != nil {
+		agentRole = ac.AgentRole
+	}
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -152,6 +158,7 @@ func handleMultiChannel(
 		userID,
 		model,
 		contextRequirement,
+		agentRole,
 		func(selection *scheduler.SelectionResult) common.MultiChannelAttemptResult {
 			upstream := selection.Upstream
 			channelIndex := selection.ChannelIndex

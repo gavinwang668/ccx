@@ -28,7 +28,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggleExpand: []
-  setOverride: [conversationId: string, sequence: ChannelSequenceEntry[]]
+  setOverride: [conversationId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]]
   removeOverride: [conversationId: string]
   success: [message: string]
   error: [message: string]
@@ -194,6 +194,20 @@ const visibleChannels = computed(() => {
 
 const hiddenCount = computed(() => Math.max(0, channelSequence.value.length - visibleChannels.value.length))
 
+// subagent 渠道序列：优先用 override.subagentSequence，否则 fallback 到主序列
+const subagentSequence = computed((): ChannelInfo[] => {
+  if (props.override?.subagentSequence?.length) {
+    return props.override.subagentSequence.map(entry => {
+      const ch = normalizedAvailableChannels.value.find(c => c.index === entry.channelIndex)
+      return { index: entry.channelIndex, name: entry.channelName || ch?.name || `Channel ${entry.channelIndex}`, status: ch?.status || 'active', circuitOpen: ch?.circuitOpen }
+    })
+  }
+  return channelSequence.value
+})
+const hasSubagentOverride = computed(() => !!props.override?.subagentSequence?.length)
+const showSubagentSection = computed(() => props.conversation.hasSubagents || hasSubagentOverride.value)
+const subagentCurrentChannel = computed(() => props.conversation.subagentChannel ?? -1)
+
 function isDemoted(index: number): boolean {
   if (!props.override) return false
   return index >= channelSequence.value.length - 1
@@ -238,6 +252,17 @@ function handleQuickOverride(channel: ChannelInfo) {
   if (!hasOverride.value && channel.index === props.conversation.currentChannel) return
   const rest = channelSequence.value.filter(item => item.index !== channel.index)
   emit('setOverride', props.conversation.id, buildSequence([channel, ...rest]))
+}
+
+// subagent 渠道快捷覆盖：保留主序列不变，仅设置 subagent 专用序列
+function handleSubagentOverride(channel: ChannelInfo) {
+  const rest = subagentSequence.value.filter(c => c.index !== channel.index)
+  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), buildSequence([channel, ...rest]))
+}
+
+// 清除 subagent override
+function handleClearSubagentOverride() {
+  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), [])
 }
 
 function handleMoveToTop(channel: ChannelInfo, currentIndex: number) {
@@ -290,6 +315,12 @@ async function copyRawUserId() {
       </span>
       <span class="shrink-0 text-xs text-muted-foreground">{{ conversation.requestCount }}x</span>
       <span class="shrink-0 text-xs text-muted-foreground">{{ duration }}</span>
+      <span
+        v-if="conversation.hasSubagents"
+        class="inline-flex items-center rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-500"
+      >
+        SA{{ conversation.subagentCount ? ` ${conversation.subagentCount}` : '' }}
+      </span>
     </div>
 
     <!-- Row 2: Model + Channel chips (collapsed) -->
@@ -389,6 +420,36 @@ async function copyRawUserId() {
           </Button>
         </div>
       </div>
+
+      <!-- Subagent Routing：为主对话与 subagent 分别指定渠道 -->
+      <div v-if="showSubagentSection" class="subagent-routing mt-3 border-t border-dashed border-border pt-2" @click.stop>
+        <div class="mb-1 flex items-center">
+          <span class="text-xs text-muted-foreground">Subagent 渠道</span>
+          <span v-if="hasSubagentOverride" class="ml-2 text-xs text-amber-500">[已指定]</span>
+          <span class="flex-1" />
+          <Button v-if="hasSubagentOverride" variant="ghost" size="sm" class="h-6 px-2 text-xs" @click.stop="handleClearSubagentOverride">
+            清除
+          </Button>
+        </div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button
+            v-for="ch in subagentSequence"
+            :key="`sa-${ch.index}`"
+            type="button"
+            :class="[
+              'rounded border px-2 py-0.5 text-xs transition',
+              ch.index === subagentCurrentChannel
+                ? 'border-amber-500 bg-amber-500 text-white'
+                : 'border-border bg-background/50 text-foreground hover:border-amber-500/40 hover:bg-amber-500/10',
+            ]"
+            @click.stop="handleSubagentOverride(ch)"
+          >
+            {{ ch.name }}
+            <Check v-if="ch.index === subagentCurrentChannel" class="ml-0.5 inline h-2.5 w-2.5" />
+          </button>
+        </div>
+      </div>
+
       <div class="mt-1 text-right">
         <Button variant="ghost" size="sm" class="h-6 px-2 text-xs" @click.stop="emit('toggleExpand')">
           Collapse

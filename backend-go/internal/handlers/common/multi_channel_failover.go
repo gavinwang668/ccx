@@ -40,14 +40,16 @@ func HandleMultiChannelFailover(
 	apiType string,
 	userID string,
 	model string,
+	agentRole string,
 	trySelectedChannel TrySelectedChannelFunc,
 	onHandled OnMultiChannelHandledFunc,
 	handleAllFailed HandleAllFailedFunc,
 ) {
-	HandleMultiChannelFailoverWithContextRequirement(c, envCfg, channelScheduler, kind, apiType, userID, model, nil, trySelectedChannel, onHandled, handleAllFailed)
+	HandleMultiChannelFailoverWithContextRequirement(c, envCfg, channelScheduler, kind, apiType, userID, model, nil, agentRole, trySelectedChannel, onHandled, handleAllFailed)
 }
 
 // HandleMultiChannelFailoverWithContextRequirement 处理带上下文需求的多渠道 failover。
+// agentRole 用于角色感知 override 查找与 trace affinity 隔离（"" | "main" | "subagent"）。
 func HandleMultiChannelFailoverWithContextRequirement(
 	c *gin.Context,
 	envCfg *config.EnvConfig,
@@ -57,6 +59,7 @@ func HandleMultiChannelFailoverWithContextRequirement(
 	userID string,
 	model string,
 	contextRequirement *scheduler.ContextRequirement,
+	agentRole string,
 	trySelectedChannel TrySelectedChannelFunc,
 	onHandled OnMultiChannelHandledFunc,
 	handleAllFailed HandleAllFailedFunc,
@@ -96,6 +99,7 @@ func HandleMultiChannelFailoverWithContextRequirement(
 			RoutePrefix:        c.Param("routePrefix"),
 			ChannelName:        c.GetHeader("X-Channel"),
 			ContextRequirement: contextRequirement,
+			AgentRole:          agentRole,
 		})
 		if err != nil {
 			lastError = err
@@ -121,13 +125,18 @@ func HandleMultiChannelFailoverWithContextRequirement(
 			if result.SuccessKey != "" && (lastUserMsgStr != "" || userMsgCountInt > 0) {
 				// 含图请求成功不写普通 Trace 亲和，避免一次视觉请求覆盖文本亲和
 				if kind == scheduler.ChannelKindImages || !HasImageContentCached(c) {
-					channelScheduler.SetTraceAffinityForRequirement(userID, channelIndex, kind, contextRequirement)
+					// subagent 使用隔离的亲和 key，避免覆盖主对话亲和
+					affinityUserID := userID
+					if agentRole == "subagent" {
+						affinityUserID = userID + ":subagent"
+					}
+					channelScheduler.SetTraceAffinityForRequirement(affinityUserID, channelIndex, kind, contextRequirement)
 				}
 				channelName := ""
 				if upstream != nil {
 					channelName = upstream.Name
 				}
-				channelScheduler.TrackConversation(kind, userID, model, channelIndex, channelName, "", lastUserMsgStr, userMsgCountInt)
+				channelScheduler.TrackConversation(kind, userID, model, channelIndex, channelName, "", lastUserMsgStr, userMsgCountInt, agentRole)
 				if envCfg.ShouldLog("debug") {
 					RequestLogf(c, "[%s-Conversation-Debug] 已追踪对话: kind=%s, user=%s, model=%s, channel=%d, userMessages=%d, hasFallbackTitle=%t",
 						apiType, kind, scheduler.MaskUserIDForLog(userID), model, channelIndex, userMsgCountInt, lastUserMsgStr != "")

@@ -37,10 +37,11 @@ func GetConversations(deps *ConversationHandlerDeps) gin.HandlerFunc {
 		overridesResponse := make(map[string]interface{})
 		for id, override := range overrides {
 			overridesResponse[id] = gin.H{
-				"sequence":    override.Sequence,
-				"setAt":       override.SetAt,
-				"expiresAt":   override.ExpiresAt,
-				"isPerpetual": override.IsPerpetual,
+				"sequence":         override.Sequence,
+				"subagentSequence": override.SubagentSequence,
+				"setAt":            override.SetAt,
+				"expiresAt":        override.ExpiresAt,
+				"isPerpetual":      override.IsPerpetual,
 			}
 		}
 
@@ -65,8 +66,9 @@ func GetConversations(deps *ConversationHandlerDeps) gin.HandlerFunc {
 }
 
 type SetOverrideRequest struct {
-	Sequence []conversation.ChannelEntry `json:"sequence" binding:"required,min=1"`
-	Duration *int                        `json:"duration,omitempty"` // 秒；nil=系统默认；-1=永不恢复
+	Sequence         []conversation.ChannelEntry `json:"sequence" binding:"required,min=1"`
+	SubagentSequence []conversation.ChannelEntry `json:"subagentSequence,omitempty"` // subagent 专用序列（可选）
+	Duration         *int                        `json:"duration,omitempty"`         // 秒；nil=系统默认；-1=永不恢复
 }
 
 func SetConversationOverride(deps *ConversationHandlerDeps) gin.HandlerFunc {
@@ -105,10 +107,19 @@ func SetConversationOverride(deps *ConversationHandlerDeps) gin.HandlerFunc {
 			return
 		}
 
+		// 可选：设置 subagent 专用序列（复用主 override 的 TTL）
+		if len(req.SubagentSequence) > 0 {
+			if saErr := deps.OverrideManager.SetSubagentOverride(convID, conv.Kind, conv.RawUserID, req.SubagentSequence); saErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": saErr.Error()})
+				return
+			}
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"message":        "override set successfully",
-			"conversationId": convID,
-			"sequence":       req.Sequence,
+			"message":          "override set successfully",
+			"conversationId":   convID,
+			"sequence":         req.Sequence,
+			"subagentSequence": req.SubagentSequence,
 		})
 	}
 }

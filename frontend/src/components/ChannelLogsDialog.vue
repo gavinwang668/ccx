@@ -59,6 +59,13 @@
                 <v-chip v-if="log.interfaceType" size="small" :color="interfaceTypeColor(log.interfaceType)" variant="tonal" class="text-uppercase">
                   {{ log.interfaceType }}
                 </v-chip>
+                <v-chip v-if="log.agentRole === 'subagent'" size="small" color="warning" variant="tonal" class="text-uppercase">
+                  SUBAGENT
+                  <span v-if="log.agentConfidence === 'heuristic'" class="ml-1" style="opacity:.7">?</span>
+                </v-chip>
+                <v-chip v-else-if="log.agentRole === 'main'" size="small" color="success" variant="tonal" class="text-uppercase">
+                  MAIN
+                </v-chip>
                 <v-chip v-if="log.operation" size="small" color="info" variant="tonal" class="text-uppercase">
                   {{ log.operation }}
                 </v-chip>

@@ -61,11 +61,13 @@ func Handler(
 		// 提取统一会话标识用于 Trace 亲和性（保持 metadata.user_id 默认规范化后的既有路由语义）
 		affinityBody := common.NormalizeMetadataUserID(bodyBytes)
 		userID := utils.ExtractUnifiedSessionID(c, affinityBody)
+		agentCtx := utils.ExtractAgentContext(c, affinityBody)
+		c.Set("agentContext", agentCtx)
 
 		// 统计 user 输入用于驾驶舱标题与轮数
 		c.Set("lastUserMessage", extractLastResponsesUserInput(responsesReq.Input))
 		c.Set("userMessageCount", countResponsesUserMessages(responsesReq.Input))
-		common.SetRequestLogContext(c, userID, countResponsesUserMessages(responsesReq.Input))
+		common.SetRequestLogContextWithAgent(c, userID, countResponsesUserMessages(responsesReq.Input), agentCtx)
 
 		// 记录原始请求信息（仅在入口处记录一次）
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Responses")
@@ -115,6 +117,10 @@ func handleMultiChannel(
 		contextRequirement.SkipWindowValidation = true
 	}
 	common.LogContextEstimate(c, "Responses", contextRequirement)
+	agentRole := ""
+	if ac := common.AgentContextFromGin(c); ac != nil {
+		agentRole = ac.AgentRole
+	}
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -124,6 +130,7 @@ func handleMultiChannel(
 		userID,
 		responsesReq.Model,
 		contextRequirement,
+		agentRole,
 		func(selection *scheduler.SelectionResult) common.MultiChannelAttemptResult {
 			upstream := selection.Upstream
 			channelIndex := selection.ChannelIndex
@@ -342,6 +349,10 @@ func handleSingleChannel(
 			if upstream != nil {
 				channelName = upstream.Name
 			}
+			agentRole := ""
+			if ac := common.AgentContextFromGin(c); ac != nil {
+				agentRole = ac.AgentRole
+			}
 			channelScheduler.TrackConversation(
 				scheduler.ChannelKindResponses,
 				userID,
@@ -351,6 +362,7 @@ func handleSingleChannel(
 				"",
 				lastUserMsgStr,
 				userMsgCountInt,
+				agentRole,
 			)
 		}
 	}

@@ -78,7 +78,9 @@ func Handler(
 
 		// 提取统一会话标识用于 Trace 亲和性
 		userID := utils.ExtractUnifiedSessionID(c, bodyBytes)
-		common.SetRequestLogContext(c, userID, countChatUserMessages(reqMap))
+		agentCtx := utils.ExtractAgentContext(c, bodyBytes)
+		c.Set("agentContext", agentCtx)
+		common.SetRequestLogContextWithAgent(c, userID, countChatUserMessages(reqMap), agentCtx)
 
 		// 预处理：清理空 signature 字段，预防上游参数校验 400
 		bodyBytes, modified := common.RemoveEmptySignaturesWithContext(c, bodyBytes, envCfg.EnableRequestLogs, "Chat")
@@ -119,6 +121,10 @@ func handleMultiChannel(
 	contextRequirement := common.BuildChatContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, model, cfg)
 	common.LogContextEstimate(c, "Chat", contextRequirement)
+	agentRole := ""
+	if ac := common.AgentContextFromGin(c); ac != nil {
+		agentRole = ac.AgentRole
+	}
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -128,6 +134,7 @@ func handleMultiChannel(
 		userID,
 		model,
 		contextRequirement,
+		agentRole,
 		func(selection *scheduler.SelectionResult) common.MultiChannelAttemptResult {
 			upstream := selection.Upstream
 			channelIndex := selection.ChannelIndex

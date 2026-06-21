@@ -66,7 +66,9 @@ func Handler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, channel
 		// 提取统一会话标识用于 Trace 亲和性（保持 metadata.user_id 默认规范化后的既有路由语义）
 		affinityBody := common.NormalizeMetadataUserID(bodyBytes)
 		userID := utils.ExtractUnifiedSessionID(c, affinityBody)
-		common.SetRequestLogContext(c, userID, countUserMessages(claudeReq.Messages))
+		agentCtx := utils.ExtractAgentContext(c, affinityBody)
+		common.SetRequestLogContextWithAgent(c, userID, countUserMessages(claudeReq.Messages), agentCtx)
+		c.Set("agentContext", agentCtx)
 
 		isTitleRequest := isClaudeCodeTitleRequest(bodyBytes)
 		if envCfg.ShouldLog("debug") && isTitleRequest {
@@ -111,6 +113,10 @@ func handleMultiChannel(
 	contextRequirement := common.BuildMessagesContextRequirement(bodyBytes, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, claudeReq.Model, cfg)
 	common.LogContextEstimate(c, "Messages", contextRequirement)
+	agentRole := ""
+	if ac := common.AgentContextFromGin(c); ac != nil {
+		agentRole = ac.AgentRole
+	}
 	common.HandleMultiChannelFailoverWithContextRequirement(
 		c,
 		envCfg,
@@ -120,6 +126,7 @@ func handleMultiChannel(
 		userID,
 		claudeReq.Model,
 		contextRequirement,
+		agentRole,
 		func(selection *scheduler.SelectionResult) common.MultiChannelAttemptResult {
 			upstream := selection.Upstream
 			channelIndex := selection.ChannelIndex
@@ -303,8 +310,16 @@ func handleSingleChannel(
 		if !isTitleRequest {
 			lastUserMessage := extractLastUserMessage(claudeReq.Messages)
 			userMessageCount := countUserMessages(claudeReq.Messages)
-			channelScheduler.SetTraceAffinityForRequirement(userID, channelIndex, scheduler.ChannelKindMessages, contextRequirement)
-			channelScheduler.TrackConversation(scheduler.ChannelKindMessages, userID, claudeReq.Model, channelIndex, upstream.Name, "", lastUserMessage, userMessageCount)
+			agentRole := ""
+			affinityUserID := userID
+			if ac := common.AgentContextFromGin(c); ac != nil {
+				agentRole = ac.AgentRole
+				if agentRole == "subagent" {
+					affinityUserID = userID + ":subagent"
+				}
+			}
+			channelScheduler.SetTraceAffinityForRequirement(affinityUserID, channelIndex, scheduler.ChannelKindMessages, contextRequirement)
+			channelScheduler.TrackConversation(scheduler.ChannelKindMessages, userID, claudeReq.Model, channelIndex, upstream.Name, "", lastUserMessage, userMessageCount, agentRole)
 			if envCfg.ShouldLog("debug") {
 				common.RequestLogf(c, "[Messages-Conversation-Debug] 已追踪单渠道对话: user=%s, model=%s, channel=%d, userMessages=%d, hasFallbackTitle=%t",
 					scheduler.MaskUserIDForLog(userID), claudeReq.Model, channelIndex, userMessageCount, lastUserMessage != "")
@@ -624,7 +639,9 @@ func CountTokensHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigManag
 		var claudeReq types.ClaudeRequest
 		_ = json.Unmarshal(bodyBytes, &claudeReq)
 		userID := utils.ExtractUnifiedSessionID(c, common.NormalizeMetadataUserID(bodyBytes))
-		common.SetRequestLogContext(c, userID, countUserMessages(claudeReq.Messages))
+		agentCtx := utils.ExtractAgentContext(c, common.NormalizeMetadataUserID(bodyBytes))
+		common.SetRequestLogContextWithAgent(c, userID, countUserMessages(claudeReq.Messages), agentCtx)
+		c.Set("agentContext", agentCtx)
 
 		inputTokens := utils.EstimateRequestTokens(bodyBytes)
 

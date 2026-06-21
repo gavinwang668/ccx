@@ -286,6 +286,12 @@ onBeforeUnmount(() => {
                     <span v-if="log.interfaceType" class="inline-flex border px-1.5 py-0.5 text-[10px] font-bold uppercase" :class="interfaceTypeClass(log.interfaceType)">
                       {{ log.interfaceType }}
                     </span>
+                    <span v-if="log.agentRole === 'subagent'" class="inline-flex border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300">
+                      SUBAGENT<span v-if="log.agentConfidence === 'heuristic'">?</span>
+                    </span>
+                    <span v-else-if="log.agentRole === 'main'" class="inline-flex border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">
+                      MAIN
+                    </span>
                     <span v-if="log.operation" class="inline-flex border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-cyan-700 dark:text-cyan-300">
                       {{ log.operation }}
                     </span>

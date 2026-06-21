@@ -336,9 +336,9 @@ function toggleExpand(id: string) {
   expandedCards.value = next
 }
 
-async function handleSetOverride(convId: string, sequence: ChannelSequenceEntry[]) {
+async function handleSetOverride(convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]) {
   try {
-    await api.setConversationOverride(convId, sequence, overrideDuration.value)
+    await api.setConversationOverride(convId, sequence, overrideDuration.value, subagentSequence)
     await fetchConversations()
   } catch (e) {
     console.error('[ConversationDashboard] set override error:', e)

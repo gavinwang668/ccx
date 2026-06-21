@@ -10,7 +10,7 @@ func TestConversationTracker_Track(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("chat", "user123", "claude-sonnet-4-20250514", 0, "primary", "", "", 0)
+	ct.Track("chat", "user123", "claude-sonnet-4-20250514", 0, "primary", "", "", 0, "")
 
 	convs := ct.GetActiveConversations("")
 	if len(convs) != 1 {
@@ -36,7 +36,7 @@ func TestConversationTracker_UpdateTitle(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("messages", "session-123", "claude-opus-4-7", 0, "primary", "", "", 0)
+	ct.Track("messages", "session-123", "claude-opus-4-7", 0, "primary", "", "", 0, "")
 	if !ct.UpdateTitle("messages", "session-123", "Build docs preview") {
 		t.Fatal("expected UpdateTitle to update existing conversation")
 	}
@@ -66,7 +66,7 @@ func TestConversationTracker_UpdateTitleMissingConversation(t *testing.T) {
 	}
 
 	// 后续 Track 创建对话时应自动应用 pending title
-	ct.Track("messages", "session-123", "claude-opus-4-7", 0, "primary", "", "", 0)
+	ct.Track("messages", "session-123", "claude-opus-4-7", 0, "primary", "", "", 0, "")
 	convs := ct.GetActiveConversations("")
 	if len(convs) != 1 {
 		t.Fatalf("expected 1 conversation after Track, got %d", len(convs))
@@ -81,7 +81,7 @@ func TestConversationTracker_PersistAndRestore(t *testing.T) {
 	path := dir + "/state.json"
 
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour, path)
-	ct.Track("messages", "user-abc", "claude-opus-4-7", 0, "primary", "", "你好世界", 1)
+	ct.Track("messages", "user-abc", "claude-opus-4-7", 0, "primary", "", "你好世界", 1, "")
 	ct.UpdateTitle("messages", "user-abc", "确认驾驶舱对话卡片保存时长")
 	ct.Stop()
 
@@ -99,7 +99,7 @@ func TestConversationTracker_PersistAndRestore(t *testing.T) {
 		t.Error("expected non-zero createdAt after restore")
 	}
 
-	ct2.Track("messages", "user-abc", "claude-opus-4-7", 1, "backup", "", "", 2)
+	ct2.Track("messages", "user-abc", "claude-opus-4-7", 1, "backup", "", "", 2, "")
 	convs2 := ct2.GetActiveConversations("")
 	if len(convs2) != 1 {
 		t.Fatalf("expected mapping to work after restore, got %d conversations", len(convs2))
@@ -114,12 +114,12 @@ func TestConversationTracker_PersistAndRestoreSessionMapping(t *testing.T) {
 	path := dir + "/state.json"
 
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour, path)
-	ct.Track("responses", "user-abc", "model-a", 0, "primary", "sess-1", "第一轮", 1)
+	ct.Track("responses", "user-abc", "model-a", 0, "primary", "sess-1", "第一轮", 1, "")
 	ct.Stop()
 
 	ct2 := NewConversationTracker(1*time.Hour, 2*time.Hour, path)
 	defer ct2.Stop()
-	ct2.Track("responses", "user-abc", "model-b", 1, "backup", "sess-1", "第二轮", 2)
+	ct2.Track("responses", "user-abc", "model-b", 1, "backup", "sess-1", "第二轮", 2, "")
 
 	convs := ct2.GetActiveConversations("")
 	if len(convs) != 1 {
@@ -135,7 +135,7 @@ func TestConversationTracker_StatusUpdatePersists(t *testing.T) {
 	path := dir + "/state.json"
 
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour, path)
-	ct.Track("messages", "user-abc", "model-a", 0, "primary", "", "第一轮", 1)
+	ct.Track("messages", "user-abc", "model-a", 0, "primary", "", "第一轮", 1, "")
 	ct.Stop()
 
 	ct2 := NewConversationTracker(1*time.Hour, 2*time.Hour, path)
@@ -158,8 +158,8 @@ func TestConversationTracker_TTLFilterOnLoad(t *testing.T) {
 	path := dir + "/state.json"
 
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour, path)
-	ct.Track("messages", "user-fresh", "model-a", 0, "ch1", "", "新对话", 1)
-	ct.Track("messages", "user-old", "model-b", 0, "ch2", "", "旧对话", 1)
+	ct.Track("messages", "user-fresh", "model-a", 0, "ch1", "", "新对话", 1, "")
+	ct.Track("messages", "user-old", "model-b", 0, "ch2", "", "旧对话", 1, "")
 
 	ct.mu.Lock()
 	for _, conv := range ct.conversations {
@@ -187,7 +187,7 @@ func TestConversationTracker_ShortTitleConcatenation(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("messages", "user-x", "model", 0, "ch", "", "驾驶舱对话卡片保存时长", 1)
+	ct.Track("messages", "user-x", "model", 0, "ch", "", "驾驶舱对话卡片保存时长", 1, "")
 	ct.UpdateTitle("messages", "user-x", "Hi")
 
 	convs := ct.GetActiveConversations("")
@@ -203,7 +203,7 @@ func TestConversationTracker_TitleCompletesWithFallbackUntilLimit(t *testing.T) 
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("messages", "user-x", "model", 0, "ch", "", "怎么给 Go self-update 选择一个合适的实现方案", 1)
+	ct.Track("messages", "user-x", "model", 0, "ch", "", "怎么给 Go self-update 选择一个合适的实现方案", 1, "")
 	ct.UpdateTitle("messages", "user-x", "Evaluate Go self-update options")
 
 	convs := ct.GetActiveConversations("")
@@ -220,9 +220,9 @@ func TestConversationTracker_UpdatesTitleWhenFallbackChanges(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("messages", "user-x", "model", 0, "ch", "", "第一轮问题", 1)
+	ct.Track("messages", "user-x", "model", 0, "ch", "", "第一轮问题", 1, "")
 	ct.UpdateTitle("messages", "user-x", "Evaluate Go self-update options")
-	ct.Track("messages", "user-x", "model", 0, "ch", "", "第二轮追问如何自动更新", 2)
+	ct.Track("messages", "user-x", "model", 0, "ch", "", "第二轮追问如何自动更新", 2, "")
 
 	convs := ct.GetActiveConversations("")
 	want := "Evaluate Go self-update options — 第二轮追问如何自动更新"
@@ -235,7 +235,7 @@ func TestConversationTracker_ShortTitleNoDuplicate(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("messages", "user-x", "model", 0, "ch", "", "驾驶舱对话卡片保存时长", 1)
+	ct.Track("messages", "user-x", "model", 0, "ch", "", "驾驶舱对话卡片保存时长", 1, "")
 	ct.UpdateTitle("messages", "user-x", "OK")
 	first := ct.GetActiveConversations("")[0].Title
 	if first != "OK — 驾驶舱对话卡片保存时长" {
@@ -258,8 +258,8 @@ func TestConversationTracker_TrackMultipleRequests(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("chat", "user123", "claude-sonnet-4-20250514", 0, "primary", "", "", 0)
-	ct.Track("chat", "user123", "claude-opus-4-20250514", 1, "backup", "", "", 0)
+	ct.Track("chat", "user123", "claude-sonnet-4-20250514", 0, "primary", "", "", 0, "")
+	ct.Track("chat", "user123", "claude-opus-4-20250514", 1, "backup", "", "", 0, "")
 
 	convs := ct.GetActiveConversations("")
 	if len(convs) != 1 {
@@ -282,8 +282,8 @@ func TestConversationTracker_DifferentUsers(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("chat", "user1", "model-a", 0, "ch1", "", "", 0)
-	ct.Track("chat", "user2", "model-b", 1, "ch2", "", "", 0)
+	ct.Track("chat", "user1", "model-a", 0, "ch1", "", "", 0, "")
+	ct.Track("chat", "user2", "model-b", 1, "ch2", "", "", 0, "")
 
 	convs := ct.GetActiveConversations("")
 	if len(convs) != 2 {
@@ -295,8 +295,8 @@ func TestConversationTracker_KindFilter(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("chat", "user1", "model-a", 0, "ch1", "", "", 0)
-	ct.Track("messages", "user2", "model-b", 1, "ch2", "", "", 0)
+	ct.Track("chat", "user1", "model-a", 0, "ch1", "", "", 0, "")
+	ct.Track("messages", "user2", "model-b", 1, "ch2", "", "", 0, "")
 
 	chatConvs := ct.GetActiveConversations("chat")
 	if len(chatConvs) != 1 {
@@ -313,8 +313,8 @@ func TestConversationTracker_SessionID(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("responses", "user1", "model-a", 0, "ch1", "sess_abc123", "", 0)
-	ct.Track("responses", "user1", "model-a", 0, "ch1", "sess_abc123", "", 0)
+	ct.Track("responses", "user1", "model-a", 0, "ch1", "sess_abc123", "", 0, "")
+	ct.Track("responses", "user1", "model-a", 0, "ch1", "sess_abc123", "", 0, "")
 
 	convs := ct.GetActiveConversations("")
 	if len(convs) != 1 {
@@ -332,7 +332,7 @@ func TestConversationTracker_EmptyUserID(t *testing.T) {
 	ct := NewConversationTracker(1*time.Hour, 2*time.Hour)
 	defer ct.Stop()
 
-	ct.Track("chat", "", "model-a", 0, "ch1", "", "", 0)
+	ct.Track("chat", "", "model-a", 0, "ch1", "", "", 0, "")
 
 	convs := ct.GetActiveConversations("")
 	if len(convs) != 0 {

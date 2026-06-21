@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/BenedictKing/ccx/internal/scheduler"
+	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,16 +22,46 @@ type httpRequestLogContextKey struct{}
 type RequestLogContext struct {
 	SessionID string
 	Round     int
+	AgentCtx  *types.AgentContext
 }
 
 func SetRequestLogContext(c *gin.Context, sessionID string, round int) {
+	SetRequestLogContextWithAgent(c, sessionID, round, nil)
+}
+
+// SetRequestLogContextWithAgent 设置请求日志上下文，附带代理上下文信息。
+func SetRequestLogContextWithAgent(c *gin.Context, sessionID string, round int, agentCtx *types.AgentContext) {
 	if c == nil {
 		return
 	}
 	c.Set(requestLogContextKey, RequestLogContext{
 		SessionID: strings.TrimSpace(sessionID),
 		Round:     round,
+		AgentCtx:  agentCtx,
 	})
+}
+
+// AgentContextFromGin 从 gin.Context 读取代理上下文，供日志记录使用。
+// 返回带 SessionID 填充的副本（nil 安全）。
+// AgentContextFromGin 从 gin.Context 读取代理上下文，供日志记录使用。
+// 返回 AgentContext 的副本（nil 安全）。SessionID 由 CreatePendingLog 单独从日志上下文填充。
+func AgentContextFromGin(c *gin.Context) *types.AgentContext {
+	ctx, ok := requestLogContextFromGin(c)
+	if !ok || ctx.AgentCtx == nil {
+		return nil
+	}
+	snapshot := *ctx.AgentCtx
+	return &snapshot
+}
+
+// sessionIDFromGin 从 gin.Context 读取会话标识（用于 ChannelLog.SessionID 关联）。
+// SessionIDFromGin 从 gin.Context 读取会话标识（用于 ChannelLog.SessionID 关联）。
+func SessionIDFromGin(c *gin.Context) string {
+	ctx, ok := requestLogContextFromGin(c)
+	if !ok {
+		return ""
+	}
+	return ctx.SessionID
 }
 
 func RequestLogTag(c *gin.Context) string {

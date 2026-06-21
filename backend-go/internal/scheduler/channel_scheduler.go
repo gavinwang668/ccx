@@ -228,6 +228,7 @@ type SelectionOptions struct {
 	RoutePrefix        string
 	ChannelName        string
 	ContextRequirement *ContextRequirement
+	AgentRole          string // "main" | "subagent" — 角色感知 override 查找
 }
 
 func (s *ChannelScheduler) selectionResult(kind ChannelKind, upstream *config.UpstreamConfig, channelIndex int, reason string) *SelectionResult {
@@ -435,6 +436,12 @@ func (s *ChannelScheduler) SelectChannelWithOptions(ctx context.Context, opts Se
 	defer s.mu.RUnlock()
 
 	userID := opts.UserID
+	// subagent 使用隔离的亲和 key，避免被主对话亲和拉到贵渠道；
+	// 这样 subagent 首次请求走 priority 排序选便宜渠道，后续命中自己的亲和复用缓存。
+	affinityUserID := userID
+	if opts.AgentRole == "subagent" {
+		affinityUserID = userID + ":subagent"
+	}
 	failedChannels := opts.FailedChannels
 	if failedChannels == nil {
 		failedChannels = map[int]bool{}
@@ -529,9 +536,9 @@ func (s *ChannelScheduler) SelectChannelWithOptions(ctx context.Context, opts Se
 		return nil, fmt.Errorf("指定渠道 %q 不满足当前模型、路由前缀或上下文要求", channelName)
 	}
 
-	// 0. 检查手动序列覆盖
+	// 0. 检查手动序列覆盖（角色感知：subagent 优先使用 SubagentSequence）
 	if userID != "" && s.overrideManager != nil {
-		if sequence, ok := s.overrideManager.GetOverrideForUser(string(kind), userID); ok {
+		if sequence, ok := s.overrideManager.GetOverrideForUserWithRole(string(kind), userID, opts.AgentRole); ok {
 			prefix := kindSchedulerLogPrefix(kind)
 			orderedChannels := applyManualOverrideOrder(activeChannels, sequence)
 			for _, ch := range orderedChannels {
@@ -574,7 +581,7 @@ func (s *ChannelScheduler) SelectChannelWithOptions(ctx context.Context, opts Se
 
 	// 1. 检查 Trace 亲和性（促销渠道失败时或无促销渠道时）
 	if userID != "" {
-		compositeKey := traceAffinityKey(kind, userID, opts.ContextRequirement)
+		compositeKey := traceAffinityKey(kind, affinityUserID, opts.ContextRequirement)
 		if preferredIdx, ok := s.traceAffinity.GetPreferredChannel(compositeKey); ok {
 			bestPriority := s.findBestAvailableChannelPriority(activeChannels, failedChannels, kind)
 			for _, ch := range activeChannels {
@@ -1135,9 +1142,9 @@ func (s *ChannelScheduler) UpdateTraceAffinity(userID string, kind ChannelKind) 
 }
 
 // TrackConversation 追踪对话（请求成功后调用）
-func (s *ChannelScheduler) TrackConversation(kind ChannelKind, userID, model string, channelIndex int, channelName, sessionID, lastUserMessage string, userMessageCount int) {
+func (s *ChannelScheduler) TrackConversation(kind ChannelKind, userID, model string, channelIndex int, channelName, sessionID, lastUserMessage string, userMessageCount int, agentRole string) {
 	if s.conversationTracker != nil && userID != "" {
-		s.conversationTracker.Track(string(kind), userID, model, channelIndex, channelName, sessionID, lastUserMessage, userMessageCount)
+		s.conversationTracker.Track(string(kind), userID, model, channelIndex, channelName, sessionID, lastUserMessage, userMessageCount, agentRole)
 	}
 }
 

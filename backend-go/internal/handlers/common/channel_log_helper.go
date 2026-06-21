@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/metrics"
+	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/BenedictKing/ccx/internal/utils"
 )
 
@@ -28,6 +29,8 @@ func CreatePendingLog(
 	originalReasoningEffort, actualReasoningEffort string,
 	apiKey, baseURL, interfaceType, operation string,
 	requestSource string,
+	agentCtx *types.AgentContext,
+	sessionID string,
 ) string {
 	if channelLogStore == nil || metricsKey == "" {
 		return ""
@@ -39,7 +42,7 @@ func CreatePendingLog(
 	requestID := GenerateRequestID()
 	now := time.Now()
 
-	channelLogStore.Record(metricsKey, &metrics.ChannelLog{
+	log := &metrics.ChannelLog{
 		RequestID:               requestID,
 		ChannelIndex:            channelIndex, // 记录创建时的渠道索引，便于内部排查
 		ChannelName:             channelName,
@@ -60,7 +63,17 @@ func CreatePendingLog(
 		InterfaceType:           interfaceType,
 		RequestSource:           requestSource,
 		Status:                  metrics.StatusPending,
-	})
+		SessionID:               sessionID,
+	}
+
+	if agentCtx != nil {
+		log.AgentRole = agentCtx.AgentRole
+		log.AgentType = agentCtx.AgentType
+		log.ParentThreadID = agentCtx.ParentThreadID
+		log.AgentConfidence = agentCtx.Confidence
+	}
+
+	channelLogStore.Record(metricsKey, log)
 
 	return requestID
 }

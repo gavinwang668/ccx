@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -99,6 +100,91 @@ func flattenMetadataUserID(raw interface{}) string {
 		return ""
 	}
 	return strings.Join(parts, "_")
+}
+
+// ExtractAgentContext 提取请求的代理上下文，用于 subagent 观测与角色路由。
+// Codex Responses：通过 client_metadata 精确识别 subagent（exact）。
+// Claude Code Messages：通过 metadata.user_id + 消息/工具数量弱识别（heuristic，仅观测）。
+func ExtractAgentContext(c *gin.Context, bodyBytes []byte) *types.AgentContext {
+	ctx := &types.AgentContext{}
+
+	var req map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		return ctx
+	}
+
+	// Codex / Responses 精确识别
+	if clientMeta, ok := req["client_metadata"].(map[string]interface{}); ok {
+		subagentKind, _ := clientMeta["x-openai-subagent"].(string)
+		parentThread, _ := clientMeta["x-codex-parent-thread-id"].(string)
+
+		if subagentKind != "" {
+			ctx.AgentRole = "subagent"
+			ctx.AgentType = "codex_subagent"
+			ctx.ParentThreadID = parentThread
+			ctx.Confidence = "exact"
+			return ctx
+		}
+		if parentThread != "" {
+			ctx.AgentRole = "subagent"
+			ctx.AgentType = "codex_subagent"
+			ctx.ParentThreadID = parentThread
+			ctx.Confidence = "exact"
+			return ctx
+		}
+	}
+
+	// Claude Code 弱识别（仅观测，不强制路由）
+	if metadata, ok := req["metadata"].(map[string]interface{}); ok {
+		if hasClaudeCodeSessionID(metadata) {
+			if isLikelyClaudeCodeSubagent(req) {
+				ctx.AgentRole = "subagent"
+				ctx.AgentType = "claude_code_subagent"
+				ctx.Confidence = "heuristic"
+				return ctx
+			}
+			// 带有 Claude Code session 标记但不符合 subagent 启发式 → 视为主对话
+			ctx.AgentRole = "main"
+			return ctx
+		}
+	}
+
+	return ctx
+}
+
+// hasClaudeCodeSessionID 判断 metadata 是否为 Claude Code 风格（含 device_id/session_id 的 user_id 对象）
+func hasClaudeCodeSessionID(metadata map[string]interface{}) bool {
+	userID, ok := metadata["user_id"].(string)
+	if !ok || userID == "" {
+		return false
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(userID), &parsed); err != nil {
+		return false
+	}
+	_, hasDevice := parsed["device_id"].(string)
+	_, hasSession := parsed["session_id"].(string)
+	return hasDevice || hasSession
+}
+
+// isLikelyClaudeCodeSubagent 弱识别 Claude Code subagent：
+// subagent 通常携带大量工具定义但 user 消息极少（仅任务 prompt）。
+func isLikelyClaudeCodeSubagent(req map[string]interface{}) bool {
+	tools, _ := req["tools"].([]interface{})
+	if len(tools) < 5 {
+		return false
+	}
+
+	messages, _ := req["messages"].([]interface{})
+	userMsgCount := 0
+	for _, m := range messages {
+		if msg, ok := m.(map[string]interface{}); ok {
+			if role, _ := msg["role"].(string); role == "user" {
+				userMsgCount++
+			}
+		}
+	}
+	return userMsgCount <= 2
 }
 
 func PrepareUpstreamHeaders(c *gin.Context, targetHost string) http.Header {

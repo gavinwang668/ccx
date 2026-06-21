@@ -125,7 +125,7 @@ func TestHandleMultiChannelFailover_SkipsAffinityForVisionRequest(t *testing.T) 
 	}
 
 	envCfg := config.NewEnvConfig()
-	common.HandleMultiChannelFailover(c, envCfg, env.scheduler, scheduler.ChannelKindMessages, "Messages", "user-1", "gpt-4o", trySelectedChannel, nil, nil)
+	common.HandleMultiChannelFailover(c, envCfg, env.scheduler, scheduler.ChannelKindMessages, "Messages", "user-1", "gpt-4o", "", trySelectedChannel, nil, nil)
 
 	if len(attempts) != 2 {
 		t.Fatalf("期望尝试 2 个渠道，实际尝试 %d 个", len(attempts))
@@ -183,7 +183,7 @@ func TestHandleMultiChannelFailover_KeepsAffinityForTextRequest(t *testing.T) {
 	}
 
 	envCfg := config.NewEnvConfig()
-	common.HandleMultiChannelFailover(c, envCfg, env.scheduler, scheduler.ChannelKindMessages, "Messages", "user-2", "gpt-4o", trySelectedChannel, nil, nil)
+	common.HandleMultiChannelFailover(c, envCfg, env.scheduler, scheduler.ChannelKindMessages, "Messages", "user-2", "gpt-4o", "", trySelectedChannel, nil, nil)
 
 	if len(attempts) != 2 {
 		t.Fatalf("期望尝试 2 个渠道，实际尝试 %d 个", len(attempts))
@@ -235,7 +235,7 @@ func TestHandleMultiChannelFailover_KeepsExistingTextAffinityOnVisionFallback(t 
 	}
 
 	envCfg := config.NewEnvConfig()
-	common.HandleMultiChannelFailover(c, envCfg, env.scheduler, scheduler.ChannelKindMessages, "Messages", "user-3", "gpt-4o", trySelectedChannel, nil, nil)
+	common.HandleMultiChannelFailover(c, envCfg, env.scheduler, scheduler.ChannelKindMessages, "Messages", "user-3", "gpt-4o", "", trySelectedChannel, nil, nil)
 
 	idx, ok := env.affinity.GetPreferredChannel(string(scheduler.ChannelKindMessages) + ":user-3")
 	if !ok {

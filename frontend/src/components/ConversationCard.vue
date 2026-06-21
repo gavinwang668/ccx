@@ -24,6 +24,9 @@
         </span>
         <span class="text-caption text-medium-emphasis flex-shrink-0">{{ conversation.requestCount }}x</span>
         <span class="text-caption text-medium-emphasis flex-shrink-0">{{ duration }}</span>
+        <v-chip v-if="conversation.hasSubagents" size="x-small" color="warning" variant="tonal" class="flex-shrink-0">
+          SA{{ conversation.subagentCount ? ` ${conversation.subagentCount}` : '' }}
+        </v-chip>
       </div>
 
       <!-- Row 2: Model + Channel chips (collapsed) -->
@@ -89,6 +92,32 @@
             </v-btn>
           </div>
         </div>
+
+        <!-- Subagent Routing：为主对话与 subagent 分别指定渠道 -->
+        <div v-if="showSubagentSection" class="subagent-routing mt-3" @click.stop>
+          <div class="d-flex align-center mb-1">
+            <span class="text-caption text-medium-emphasis">Subagent 渠道</span>
+            <span v-if="hasSubagentOverride" class="text-caption text-warning ml-2">[已指定]</span>
+            <v-spacer />
+            <v-btn v-if="hasSubagentOverride" size="x-small" variant="text" @click.stop="handleClearSubagentOverride">清除</v-btn>
+          </div>
+          <div class="d-flex align-center ga-1 flex-wrap">
+            <v-chip
+              v-for="ch in subagentSequence"
+              :key="`sa-${ch.index}`"
+              :color="ch.index === subagentCurrentChannel ? 'warning' : undefined"
+              :variant="ch.index === subagentCurrentChannel ? 'flat' : 'outlined'"
+              size="x-small"
+              @click.stop="handleSubagentOverride(ch)"
+            >
+              {{ ch.name }}
+              <template v-if="ch.index === subagentCurrentChannel" #append>
+                <v-icon size="10">mdi-check</v-icon>
+              </template>
+            </v-chip>
+          </div>
+        </div>
+
         <div class="text-right mt-1">
           <v-btn size="x-small" variant="text" @click.stop="$emit('toggleExpand')">Collapse</v-btn>
         </div>
@@ -129,7 +158,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggleExpand: []
-  setOverride: [convId: string, sequence: ChannelSequenceEntry[]]
+  setOverride: [convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]]
   removeOverride: [convId: string]
   success: [message: string]
   error: [message: string]
@@ -213,6 +242,21 @@ const channelSequence = computed((): ChannelInfo[] => {
   return channels.length > 0 ? channels : fallbackChannels.value
 })
 
+// subagent 渠道序列：优先用 override.subagentSequence，否则 fallback 到主序列
+const subagentSequence = computed((): ChannelInfo[] => {
+  if (props.override?.subagentSequence && props.override.subagentSequence.length > 0) {
+    return props.override.subagentSequence.map(entry => {
+      const ch = props.availableChannels.find(c => c.index === entry.channelIndex)
+      return { index: entry.channelIndex, name: entry.channelName || ch?.name || `Channel ${entry.channelIndex}`, status: ch?.status || 'active', circuitOpen: ch?.circuitOpen }
+    })
+  }
+  return channelSequence.value
+})
+
+const hasSubagentOverride = computed(() => !!props.override?.subagentSequence && props.override.subagentSequence.length > 0)
+const showSubagentSection = computed(() => props.conversation.hasSubagents || hasSubagentOverride.value)
+const subagentCurrentChannel = computed(() => props.conversation.subagentChannel ?? -1)
+
 const currentChannelInfo = computed(() => {
   const existing = channelSequence.value.find(ch => ch.index === props.conversation.currentChannel)
     ?? props.availableChannels.find(ch => ch.index === props.conversation.currentChannel)
@@ -286,6 +330,17 @@ function handleQuickOverride(ch: ChannelInfo) {
   if (!hasOverride.value && ch.index === props.conversation.currentChannel) return
   const rest = channelSequence.value.filter(c => c.index !== ch.index)
   emit('setOverride', props.conversation.id, buildSequence([ch, ...rest]))
+}
+
+// subagent 渠道快捷覆盖：保留主序列不变，仅设置 subagent 专用序列
+function handleSubagentOverride(ch: ChannelInfo) {
+  const rest = subagentSequence.value.filter(c => c.index !== ch.index)
+  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), buildSequence([ch, ...rest]))
+}
+
+// 清除 subagent override（传空数组由后端忽略，这里通过重设主 override 不带 subagentSequence 实现）
+function handleClearSubagentOverride() {
+  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), [])
 }
 
 function handleMoveToTop(ch: ChannelInfo, currentIdx: number) {
