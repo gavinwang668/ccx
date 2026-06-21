@@ -1,8 +1,11 @@
 package config
 
 import (
+	"crypto/subtle"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type EnvConfig struct {
@@ -11,7 +14,8 @@ type EnvConfig struct {
 	EnableWebUI          bool
 	UILanguage           string
 	ProxyAccessKey       string
-	AdminAccessKey       string // 管理 API 独立密钥（可选，未设置时回退到 ProxyAccessKey）
+	ExtraProxyAccessKeys []string // 额外代理访问密钥（仅用于代理 API，不授予管理权限）
+	AdminAccessKey       string   // 管理 API 独立密钥（可选，未设置时回退到 ProxyAccessKey）
 	LogLevel             string
 	EnableRequestLogs    bool
 	EnableResponseLogs   bool
@@ -61,6 +65,7 @@ func NewEnvConfig() *EnvConfig {
 		EnableWebUI:          getEnv("ENABLE_WEB_UI", "true") != "false",
 		UILanguage:           normalizeUILanguage(getEnv("APP_UI_LANGUAGE", "zh-CN")),
 		ProxyAccessKey:       getEnv("PROXY_ACCESS_KEY", "your-proxy-access-key"),
+		ExtraProxyAccessKeys: parseExtraProxyAccessKeys(getEnv("EXTRA_PROXY_ACCESS_KEYS", "")),
 		AdminAccessKey:       getEnv("ADMIN_ACCESS_KEY", ""), // 空值时回退到 ProxyAccessKey
 		LogLevel:             getEnv("LOG_LEVEL", "info"),
 		EnableRequestLogs:    getEnv("ENABLE_REQUEST_LOGS", "true") != "false",
@@ -111,12 +116,103 @@ func normalizeUILanguage(value string) string {
 	}
 }
 
+func parseExtraProxyAccessKeys(value string) []string {
+	if value == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	keys := make([]string, 0)
+	for _, part := range strings.Split(value, ",") {
+		key := strings.TrimSpace(part)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+
+	return keys
+}
+
+func secureCompare(a, b string) bool {
+	if a == "" || b == "" || len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 // IsDevelopment 是否为开发环境
 func (c *EnvConfig) IsDevelopment() bool {
 	return c.Env == "development"
 }
 
-// GetAdminAccessKey 获取管理 API 密钥（未设置时回退到 ProxyAccessKey）
+// HasExtraProxyAccessKeys 是否配置了额外代理访问密钥
+func (c *EnvConfig) HasExtraProxyAccessKeys() bool {
+	return len(c.ExtraProxyAccessKeys) > 0
+}
+
+// ValidateAccessKeys 校验访问密钥配置的安全边界
+func (c *EnvConfig) ValidateAccessKeys() error {
+	if !c.HasExtraProxyAccessKeys() {
+		return nil
+	}
+
+	if c.AdminAccessKey == "" {
+		return fmt.Errorf("EXTRA_PROXY_ACCESS_KEYS requires ADMIN_ACCESS_KEY")
+	}
+	if secureCompare(c.AdminAccessKey, c.ProxyAccessKey) {
+		return fmt.Errorf("ADMIN_ACCESS_KEY must differ from PROXY_ACCESS_KEY when EXTRA_PROXY_ACCESS_KEYS is set")
+	}
+	for _, key := range c.ExtraProxyAccessKeys {
+		if key == "your-proxy-access-key" {
+			return fmt.Errorf("EXTRA_PROXY_ACCESS_KEYS must not contain the default placeholder key")
+		}
+		if secureCompare(key, c.ProxyAccessKey) {
+			return fmt.Errorf("EXTRA_PROXY_ACCESS_KEYS must differ from PROXY_ACCESS_KEY")
+		}
+		if secureCompare(c.AdminAccessKey, key) {
+			return fmt.Errorf("ADMIN_ACCESS_KEY must differ from EXTRA_PROXY_ACCESS_KEYS when extra keys are set")
+		}
+	}
+
+	return nil
+}
+
+// IsValidProxyAccessKey 判断是否为有效代理访问密钥
+func (c *EnvConfig) IsValidProxyAccessKey(providedKey string) bool {
+	if providedKey == "" {
+		return false
+	}
+	if secureCompare(providedKey, c.ProxyAccessKey) {
+		return true
+	}
+	for _, key := range c.ExtraProxyAccessKeys {
+		if secureCompare(providedKey, key) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsValidAdminAccessKey 判断是否为有效管理访问密钥
+func (c *EnvConfig) IsValidAdminAccessKey(providedKey string) bool {
+	if providedKey == "" {
+		return false
+	}
+	if c.AdminAccessKey != "" {
+		return secureCompare(providedKey, c.AdminAccessKey)
+	}
+	if c.HasExtraProxyAccessKeys() {
+		return false
+	}
+	return secureCompare(providedKey, c.ProxyAccessKey)
+}
+
+// GetAdminAccessKey 获取显式或回退管理 API 密钥，认证判断请使用 IsValidAdminAccessKey
 func (c *EnvConfig) GetAdminAccessKey() string {
 	if c.AdminAccessKey != "" {
 		return c.AdminAccessKey

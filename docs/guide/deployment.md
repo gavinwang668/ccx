@@ -13,6 +13,8 @@ services:
     environment:
       - ENV=production
       - PROXY_ACCESS_KEY=your-proxy-key
+      # 额外代理访问密钥（可选，逗号分隔；启用后必须设置独立 ADMIN_ACCESS_KEY）
+      # - EXTRA_PROXY_ACCESS_KEYS=extra-proxy-key-1,extra-proxy-key-2
       # 管理 API 独立密钥（可选，未设置时回退到 PROXY_ACCESS_KEY）
       # - ADMIN_ACCESS_KEY=your-admin-secret-key
     restart: unless-stopped
@@ -32,6 +34,8 @@ Type=simple
 ExecStart=/opt/ccx/ccx
 WorkingDirectory=/opt/ccx
 Environment=PROXY_ACCESS_KEY=your-proxy-key
+# 额外代理访问密钥（可选，逗号分隔；启用后必须设置独立 ADMIN_ACCESS_KEY）
+#Environment=EXTRA_PROXY_ACCESS_KEYS=extra-proxy-key-1,extra-proxy-key-2
 # 管理 API 独立密钥（可选，未设置时回退到 PROXY_ACCESS_KEY）
 #Environment=ADMIN_ACCESS_KEY=your-admin-secret-key
 Restart=always
@@ -52,7 +56,8 @@ WantedBy=multi-user.target
 | `PORT` | 3000 | 服务端口 |
 | `ENV` | production | 运行环境 |
 | `PROXY_ACCESS_KEY` | - | 代理访问密钥（必填） |
-| `ADMIN_ACCESS_KEY` | - | 管理界面密钥（可选） |
+| `EXTRA_PROXY_ACCESS_KEYS` | - | 额外代理访问密钥（可选，逗号分隔；仅用于代理 API） |
+| `ADMIN_ACCESS_KEY` | - | 管理界面密钥（可选；配置额外代理密钥时必填且必须独立） |
 | `QUIET_POLLING_LOGS` | true | 静默轮询日志 |
 | `MAX_REQUEST_BODY_SIZE_MB` | 50 | 请求体大小限制 |
 

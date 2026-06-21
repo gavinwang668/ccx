@@ -44,9 +44,11 @@ PORT=3688                              # 服务器端口（程序内部默认 30
 ENV=production                         # 运行环境: development | production
 # NODE_ENV=production                  # 向后兼容 (已弃用，请使用 ENV)
 
-# 访问控制
-PROXY_ACCESS_KEY=your-secret-key       # 代理访问密钥（代理 API 使用，必须设置）
-ADMIN_ACCESS_KEY=your-admin-key        # 可选管理密钥（管理界面和 /api/* 使用；未设置时回退到 PROXY_ACCESS_KEY）
+# Access control
+PROXY_ACCESS_KEY=your-secret-key       # Proxy access key (required for proxy APIs)
+EXTRA_PROXY_ACCESS_KEYS=key-a,key-b    # Optional extra proxy keys (comma-separated, proxy APIs only)
+ADMIN_ACCESS_KEY=your-admin-key        # Optional admin key (Web UI and /api/*; falls back to PROXY_ACCESS_KEY when unset)
+                                      # Required when EXTRA_PROXY_ACCESS_KEYS is set, and must differ from proxy keys
 
 # Web UI
 ENABLE_WEB_UI=true                     # 是否启用 Web 管理界面
@@ -70,6 +72,8 @@ CORS_ORIGIN=*                          # Allowed CORS origin
 # METRICS_WINDOW_SIZE=10               # Sliding window size (min 3, default 10)
 # METRICS_FAILURE_THRESHOLD=0.5        # Failure-rate threshold (0-1, default 0.5)
 ```
+
+`EXTRA_PROXY_ACCESS_KEYS` lets you assign additional proxy-only access keys to multiple clients. It does not add user management, usage tracking, model permissions, or per-key rate limits. Once this variable is configured, admin APIs no longer fall back to `PROXY_ACCESS_KEY`: you must explicitly set an independent `ADMIN_ACCESS_KEY`, and it must not match `PROXY_ACCESS_KEY` or any extra proxy key. Restart the service after changing these access-control environment variables.
 
 Runtime settings saved from the tuning bench are persisted under `circuitBreaker` in `config.json` and take effect immediately as global defaults. The corresponding environment variables are startup fallback / legacy compatibility only; once the tuning bench saves the same field, `config.json` is authoritative at runtime:
 
@@ -296,8 +300,10 @@ PORT=3688
 # 运行环境
 ENV=production
 
-# 访问控制 (必须修改!)
+# Access control (must change!)
 PROXY_ACCESS_KEY=your-proxy-access-key
+# EXTRA_PROXY_ACCESS_KEYS=extra-proxy-key-1,extra-proxy-key-2
+# ADMIN_ACCESS_KEY=your-admin-access-key-here
 
 # Web UI
 ENABLE_WEB_UI=true

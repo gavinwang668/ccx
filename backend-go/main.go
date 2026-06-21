@@ -883,8 +883,14 @@ func main() {
 	if envCfg.IsProduction() && envCfg.ProxyAccessKey == "your-proxy-access-key" {
 		log.Fatal("[Server-Fatal] 生产环境必须设置 PROXY_ACCESS_KEY，禁止使用默认值")
 	}
+	if err := envCfg.ValidateAccessKeys(); err != nil {
+		log.Fatalf("[Server-Fatal] 访问密钥配置无效: %v", err)
+	}
 	// 打印访问控制密钥的脱密内容和设置情况，避免用户混淆
 	fmt.Printf("[Server-Info] 代理访问密钥 (PROXY_ACCESS_KEY): %s\n", maskKey(envCfg.ProxyAccessKey))
+	if envCfg.HasExtraProxyAccessKeys() {
+		fmt.Printf("[Server-Info] 额外代理访问密钥 (EXTRA_PROXY_ACCESS_KEYS): %d 个已启用\n", len(envCfg.ExtraProxyAccessKeys))
+	}
 	if envCfg.AdminAccessKey != "" {
 		fmt.Printf("[Server-Info] 管理 API 密钥 (ADMIN_ACCESS_KEY): %s (已启用独立管理密钥)\n", maskKey(envCfg.AdminAccessKey))
 	} else {

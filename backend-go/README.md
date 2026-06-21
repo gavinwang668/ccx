@@ -67,11 +67,14 @@ PORT=3688
 ENV=production
 ENABLE_WEB_UI=true
 PROXY_ACCESS_KEY=your-secure-access-key
+# EXTRA_PROXY_ACCESS_KEYS=client-key-a,client-key-b
 ADMIN_ACCESS_KEY=your-admin-access-key
 LOG_LEVEL=info
 MAX_REQUEST_BODY_SIZE_MB=50
 QUIET_POLLING_LOGS=true
 ```
+
+`EXTRA_PROXY_ACCESS_KEYS` 仅用于代理 API；启用后必须设置独立 `ADMIN_ACCESS_KEY`，管理接口不再回退到 `PROXY_ACCESS_KEY`。
 
 ### 运行时配置
 

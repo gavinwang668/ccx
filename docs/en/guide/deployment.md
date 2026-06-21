@@ -13,6 +13,8 @@ services:
     environment:
       - ENV=production
       - PROXY_ACCESS_KEY=your-proxy-key
+      # Extra proxy access keys (optional, comma-separated; requires independent ADMIN_ACCESS_KEY)
+      # - EXTRA_PROXY_ACCESS_KEYS=extra-proxy-key-1,extra-proxy-key-2
       # Admin API key (optional, falls back to PROXY_ACCESS_KEY if not set)
       # - ADMIN_ACCESS_KEY=your-admin-secret-key
     restart: unless-stopped
@@ -32,6 +34,8 @@ Type=simple
 ExecStart=/opt/ccx/ccx
 WorkingDirectory=/opt/ccx
 Environment=PROXY_ACCESS_KEY=your-proxy-key
+# Extra proxy access keys (optional, comma-separated; requires independent ADMIN_ACCESS_KEY)
+#Environment=EXTRA_PROXY_ACCESS_KEYS=extra-proxy-key-1,extra-proxy-key-2
 # Admin API key (optional, falls back to PROXY_ACCESS_KEY if not set)
 #Environment=ADMIN_ACCESS_KEY=your-admin-secret-key
 Restart=always
@@ -52,7 +56,8 @@ See `docs/service/com.ccx.gateway.plist` for reference.
 | `PORT` | 3000 | Server port |
 | `ENV` | production | Runtime environment |
 | `PROXY_ACCESS_KEY` | - | Proxy access key (required) |
-| `ADMIN_ACCESS_KEY` | - | Admin console key (optional) |
+| `EXTRA_PROXY_ACCESS_KEYS` | - | Extra proxy access keys (optional, comma-separated; proxy APIs only) |
+| `ADMIN_ACCESS_KEY` | - | Admin console key (optional; required and independent when extra proxy keys are set) |
 | `QUIET_POLLING_LOGS` | true | Suppress polling logs |
 | `MAX_REQUEST_BODY_SIZE_MB` | 50 | Max request body size |
 

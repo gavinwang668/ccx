@@ -46,7 +46,9 @@ ENV=production                         # 运行环境: development | production
 
 # 访问控制
 PROXY_ACCESS_KEY=your-secret-key       # 代理访问密钥（代理 API 使用，必须设置）
+EXTRA_PROXY_ACCESS_KEYS=key-a,key-b    # 可选额外代理密钥（逗号分隔，仅用于代理 API）
 ADMIN_ACCESS_KEY=your-admin-key        # 可选管理密钥（管理界面和 /api/* 使用；未设置时回退到 PROXY_ACCESS_KEY）
+                                      # 设置 EXTRA_PROXY_ACCESS_KEYS 后必须显式设置，且不能与代理密钥相同
 
 # Web UI
 ENABLE_WEB_UI=true                     # 是否启用 Web 管理界面
@@ -70,6 +72,8 @@ CORS_ORIGIN=*                          # CORS 允许的源
 # METRICS_WINDOW_SIZE=10               # 滑动窗口大小（最小 3，默认 10）
 # METRICS_FAILURE_THRESHOLD=0.5        # 失败率阈值（0-1，默认 0.5 即 50%）
 ```
+
+`EXTRA_PROXY_ACCESS_KEYS` 用于给多个客户端分配额外代理访问密钥，不提供用户管理、用量统计、模型权限或限速能力。只要配置了该变量，管理接口就不再回退到 `PROXY_ACCESS_KEY`：必须显式设置独立的 `ADMIN_ACCESS_KEY`，并且它不能等于 `PROXY_ACCESS_KEY` 或任何额外代理密钥。修改这些访问控制环境变量后需要重启服务。
 
 调校台保存的运行时配置会写入 `config.json` 的 `circuitBreaker`，并在保存后立即作为全局默认值生效。对应环境变量只作为启动兜底/旧部署兼容项；一旦调校台保存了同名字段，运行时以 `config.json` 为准：
 
@@ -311,6 +315,8 @@ ENV=production
 
 # 访问控制 (必须修改!)
 PROXY_ACCESS_KEY=your-proxy-access-key
+# EXTRA_PROXY_ACCESS_KEYS=extra-proxy-key-1,extra-proxy-key-2
+# ADMIN_ACCESS_KEY=your-admin-access-key-here
 
 # Web UI
 ENABLE_WEB_UI=true

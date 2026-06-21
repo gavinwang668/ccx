@@ -57,13 +57,12 @@ func WebAuthMiddleware(envCfg *config.EnvConfig, cfgManager *config.ConfigManage
 		// 检查访问密钥（管理 API + 管理端点）
 		if strings.HasPrefix(path, "/api") || strings.HasPrefix(path, "/admin") {
 			providedKey := getAPIKey(c)
-			expectedKey := envCfg.GetAdminAccessKey() // 使用独立的管理密钥
 
 			// 记录认证尝试
 			clientIP := c.ClientIP()
 			timestamp := time.Now().Format(time.RFC3339)
 
-			if providedKey == "" || providedKey != expectedKey {
+			if !envCfg.IsValidAdminAccessKey(providedKey) {
 				// 认证失败 - 记录详细日志
 				reason := "密钥无效"
 				if providedKey == "" {
@@ -150,9 +149,8 @@ func getAPIKey(c *gin.Context) string {
 func ProxyAuthMiddleware(envCfg *config.EnvConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		providedKey := getAPIKey(c)
-		expectedKey := envCfg.ProxyAccessKey
 
-		if providedKey == "" || providedKey != expectedKey {
+		if !envCfg.IsValidProxyAccessKey(providedKey) {
 			if envCfg.ShouldLog("warn") {
 				log.Printf("[Auth-Failed] 代理访问密钥验证失败 - IP: %s", c.ClientIP())
 			}
