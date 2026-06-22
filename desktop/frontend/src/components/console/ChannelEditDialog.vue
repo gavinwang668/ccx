@@ -210,6 +210,42 @@ function handlePointerDown(e: PointerEvent) {
   const target = e.target as Element | null
   if (target?.closest('[data-target-model-picker]')) return
   hideTargetDropdown()
+  hideSourceDropdown()
+}
+
+// 源模型自动完成建议
+const showSourceSuggestions = ref(false)
+const activeSourceInputId = ref<string | null>(null)
+const sourceInputFilter = ref('')
+
+function getFilteredSourceModels(filter: string): string[] {
+  const models = sourceModelOptions.value
+  const value = filter.trim()
+  if (!value) return models.slice(0, 80)
+
+  const lower = value.toLowerCase()
+  return models.filter(m => m.toLowerCase().includes(lower)).slice(0, 80)
+}
+
+const filteredSourceModels = computed(() => getFilteredSourceModels(sourceInputFilter.value))
+
+function showSourceDropdown(inputId: string, currentValue: string) {
+  activeSourceInputId.value = inputId
+  sourceInputFilter.value = currentValue
+  showSourceSuggestions.value = sourceModelOptions.value.length > 0
+}
+
+function hideSourceDropdown() {
+  showSourceSuggestions.value = false
+  activeSourceInputId.value = null
+}
+
+function selectSourceModel(inputId: string, model: string) {
+  if (inputId === 'new-source') {
+    newModelMapping.source = model
+  }
+  showSourceSuggestions.value = false
+  activeSourceInputId.value = null
 }
 
 function selectTargetModel(inputId: string, model: string) {
@@ -1833,11 +1869,14 @@ void toggleSupportedModelFilter
                         :model-mapping-rows="modelMappingRows"
                         :new-model-mapping="newModelMapping"
                         :source-model-options="sourceModelOptions"
+                        :filtered-source-models="filteredSourceModels"
                         :reasoning-effort-options="reasoningEffortOptions"
                         :filtered-target-models="filteredTargetModels"
                         :channel-type="channelType"
                         :show-target-suggestions="showTargetSuggestions"
                         :active-target-input-id="activeTargetInputId"
+                        :show-source-suggestions="showSourceSuggestions"
+                        :active-source-input-id="activeSourceInputId"
                         :DEFAULT_SELECT_VALUE="DEFAULT_SELECT_VALUE"
                         :vision-fallback-model="form.visionFallbackModel"
                         :vision-fallback-reasoning-effort="form.visionFallbackReasoningEffort"
@@ -1867,6 +1906,9 @@ void toggleSupportedModelFilter
                         @hide-target-dropdown="hideTargetDropdown"
                         @select-target-model="selectTargetModel"
                         @handle-target-focus="handleTargetFocus"
+                        @show-source-dropdown="showSourceDropdown"
+                        @hide-source-dropdown="hideSourceDropdown"
+                        @select-source-model="selectSourceModel"
                         @append-supported-model-filter="toggleSupportedModelFilter"
                       />
                       <ModelCapabilityPanel

@@ -22,11 +22,14 @@ const props = defineProps<{
   modelMappingRows: ModelMappingRow[]
   newModelMapping: ModelMappingRow
   sourceModelOptions: string[]
+  filteredSourceModels: string[]
   reasoningEffortOptions: Array<{ label: string; value: string }>
   filteredTargetModels: string[]
   channelType: string
   showTargetSuggestions: boolean
   activeTargetInputId: string | null
+  showSourceSuggestions: boolean
+  activeSourceInputId: string | null
   DEFAULT_SELECT_VALUE: string
   visionFallbackModel: string
   visionFallbackReasoningEffort: ReasoningEffort | ''
@@ -60,6 +63,9 @@ const emit = defineEmits<{
   'selectTargetModel': [inputId: string, model: string]
   'handleTargetFocus': []
   'appendSupportedModelFilter': [filter: string]
+  'showSourceDropdown': [inputId: string, currentValue: string]
+  'hideSourceDropdown': []
+  'selectSourceModel': [inputId: string, model: string]
 }>()
 
 const { t } = useLanguage()
@@ -335,12 +341,25 @@ function fromSelectValue(value: string): ReasoningEffort | '' {
               stableInputFocusClass,
             ]"
             :placeholder="t('channelEditor.mapping.source.placeholder')"
-            list="source-datalist-new"
-            @update:model-value="(val) => emit('update:newModelMapping', { source: val as string })"
+            @update:model-value="(val) => { emit('update:newModelMapping', { source: val as string }); emit('showSourceDropdown', 'new-source', val as string) }"
+            @focus="emit('syncUpstreamModels'); emit('showSourceDropdown', 'new-source', newModelMapping.source)"
+            @blur="emit('hideSourceDropdown')"
           />
-          <datalist id="source-datalist-new">
-            <option v-for="model in sourceModelOptions" :key="model" :value="model">{{ model }}</option>
-          </datalist>
+          <div
+            v-if="showSourceSuggestions && activeSourceInputId === 'new-source' && filteredSourceModels.length"
+            class="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
+          >
+            <button
+              v-for="model in filteredSourceModels"
+              :key="model"
+              type="button"
+              class="flex w-full items-center rounded-md px-2 py-1.5 text-left font-mono text-xs text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+              :class="isSameModel(model, newModelMapping.source) ? 'bg-primary/10 text-primary' : ''"
+              @mousedown.prevent="emit('selectSourceModel', 'new-source', model)"
+            >
+              {{ model }}
+            </button>
+          </div>
         </div>
         <div class="flex h-9 items-center text-primary/60">
           <ArrowRight class="h-3.5 w-3.5" />
