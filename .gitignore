@@ -212,7 +212,6 @@ vite.config.ts.timestamp-*
 !.claude/skills/github-release/
 !.claude/skills/upstream-check/
 !.claude/skills/add-sponsor.md
-!.claude/skills/add-sponsor.sh
 .claude/skills/upstream-check/scripts/upstream-state.json
 
 .aider*
