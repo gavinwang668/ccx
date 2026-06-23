@@ -24,13 +24,14 @@ export function setDesktopConsoleSelection(selection: ConsoleSelection) {
 
 export function useDesktopActivity() {
   const isChannelPageActive = computed(() => windowVisible.value && activeTab.value === 'channels')
+  const isCockpitActive = computed(() => windowVisible.value && activeTab.value === 'cockpit')
   const isDashboardActive = computed(() => windowVisible.value && activeTab.value === 'dashboard')
   const isStatusActive = computed(() => windowVisible.value && activeTab.value === 'status')
   const isConsoleChannelsActive = computed(() =>
     isDashboardActive.value && consoleSelectionSection(consoleSelection.value) === 'channels',
   )
   const isConsoleConversationsActive = computed(() =>
-    isDashboardActive.value && consoleSelection.value === '/conversations',
+    isCockpitActive.value || (isDashboardActive.value && consoleSelection.value === '/conversations'),
   )
 
   return {
@@ -38,6 +39,7 @@ export function useDesktopActivity() {
     activeTab,
     consoleSelection,
     isChannelPageActive,
+    isCockpitActive,
     isStatusActive,
     isConsoleChannelsActive,
     isConsoleConversationsActive,

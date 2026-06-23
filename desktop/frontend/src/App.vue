@@ -6,6 +6,7 @@ import AgentTab from '@/components/agent/AgentTab.vue'
 import EnvTab from '@/components/env/EnvTab.vue'
 import ConsoleTab from '@/components/console/ConsoleTab.vue'
 import ChannelTab from '@/components/channel/ChannelTab.vue'
+import ConversationDashboard from '@/components/console/ConversationDashboard.vue'
 import SetupLoading from '@/components/setup/SetupLoading.vue'
 import SetupView from '@/components/setup/SetupView.vue'
 import { useStatus } from '@/composables/useStatus'
@@ -71,7 +72,7 @@ const switchToDashboard = () => {
 }
 
 const consoleTabSelection = computed<ConsoleSelection>(() => {
-  if (activeTab.value === 'channels' && consoleSelection.value === '/conversations') {
+  if (activeTab.value !== 'dashboard' && consoleSelection.value === '/conversations') {
     return channelSelectionPath('messages')
   }
   return consoleSelection.value
@@ -129,6 +130,7 @@ const tabTitles = computed<Record<TabValue, string>>(() => ({
   status: t('tab.statusTitle'),
   agent: t('tab.agentTitle'),
   channels: t('tab.channelsTitle'),
+  cockpit: t('tab.cockpitTitle'),
   env: t('tab.envTitle'),
   dashboard: t('tab.dashboardTitle'),
 }))
@@ -245,6 +247,9 @@ onBeforeUnmount(() => {
           </div>
           <div v-show="activeTab === 'channels'" class="h-full">
             <ChannelTab />
+          </div>
+          <div v-show="activeTab === 'cockpit'" class="h-full">
+            <ConversationDashboard />
           </div>
           <div v-show="activeTab === 'dashboard'" class="h-full">
             <ConsoleTab
