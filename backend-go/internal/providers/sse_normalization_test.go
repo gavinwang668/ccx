@@ -136,6 +136,45 @@ func TestOpenAIProvider_HandleStreamResponse_MapsReasoningContentToThinkingDelta
 	}
 }
 
+// TestOpenAIProvider_HandleStreamResponse_MapsVLLMReasoningToThinkingDelta 验证 vLLM 的
+// reasoning 字段（非 reasoning_content）也能正确映射为 Claude thinking 事件
+func TestOpenAIProvider_HandleStreamResponse_MapsVLLMReasoningToThinkingDelta(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"id":"chatcmpl-vllm","model":"glm-5.2","choices":[{"delta":{"reasoning":"让我思考"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-vllm","model":"glm-5.2","choices":[{"delta":{"reasoning":"一下"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-vllm","model":"glm-5.2","choices":[{"delta":{"content":"你好！"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-vllm","model":"glm-5.2","choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n")
+
+	provider := &OpenAIProvider{}
+	eventChan, errChan, err := provider.HandleStreamResponse(io.NopCloser(strings.NewReader(body)))
+	if err != nil {
+		t.Fatalf("HandleStreamResponse returned error: %v", err)
+	}
+
+	events := collectStreamEvents(eventChan)
+	select {
+	case streamErr := <-errChan:
+		if streamErr != nil {
+			t.Fatalf("unexpected stream error: %v", streamErr)
+		}
+	default:
+	}
+
+	joined := strings.Join(events, "\n")
+	if !strings.Contains(joined, `"type":"thinking"`) {
+		t.Fatalf("expected thinking content block from vLLM reasoning field, got %v", events)
+	}
+	if !strings.Contains(joined, `"type":"thinking_delta"`) || !strings.Contains(joined, `"thinking":"让我思考"`) {
+		t.Fatalf("expected thinking_delta from vLLM reasoning, got %v", events)
+	}
+	if !strings.Contains(joined, `"type":"text_delta"`) || !strings.Contains(joined, `"text":"你好！"`) {
+		t.Fatalf("expected text delta after reasoning, got %v", events)
+	}
+}
+
 func TestGeminiProvider_HandleStreamResponse_AcceptsNoSpaceDataLines(t *testing.T) {
 	body := strings.Join([]string{
 		`data:{"candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}]}`,
