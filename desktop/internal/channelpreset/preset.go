@@ -138,7 +138,7 @@ var providerConsoleURLs = map[string]string{
 	ProviderDashScope:    "https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key",
 	ProviderTencentLkeap: "https://console.cloud.tencent.com/lkeap/token-plan",
 	ProviderKimiCode:     "https://www.kimi.com/code/console",
-	ProviderVolcArk:      "https://console.volcengine.com/ark",
+	ProviderVolcArk:      "https://console.volcengine.com/ark/region:cn-beijing/subscription/coding-plan?projectName=default",
 	ProviderQianfan:      "https://console.bce.baidu.com/qianfan/resource/subscribe",
 	ProviderXFyun:        "https://console.xfyun.cn/",
 	ProviderOriginRouter: "https://easytransnote.com/ai/console/#key",
