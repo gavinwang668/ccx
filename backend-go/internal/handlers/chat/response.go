@@ -16,6 +16,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// normalizeResponseUpstreamType 将 copilot 归一化为 responses，以便复用 Responses 协议的响应转换分支。
+func normalizeResponseUpstreamType(t string) string {
+	if t == "copilot" {
+		return "responses"
+	}
+	return t
+}
+
 func handleSuccess(
 	c *gin.Context,
 	resp *http.Response,
@@ -28,6 +36,9 @@ func handleSuccess(
 	timeouts common.StreamPreflightTimeouts,
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
+
+	// copilot 上游使用 Responses 协议，响应转换复用 responses 分支
+	upstreamType = normalizeResponseUpstreamType(upstreamType)
 
 	if isStream {
 		return handleStreamSuccess(c, resp, upstreamType, envCfg, startTime, model, timeouts)

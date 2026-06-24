@@ -20,8 +20,14 @@ func ApplyIdentityHeaders(headers http.Header) {
 	headers.Set("Editor-Plugin-Version", defaultEditorPluginVersion)
 }
 
-// ApplyRuntimeHeaders 注入调用 api.githubcopilot.com 所需的认证与识别头。
+// ApplyRuntimeHeaders 注入调用 api.githubcopilot.com 所需的认证与识别头，
+// 并清理可能泄露给上游的代理认证头。
 func ApplyRuntimeHeaders(headers http.Header, token string) {
+	// 清理可能来自客户端的代理认证头，防止泄露到 GitHub Copilot
+	headers.Del("authorization")
+	headers.Del("x-api-key")
+	headers.Del("x-goog-api-key")
+
 	headers.Set("Authorization", "Bearer "+token)
 	headers.Set("openai-organization", "github-copilot")
 	headers.Set("openai-intent", "conversation-panel")

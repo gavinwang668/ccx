@@ -569,6 +569,11 @@ func handleSuccess(
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
 
+	// copilot 上游使用 Responses 协议，响应转换复用 responses 分支
+	if upstreamType == "copilot" {
+		upstreamType = "responses"
+	}
+
 	if isStream {
 		return handleStreamSuccess(c, resp, upstreamType, envCfg, startTime, model, timeouts)
 	}
