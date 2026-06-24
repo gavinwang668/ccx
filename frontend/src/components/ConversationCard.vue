@@ -169,10 +169,6 @@
             </v-btn>
           </div>
         </div>
-
-        <div class="text-right mt-1">
-          <v-btn size="x-small" variant="text" @click.stop="$emit('toggleExpand')">Collapse</v-btn>
-        </div>
       </div>
 
       <!-- Row 3: Raw User ID -->

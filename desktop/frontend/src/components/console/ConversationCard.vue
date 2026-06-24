@@ -532,12 +532,6 @@ function shortId(value: string): string {
         />
       </div>
 
-      <div class="mt-1 text-right">
-        <Button variant="ghost" size="sm" class="h-6 px-2 text-xs" @click.stop="emit('toggleExpand')">
-          Collapse
-        </Button>
-      </div>
-
       <div class="feedback-panel mt-3 border-t border-dashed border-border pt-3" @click.stop>
         <Textarea
           v-model="feedbackText"
