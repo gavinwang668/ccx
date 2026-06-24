@@ -21,9 +21,14 @@
       </v-chip>
       <v-chip v-if="ch.status === 'suspended'" size="x-small" variant="flat" class="fused-chip mr-1">PAUSED</v-chip>
       <v-chip v-if="ch.circuitOpen" size="x-small" color="error" variant="tonal" class="mr-1">TRIPPED</v-chip>
-      <v-btn icon size="x-small" variant="text" :disabled="i === channels.length - 1" @click.stop="emit('demote', i)">
+      <button
+        type="button"
+        class="sequence-action"
+        :disabled="i === channels.length - 1"
+        @click.stop="emit('demote', i)"
+      >
         <v-icon size="14">mdi-arrow-down</v-icon>
-      </v-btn>
+      </button>
     </div>
   </div>
 </template>
@@ -136,6 +141,28 @@ function isDemoted(index: number): boolean {
   font-weight: 700;
   font-size: 9px !important;
   letter-spacing: 0.05em;
+}
+
+.sequence-action {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  cursor: pointer;
+}
+
+.sequence-action:hover:not(:disabled) {
+  background: rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.sequence-action:disabled {
+  cursor: default;
+  opacity: 0.2;
 }
 
 @keyframes ccx-breathe {

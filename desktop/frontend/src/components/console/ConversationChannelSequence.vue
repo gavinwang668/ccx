@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ArrowDown } from 'lucide-vue-next'
-import { Button } from '@/components/ui/button'
 
 interface ChannelInfo {
   index: number
@@ -85,15 +84,14 @@ function badgeClass(channel: ChannelInfo): string {
       >
         TRIPPED
       </span>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class="h-6 w-6"
+      <button
+        type="button"
+        class="sequence-action"
         :disabled="index === channels.length - 1"
         @click.stop="emit('demote', index)"
       >
         <ArrowDown class="h-3.5 w-3.5" />
-      </Button>
+      </button>
     </div>
   </div>
 </template>
@@ -157,6 +155,30 @@ function badgeClass(channel: ChannelInfo): string {
     rgba(127, 29, 29, 0.9) 4px,
     rgba(127, 29, 29, 0.9) 8px
   );
+}
+
+.sequence-action {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-foreground);
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.sequence-action:hover:not(:disabled) {
+  background: var(--color-accent);
+  opacity: 1;
+}
+
+.sequence-action:disabled {
+  cursor: default;
+  opacity: 0.2;
 }
 
 @keyframes ccx-breathe {
