@@ -14,7 +14,8 @@ import (
 // 保留原始请求头，移除代理相关头部，设置认证头
 // 注意：此函数适用于Claude类型渠道，对于其他类型请使用 PrepareMinimalHeaders
 // ExtractUnifiedSessionID 统一提取会话/缓存标识，供 Messages/Responses/Chat/Gemini 复用。
-// 优先级: Conversation_id > Session_id > X-Claude-Code-Session-Id > X-Client-Request-Id > X-Gemini-Api-Privileged-User-Id > user > prompt_cache_key > metadata.user_id
+// 优先级: Conversation_id > Session_id > X-Claude-Code-Session-Id > user > user_id > prompt_cache_key > metadata.user_id > X-Gemini-Api-Privileged-User-Id > X-Client-Request-Id
+// X-Client-Request-Id 通常是逐请求 ID，只作为最终兜底，避免把同一会话拆成多张驾驶舱卡片。
 func ExtractUnifiedSessionID(c *gin.Context, bodyBytes []byte) string {
 	if c != nil {
 		if convID := c.GetHeader("Conversation_id"); convID != "" {
@@ -27,14 +28,6 @@ func ExtractUnifiedSessionID(c *gin.Context, bodyBytes []byte) string {
 
 		if claudeCodeSessionID := c.GetHeader("X-Claude-Code-Session-Id"); claudeCodeSessionID != "" {
 			return claudeCodeSessionID
-		}
-
-		if clientRequestID := c.GetHeader("X-Client-Request-Id"); clientRequestID != "" {
-			return clientRequestID
-		}
-
-		if geminiUserID := c.GetHeader("X-Gemini-Api-Privileged-User-Id"); geminiUserID != "" {
-			return geminiUserID
 		}
 	}
 
@@ -58,6 +51,16 @@ func ExtractUnifiedSessionID(c *gin.Context, bodyBytes []byte) string {
 		}
 		if flattened := flattenMetadataUserID(metadata["user_id"]); flattened != "" {
 			return flattened
+		}
+	}
+
+	if c != nil {
+		if geminiUserID := c.GetHeader("X-Gemini-Api-Privileged-User-Id"); geminiUserID != "" {
+			return geminiUserID
+		}
+
+		if clientRequestID := c.GetHeader("X-Client-Request-Id"); clientRequestID != "" {
+			return clientRequestID
 		}
 	}
 

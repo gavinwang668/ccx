@@ -372,3 +372,23 @@ func TestExtractUnifiedSessionID_UsesTopLevelUserID(t *testing.T) {
 		t.Fatalf("ExtractUnifiedSessionID() = %q, want deepseek_user_123", got)
 	}
 }
+
+func TestExtractUnifiedSessionID_ClientRequestIDIsFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req.Header.Set("X-Client-Request-Id", "req_per_request")
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	body := []byte(`{"model":"gpt-5.5","prompt_cache_key":"stable_cache_key","metadata":{"user_id":"meta_user"}}`)
+	if got := ExtractUnifiedSessionID(c, body); got != "stable_cache_key" {
+		t.Fatalf("ExtractUnifiedSessionID() = %q, want stable_cache_key", got)
+	}
+
+	if got := ExtractUnifiedSessionID(c, []byte(`{}`)); got != "req_per_request" {
+		t.Fatalf("ExtractUnifiedSessionID() fallback = %q, want req_per_request", got)
+	}
+}

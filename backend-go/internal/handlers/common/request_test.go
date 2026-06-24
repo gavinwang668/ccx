@@ -171,10 +171,22 @@ func TestExtractUnifiedSessionID(t *testing.T) {
 			expected: "claude_3",
 		},
 		{
-			name:     "client request id outranks gemini privileged user",
+			name:     "body user outranks client request id",
+			headers:  map[string]string{"X-Client-Request-Id": "req_4"},
+			body:     `{"user":"body_user"}`,
+			expected: "body_user",
+		},
+		{
+			name:     "prompt cache key outranks gemini privileged user",
+			headers:  map[string]string{"X-Gemini-Api-Privileged-User-Id": "gemini_4"},
+			body:     `{"prompt_cache_key":"cache_4"}`,
+			expected: "cache_4",
+		},
+		{
+			name:     "gemini privileged user outranks client request id as header fallback",
 			headers:  map[string]string{"X-Client-Request-Id": "req_4", "X-Gemini-Api-Privileged-User-Id": "gemini_4"},
 			body:     `{}`,
-			expected: "req_4",
+			expected: "gemini_4",
 		},
 		{
 			name:     "body user outranks prompt cache key and metadata user id",
