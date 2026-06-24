@@ -76,11 +76,6 @@
         <span class="task-card-channel">{{ conversation.channelName || `Channel ${conversation.currentChannel}` }}</span>
       </div>
 
-      <div v-if="conversation.latestFeedback" class="feedback-latest">
-        <v-icon size="14">mdi-message-reply-text</v-icon>
-        <span>{{ conversation.latestFeedback }}</span>
-      </div>
-
       <!-- Row 2: Model + Channel chips (collapsed) -->
       <div v-if="!expanded" class="d-flex align-center ga-2 flex-wrap">
         <v-tooltip v-for="ch in visibleChannels" :key="ch.index" :text="getChannelTooltip(ch)" location="top" :open-delay="150" content-class="ccx-tooltip">
@@ -151,24 +146,6 @@
             @demote="handleSubagentDemote"
           />
         </div>
-
-        <div class="feedback-panel mt-3" @click.stop>
-          <v-textarea
-            v-model="feedbackText"
-            rows="2"
-            auto-grow
-            density="compact"
-            variant="outlined"
-            hide-details
-            :placeholder="t('cockpit.feedbackPlaceholder')"
-            class="feedback-input"
-          />
-          <div class="feedback-actions">
-            <v-btn size="x-small" variant="tonal" prepend-icon="mdi-message-reply-text" :disabled="!feedbackText.trim()" @click.stop="sendFeedback">
-              {{ t('cockpit.feedbackSend') }}
-            </v-btn>
-          </div>
-        </div>
       </div>
 
       <!-- Row 3: Raw User ID -->
@@ -212,13 +189,11 @@ const emit = defineEmits<{
   toggleExpand: []
   setOverride: [convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]]
   removeOverride: [convId: string]
-  feedback: [payload: { conversationId: string; message: string }]
   success: [message: string]
   error: [message: string]
 }>()
 
 const MAX_VISIBLE = 6
-const feedbackText = ref('')
 
 const conversation = computed(() => props.conversation)
 const emptySubagentSummary: SubagentSummary = { total: 0, streaming: 0, active: 0, idle: 0 }
@@ -485,13 +460,6 @@ async function copyRawUserId() {
   } catch {
     emit('error', t('cockpit.rawUserIdCopyFailed'))
   }
-}
-
-function sendFeedback() {
-  const message = feedbackText.value.trim()
-  if (!message) return
-  emit('feedback', { conversationId: props.conversation.id, message })
-  feedbackText.value = ''
 }
 
 </script>
@@ -842,15 +810,5 @@ function sendFeedback() {
 .feedback-latest span {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.feedback-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
-}
-
-.feedback-input :deep(.v-field) {
-  border-radius: 0;
 }
 </style>
