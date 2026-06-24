@@ -71,6 +71,42 @@
         </button>
       </div>
 
+      <div
+        v-if="conversation.parentConversationId || conversation.parentThreadId || childConversationCount > 0"
+        class="relation-row"
+        @click.stop
+      >
+        <button
+          v-if="conversation.parentConversationId"
+          type="button"
+          class="relation-chip relation-chip--parent"
+          :title="relatedParentTitle || conversation.parentConversationId"
+          @click="navigateConversation(conversation.parentConversationId)"
+        >
+          <v-icon size="12">mdi-arrow-left</v-icon>
+          <span>{{ t('cockpit.relation.parent') }}</span>
+        </button>
+        <span
+          v-else-if="conversation.parentThreadId"
+          class="relation-chip relation-chip--thread"
+          :title="conversation.parentThreadId"
+        >
+          <v-icon size="12">mdi-arrow-left</v-icon>
+          <span>{{ t('cockpit.relation.parentThread', { id: parentThreadLabel }) }}</span>
+        </span>
+
+        <button
+          v-if="childConversationCount > 0 && firstChildConversationId"
+          type="button"
+          class="relation-chip relation-chip--children"
+          :title="firstChildConversationId"
+          @click="navigateConversation(firstChildConversationId)"
+        >
+          <v-icon size="12">mdi-source-branch</v-icon>
+          <span>{{ t('cockpit.relation.children', { count: String(childConversationCount) }) }}</span>
+        </button>
+      </div>
+
       <div class="task-card-notes">
         <span>{{ conversation.lastModel }}</span>
         <span class="task-card-channel">{{ conversation.channelName || `Channel ${conversation.currentChannel}` }}</span>
@@ -184,12 +220,14 @@ const props = defineProps<{
   availableChannels: ChannelInfo[]
   expanded: boolean
   nowMs: number
+  relatedParentTitle?: string
 }>()
 
 const emit = defineEmits<{
   toggleExpand: []
   setOverride: [convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]]
   removeOverride: [convId: string]
+  navigateConversation: [conversationId: string]
   success: [message: string]
   error: [message: string]
 }>()
@@ -248,6 +286,9 @@ const kindCssColor = computed(() => {
 
 const displayLabel = computed(() => props.conversation.title || props.conversation.userId)
 const shortConversationId = computed(() => props.conversation.id.slice(0, 12))
+const childConversationCount = computed(() => props.conversation.childConversationIds?.length ?? 0)
+const firstChildConversationId = computed(() => props.conversation.childConversationIds?.[0])
+const parentThreadLabel = computed(() => props.conversation.parentThreadId ? shortId(props.conversation.parentThreadId) : '')
 
 const tooltipText = computed(() => {
   if (props.conversation.title) return props.conversation.title
@@ -461,6 +502,16 @@ async function copyRawUserId() {
   } catch {
     emit('error', t('cockpit.rawUserIdCopyFailed'))
   }
+}
+
+function navigateConversation(id?: string) {
+  if (!id) return
+  emit('navigateConversation', id)
+}
+
+function shortId(value: string): string {
+  if (value.length <= 12) return value
+  return `${value.slice(0, 8)}...${value.slice(-4)}`
 }
 
 </script>
@@ -732,6 +783,58 @@ async function copyRawUserId() {
   color: rgb(var(--v-theme-on-surface) / 58%);
   font-size: 11px;
   text-align: left;
+}
+
+.relation-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.relation-chip {
+  display: inline-flex;
+  min-height: 22px;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: rgb(var(--v-theme-surface) / 68%);
+  color: rgb(var(--v-theme-on-surface) / 68%);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+button.relation-chip {
+  cursor: pointer;
+}
+
+.relation-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relation-chip--parent {
+  border-color: rgb(var(--v-theme-info) / 48%);
+  background: rgb(var(--v-theme-info) / 10%);
+  color: rgb(var(--v-theme-info));
+}
+
+.relation-chip--children {
+  border-color: rgb(var(--v-theme-warning) / 48%);
+  background: rgb(var(--v-theme-warning) / 10%);
+  color: rgb(var(--v-theme-warning));
+}
+
+.relation-chip--parent:hover,
+.relation-chip--children:hover {
+  background: color-mix(in srgb, var(--ccx-kind-color) 14%, transparent);
+  border-color: var(--ccx-kind-color);
 }
 
 /* Next label */

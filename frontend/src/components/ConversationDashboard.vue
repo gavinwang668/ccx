@@ -90,23 +90,29 @@
 
           <div class="cockpit-column-body">
             <div v-if="!column.items.length" class="cockpit-column-empty">--</div>
-            <ConversationCard
+            <div
               v-for="item in column.items"
               :key="item.conversation.id"
               class="cockpit-board-card"
-              :conversation="item.conversation"
-              :subagents="item.subagents"
-              :subagent-summary="item.subagentSummary"
-              :override="overrides[item.conversation.id]"
-              :available-channels="getChannelsForKind(item.conversation.kind)"
-              :expanded="expandedCards.has(item.conversation.id)"
-              :now-ms="nowMs"
-              @toggle-expand="toggleExpand(item.conversation.id)"
-              @set-override="handleSetOverride"
-              @remove-override="handleRemoveOverride"
-              @success="(msg: string) => emit('success', msg)"
-              @error="(msg: string) => emit('error', msg)"
-            />
+              :ref="el => setConversationCardRef(item.conversation.id, el as Element | null)"
+            >
+              <ConversationCard
+                :conversation="item.conversation"
+                :subagents="item.subagents"
+                :subagent-summary="item.subagentSummary"
+                :override="overrides[item.conversation.id]"
+                :available-channels="getChannelsForKind(item.conversation.kind)"
+                :expanded="expandedCards.has(item.conversation.id)"
+                :now-ms="nowMs"
+                :related-parent-title="getConversationTitle(item.conversation.parentConversationId)"
+                @toggle-expand="toggleExpand(item.conversation.id)"
+                @set-override="handleSetOverride"
+                @remove-override="handleRemoveOverride"
+                @navigate-conversation="handleNavigateConversation"
+                @success="(msg: string) => emit('success', msg)"
+                @error="(msg: string) => emit('error', msg)"
+              />
+            </div>
           </div>
         </section>
       </div>
@@ -115,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { api, type ConversationInfo, type SequenceOverrideInfo, type ChannelSequenceEntry } from '@/services/api'
 import { useGlobalTick } from '@/composables/useGlobalTick'
@@ -143,6 +149,7 @@ const overrideDuration = ref(1800)
 const nowMs = ref(Date.now())
 const expandedCards = ref(new Set<string>())
 const pinnedConversationOrder = ref<string[]>([])
+const cardElements = new Map<string, HTMLElement>()
 
 const boardColumnMeta: Array<{ key: BoardColumnKey; label: string; color: string }> = [
   { key: 'working', label: 'Working', color: '#6366f1' },
@@ -240,6 +247,12 @@ function getChannelsForKind(kind: string): DashboardChannel[] {
   return channelsByKind.value[kind] || []
 }
 
+function getConversationTitle(id?: string) {
+  if (!id) return ''
+  const conversation = conversations.value.find(item => item.id === id)
+  return conversation?.title || conversation?.userId || id
+}
+
 function getConversationTime(conversation: ConversationInfo) {
   return new Date(conversation.lastActiveAt).getTime()
 }
@@ -322,6 +335,46 @@ function toggleExpand(id: string) {
     next.add(id)
   }
   expandedCards.value = next
+}
+
+function setConversationCardRef(id: string, el: Element | null) {
+  if (el instanceof HTMLElement) {
+    cardElements.set(id, el)
+    return
+  }
+  cardElements.delete(id)
+}
+
+async function handleNavigateConversation(id: string) {
+  if (!id) return
+
+  const target = conversations.value.find(item => item.id === id)
+  if (!target) {
+    emit('error', `未找到关联对话 ${id.slice(0, 8)}`)
+    return
+  }
+
+  pinnedConversationOrder.value = [
+    id,
+    ...pinnedConversationOrder.value.filter(itemID => itemID !== id),
+  ]
+  conversations.value = applyConversationOrder(conversations.value)
+  kindFilter.value = ''
+  searchQuery.value = ''
+
+  const next = new Set(expandedCards.value)
+  next.add(id)
+  expandedCards.value = next
+
+  await nextTick()
+  const el = cardElements.get(id)
+  if (!el) return
+
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('conversation-card-target')
+  window.setTimeout(() => {
+    el.classList.remove('conversation-card-target')
+  }, 1800)
 }
 
 async function handleSetOverride(convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]) {
@@ -512,6 +565,11 @@ fetchAllChannels()
 
 .cockpit-board-card {
   margin-bottom: 10px;
+}
+
+.conversation-card-target :deep(.conversation-card) {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 2px rgb(var(--v-theme-primary) / 24%);
 }
 
 @media (max-width: 1280px) {
