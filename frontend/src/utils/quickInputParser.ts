@@ -265,10 +265,10 @@ const detectServiceTypeAndCleanUrl = (
       'https://api.easytransnote.com/coding/v1',
     ])
     if (knownClaudeUrls.has(urlKey)) {
-      return { serviceType: 'claude', cleanedUrl: url }
+      return { serviceType: 'claude', cleanedUrl: cleanUrl }
     }
     if (knownOpenAIUrls.has(urlKey)) {
-      return { serviceType: 'openai', cleanedUrl: url }
+      return { serviceType: 'openai', cleanedUrl: cleanUrl }
     }
 
     const hintText = `${parsed.hostname.toLowerCase()} ${path}`
