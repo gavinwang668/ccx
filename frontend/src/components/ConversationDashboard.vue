@@ -352,9 +352,14 @@ async function handleNavigateConversation(id: string) {
   }, 1800)
 }
 
-async function handleSetOverride(convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]) {
+async function handleSetOverride(
+  convId: string,
+  sequence: ChannelSequenceEntry[],
+  subagentSequence?: ChannelSequenceEntry[],
+  clearSubagentSequence = false,
+) {
   try {
-    await api.setConversationOverride(convId, sequence, overrideDuration.value, subagentSequence)
+    await api.setConversationOverride(convId, sequence, overrideDuration.value, subagentSequence, clearSubagentSequence)
     await fetchConversations()
   } catch (e) {
     console.error('[ConversationDashboard] set override error:', e)

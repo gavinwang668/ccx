@@ -617,6 +617,7 @@ export interface ConversationInfo {
 
 export interface SequenceOverrideInfo {
   sequence: ChannelSequenceEntry[]
+  hasMainSequence?: boolean
   subagentSequence?: ChannelSequenceEntry[]  // subagent 专用序列（为空时 fallback 到 sequence）
   setAt: string
   expiresAt: string

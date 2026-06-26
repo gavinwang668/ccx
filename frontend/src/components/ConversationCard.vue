@@ -118,7 +118,6 @@
       <!-- Expanded: Override alert -->
       <v-alert v-if="expanded && hasOverride" type="warning" density="compact" variant="tonal" class="override-alert mb-2 mt-2">
         <div class="d-flex align-center">
-          <span class="alert-bang">[!]</span>
           <span v-if="override?.isPerpetual" class="text-caption">{{ t('cockpit.overrideActivePerpetual') }}</span>
           <span v-else class="text-caption">{{ t('cockpit.overrideActive', { time: remainingTime }) }}</span>
           <v-spacer />
@@ -175,7 +174,7 @@
             :current-channel="subagentCurrentChannel"
             :next-channel="subagentNextChannel"
             :next-channel-circuit-open="subagentNextChannelCircuitOpen"
-            :override-active="hasOverride"
+            :override-active="hasSubagentOverride"
             @move-to-top="handleSubagentMoveToTop"
             @demote="handleSubagentDemote"
           />
@@ -227,7 +226,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggleExpand: []
-  setOverride: [convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]]
+  setOverride: [convId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[], clearSubagentSequence?: boolean]
   removeOverride: [convId: string]
   navigateConversation: [conversationId: string]
   success: [message: string]
@@ -243,7 +242,7 @@ const subagentSummary = computed(() => props.subagentSummary ?? emptySubagentSum
 const hasSubagentActivity = computed(() => props.conversation.hasSubagents || subagents.value.length > 0)
 const displaySubagentCount = computed(() => subagentSummary.value.total || props.conversation.subagentCount || subagents.value.length || 1)
 const visibleSubagents = computed(() => subagents.value.slice(0, props.expanded ? 12 : 4))
-const hasOverride = computed(() => !!props.override)
+const hasOverride = computed(() => props.override?.hasMainSequence === true)
 const kindLabel = computed(() => props.conversation.kind.toUpperCase())
 
 
@@ -377,7 +376,7 @@ const fallbackChannels = computed((): ChannelInfo[] => {
   const pushUnique = (channel: ChannelInfo) => {
     if (!channels.some(ch => ch.index === channel.index)) channels.push(channel)
   }
-  if (props.override?.sequence) {
+  if (hasOverride.value && props.override?.sequence) {
     for (const entry of props.override.sequence) {
       pushUnique({ index: entry.channelIndex, name: entry.channelName || `Channel ${entry.channelIndex}`, status: 'active' })
     }
@@ -387,7 +386,7 @@ const fallbackChannels = computed((): ChannelInfo[] => {
 })
 
 const channelSequence = computed((): ChannelInfo[] => {
-  if (props.override?.sequence) {
+  if (hasOverride.value && props.override?.sequence) {
     return props.override.sequence.map(entry => {
       const ch = props.availableChannels.find(c => c.index === entry.channelIndex)
       return { index: entry.channelIndex, name: entry.channelName || ch?.name || `Channel ${entry.channelIndex}`, status: ch?.status || 'active', circuitOpen: ch?.circuitOpen }
@@ -420,7 +419,7 @@ const currentChannelInfo = computed(() => {
 })
 
 const nextChannel = computed(() => {
-  const candidate = props.override?.sequence?.[0]?.channelIndex
+  const candidate = hasOverride.value ? props.override?.sequence?.[0]?.channelIndex : undefined
   return candidate !== undefined && candidate !== props.conversation.currentChannel ? candidate : undefined
 })
 
@@ -429,7 +428,7 @@ const nextChannelInfo = computed(() => {
   const existing = channelSequence.value.find(ch => ch.index === nextChannel.value)
     ?? props.availableChannels.find(ch => ch.index === nextChannel.value)
   if (existing) return existing
-  const entry = props.override?.sequence?.[0]
+  const entry = hasOverride.value ? props.override?.sequence?.[0] : undefined
   return { index: nextChannel.value!, name: entry?.channelName || `Channel ${nextChannel.value}`, status: 'active' }
 })
 
@@ -439,7 +438,7 @@ const nextChannelCircuitOpen = computed(() => {
 })
 
 const subagentNextChannel = computed(() => {
-  const candidate = props.override?.subagentSequence?.[0]?.channelIndex ?? props.override?.sequence?.[0]?.channelIndex
+  const candidate = props.override?.subagentSequence?.[0]?.channelIndex ?? (hasOverride.value ? props.override?.sequence?.[0]?.channelIndex : undefined)
   return candidate !== undefined && candidate !== subagentCurrentChannel.value ? candidate : undefined
 })
 
@@ -507,7 +506,7 @@ function handleSubagentMoveToTop(ch: ChannelInfo, currentIdx: number) {
   const current = [...subagentSequence.value]
   const [item] = current.splice(currentIdx, 1)
   current.unshift(item)
-  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), buildSequence(current))
+  emit('setOverride', props.conversation.id, [], buildSequence(current))
 }
 
 function handleSubagentDemote(index: number) {
@@ -515,12 +514,11 @@ function handleSubagentDemote(index: number) {
   if (index >= current.length - 1) return
   const [item] = current.splice(index, 1)
   current.push(item)
-  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), buildSequence(current))
+  emit('setOverride', props.conversation.id, [], buildSequence(current))
 }
 
-// 清除 subagent override：API 会省略空 subagentSequence，后端重建主 override 时移除旧子序列。
 function handleClearSubagentOverride() {
-  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), [])
+  emit('setOverride', props.conversation.id, [], [], true)
 }
 
 function handleMoveToTop(ch: ChannelInfo, currentIdx: number) {
@@ -987,14 +985,6 @@ button.relation-chip {
 .override-alert {
   border: 2px solid rgb(var(--v-theme-warning)) !important;
   border-radius: 0 !important;
-}
-.alert-bang {
-  font-weight: 900;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  margin-right: 6px;
-  animation: ccx-alert-blink 0.8s step-end infinite;
-  color: rgb(var(--v-theme-warning));
 }
 
 .current-channel-chip {

@@ -180,7 +180,12 @@ async function refreshConversations() {
   conversations.value = applyConversationOrder(conversations.value)
 }
 
-async function handleSetOverride(conversationId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]) {
+async function handleSetOverride(
+  conversationId: string,
+  sequence: ChannelSequenceEntry[],
+  subagentSequence?: ChannelSequenceEntry[],
+  clearSubagentSequence = false,
+) {
   try {
     const conversation = conversations.value.find(item => item.id === conversationId)
     const target = sequence[0]
@@ -197,7 +202,7 @@ async function handleSetOverride(conversationId: string, sequence: ChannelSequen
         await typeApi.setStatus(target.channelIndex, 'active')
       }
     }
-    await setOverride(conversationId, sequence, overrideDurationAsNumber(), subagentSequence)
+    await setOverride(conversationId, sequence, overrideDurationAsNumber(), subagentSequence, clearSubagentSequence)
     conversations.value = applyConversationOrder(conversations.value)
   } catch (e) {
     showNotice('destructive', e instanceof Error ? e.message : String(e))

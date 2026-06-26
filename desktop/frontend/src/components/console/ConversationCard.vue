@@ -35,7 +35,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggleExpand: []
-  setOverride: [conversationId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[]]
+  setOverride: [conversationId: string, sequence: ChannelSequenceEntry[], subagentSequence?: ChannelSequenceEntry[], clearSubagentSequence?: boolean]
   removeOverride: [conversationId: string]
   navigateConversation: [conversationId: string]
   success: [message: string]
@@ -52,7 +52,7 @@ const subagentSummary = computed(() => props.subagentSummary ?? emptySubagentSum
 const hasSubagentActivity = computed(() => props.conversation.hasSubagents || subagents.value.length > 0)
 const displaySubagentCount = computed(() => subagentSummary.value.total || props.conversation.subagentCount || subagents.value.length || 1)
 const visibleSubagents = computed(() => subagents.value.slice(0, props.expanded ? 12 : 4))
-const hasOverride = computed(() => !!props.override)
+const hasOverride = computed(() => props.override?.hasMainSequence === true)
 const kindLabel = computed(() => props.conversation.kind.toUpperCase())
 
 function splitConversationTurns(text: string): string[] {
@@ -184,7 +184,7 @@ const fallbackChannels = computed((): ChannelInfo[] => {
     if (!channels.some(item => item.index === channel.index)) channels.push(channel)
   }
 
-  if (props.override?.sequence) {
+  if (hasOverride.value && props.override?.sequence) {
     for (const entry of props.override.sequence) {
       pushUnique({
         index: entry.channelIndex,
@@ -204,7 +204,7 @@ const fallbackChannels = computed((): ChannelInfo[] => {
 })
 
 const channelSequence = computed((): ChannelInfo[] => {
-  if (props.override?.sequence?.length) {
+  if (hasOverride.value && props.override?.sequence?.length) {
     return props.override.sequence.map(entry => {
       const channel = normalizedAvailableChannels.value.find(item => item.index === entry.channelIndex)
       return {
@@ -233,7 +233,7 @@ const currentChannelInfo = computed(() => {
 })
 
 const nextChannel = computed(() => {
-  const candidate = props.override?.sequence?.[0]?.channelIndex
+  const candidate = hasOverride.value ? props.override?.sequence?.[0]?.channelIndex : undefined
   return candidate !== undefined && candidate !== props.conversation.currentChannel ? candidate : undefined
 })
 
@@ -242,7 +242,7 @@ const nextChannelInfo = computed(() => {
   const existing = channelSequence.value.find(channel => channel.index === nextChannel.value)
     ?? normalizedAvailableChannels.value.find(channel => channel.index === nextChannel.value)
   if (existing) return existing
-  const entry = props.override?.sequence?.[0]
+  const entry = hasOverride.value ? props.override?.sequence?.[0] : undefined
   return {
     index: nextChannel.value,
     name: entry?.channelName || `Channel ${nextChannel.value}`,
@@ -300,7 +300,7 @@ const hasSubagentOverride = computed(() => !!props.override?.subagentSequence?.l
 const showSubagentSection = computed(() => hasSubagentActivity.value || hasSubagentOverride.value)
 const subagentCurrentChannel = computed(() => props.conversation.subagentChannel ?? -1)
 const subagentNextChannel = computed(() => {
-  const candidate = props.override?.subagentSequence?.[0]?.channelIndex ?? props.override?.sequence?.[0]?.channelIndex
+  const candidate = props.override?.subagentSequence?.[0]?.channelIndex ?? (hasOverride.value ? props.override?.sequence?.[0]?.channelIndex : undefined)
   return candidate !== undefined && candidate !== subagentCurrentChannel.value ? candidate : undefined
 })
 
@@ -365,7 +365,7 @@ function handleSubagentMoveToTop(channel: ChannelInfo, currentIndex: number) {
   const current = [...subagentSequence.value]
   const [item] = current.splice(currentIndex, 1)
   current.unshift(item)
-  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), buildSequence(current))
+  emit('setOverride', props.conversation.id, [], buildSequence(current))
 }
 
 function handleSubagentDemote(index: number) {
@@ -373,12 +373,11 @@ function handleSubagentDemote(index: number) {
   if (index >= current.length - 1) return
   const [item] = current.splice(index, 1)
   current.push(item)
-  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), buildSequence(current))
+  emit('setOverride', props.conversation.id, [], buildSequence(current))
 }
 
-// 清除 subagent override：API 会省略空 subagentSequence，后端重建主 override 时移除旧子序列。
 function handleClearSubagentOverride() {
-  emit('setOverride', props.conversation.id, buildSequence(channelSequence.value), [])
+  emit('setOverride', props.conversation.id, [], [], true)
 }
 
 function handleMoveToTop(channel: ChannelInfo, currentIndex: number) {
@@ -542,7 +541,6 @@ function shortId(value: string): string {
     <!-- Expanded: Override alert -->
     <div v-if="expanded && hasOverride" class="override-alert mt-3 border border-amber-500/70 bg-amber-500/10 p-2">
       <div class="flex items-center gap-2">
-        <span class="alert-bang">[!]</span>
         <span v-if="override?.isPerpetual" class="text-xs text-amber-600 dark:text-amber-400">
           {{ t('cockpit.overrideActivePerpetual') }}
         </span>
@@ -614,7 +612,7 @@ function shortId(value: string): string {
           :current-channel="subagentCurrentChannel"
           :next-channel="subagentNextChannel"
           :next-channel-circuit-open="subagentNextChannelCircuitOpen"
-          :override-active="hasOverride"
+          :override-active="hasSubagentOverride"
           @move-to-top="handleSubagentMoveToTop"
           @demote="handleSubagentDemote"
         />
@@ -804,14 +802,6 @@ function shortId(value: string): string {
   border-radius: 0;
 }
 
-.alert-bang {
-  color: var(--color-warning);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  animation: ccx-alert-blink 0.8s step-end infinite;
-}
-
 .raw-user-id {
   opacity: 0.65;
 }
@@ -838,8 +828,4 @@ function shortId(value: string): string {
   50% { opacity: 0.55; }
 }
 
-@keyframes ccx-alert-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.2; }
-}
 </style>

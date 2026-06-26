@@ -968,7 +968,8 @@ export class ApiService {
     id: string,
     sequence: ChannelSequenceEntry[],
     duration?: number,
-    subagentSequence?: ChannelSequenceEntry[]
+    subagentSequence?: ChannelSequenceEntry[],
+    clearSubagentSequence = false
   ): Promise<void> {
     const body: Record<string, unknown> = { sequence }
     if (duration !== undefined) {
@@ -976,6 +977,9 @@ export class ApiService {
     }
     if (subagentSequence && subagentSequence.length > 0) {
       body.subagentSequence = subagentSequence
+    }
+    if (clearSubagentSequence) {
+      body.clearSubagentSequence = true
     }
     await this.request(`/conversations/${id}/override`, {
       method: 'POST',

@@ -45,10 +45,12 @@ export function useConversations() {
     sequence: ChannelSequenceEntry[],
     duration?: number,
     subagentSequence?: ChannelSequenceEntry[],
+    clearSubagentSequence = false,
   ) {
     const body: Record<string, unknown> = { sequence }
     if (duration !== undefined) body.duration = duration
     if (subagentSequence && subagentSequence.length > 0) body.subagentSequence = subagentSequence
+    if (clearSubagentSequence) body.clearSubagentSequence = true
     await api.post(`/api/conversations/${encodeURIComponent(conversationId)}/override`, body)
     await fetchConversations()
   }
