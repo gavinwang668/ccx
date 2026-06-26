@@ -92,6 +92,9 @@ func cleanResponsesUserText(text string) string {
 	text = removeResponsesTaggedBlocks(text, "local-command-stdout")
 	text = removeResponsesTaggedBlocks(text, "local-command-stderr")
 	text = strings.TrimSpace(text)
+	if common.IsClaudeNoVisibleOutputRetryPrompt(text) {
+		return ""
+	}
 	if isInjectedContextTitleText(text) {
 		return ""
 	}

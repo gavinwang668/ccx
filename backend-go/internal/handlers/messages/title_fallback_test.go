@@ -97,6 +97,21 @@ func TestExtractLastUserMessageIgnoresOnlyTaggedContent(t *testing.T) {
 	}
 }
 
+func TestExtractLastUserMessageSkipsClaudeMetaRetryPrompt(t *testing.T) {
+	messages := []types.ClaudeMessage{
+		{Role: "user", Content: []interface{}{map[string]interface{}{"type": "text", "text": "真实用户问题"}}},
+		{Role: "user", Content: []interface{}{map[string]interface{}{"type": "text", "text": "[Your previous response had no visible output. Please continue and produce a user-visible response.]"}}},
+	}
+
+	got := extractLastUserMessage(messages)
+	if got != "真实用户问题" {
+		t.Fatalf("extractLastUserMessage() = %q, want %q", got, "真实用户问题")
+	}
+	if got := countUserMessages(messages); got != 1 {
+		t.Fatalf("countUserMessages() = %d, want 1", got)
+	}
+}
+
 func TestExtractLastUserMessageJoinsRecentShortInputs(t *testing.T) {
 	messages := []types.ClaudeMessage{
 		{Role: "user", Content: []interface{}{map[string]interface{}{"type": "text", "text": "第一个短问题"}}},

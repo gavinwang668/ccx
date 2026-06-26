@@ -42,6 +42,20 @@ func TestExtractLastResponsesUserInputSkipsInjectedAgentsInstructions(t *testing
 	}
 }
 
+func TestExtractLastResponsesUserInputSkipsClaudeMetaRetryPrompt(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{"role": "user", "content": []interface{}{map[string]interface{}{"type": "input_text", "text": "真实用户问题"}}},
+		map[string]interface{}{"role": "user", "content": []interface{}{map[string]interface{}{"type": "input_text", "text": "[Your previous response had no visible output. Please continue and produce a user-visible response.]"}}},
+	}
+
+	if got := extractLastResponsesUserInput(input); got != "真实用户问题" {
+		t.Fatalf("extractLastResponsesUserInput() = %q, want %q", got, "真实用户问题")
+	}
+	if got := countResponsesUserMessages(input); got != 1 {
+		t.Fatalf("countResponsesUserMessages() = %d, want 1", got)
+	}
+}
+
 func TestExtractLastResponsesUserInputJoinsShortInputs(t *testing.T) {
 	input := []interface{}{
 		map[string]interface{}{"role": "user", "content": []interface{}{map[string]interface{}{"type": "input_text", "text": "第一个"}}},

@@ -644,6 +644,9 @@ func cleanUserTitleText(text string) string {
 	text = removeTaggedBlocks(text, "local-command-stdout")
 	text = removeTaggedBlocks(text, "local-command-stderr")
 	text = strings.TrimSpace(text)
+	if common.IsClaudeNoVisibleOutputRetryPrompt(text) {
+		return ""
+	}
 	if isInjectedContextTitleText(text) {
 		return ""
 	}
