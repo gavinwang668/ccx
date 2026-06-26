@@ -47,3 +47,7 @@
 
 发现协议/工具/用法变更：MCP tool search 默认启用、服务端 safety-buffering 可见性与 faster-model 元数据、ResponseItem metadata 新增 turn_id。请评估对 ccx Responses 渠道的影响。
 
+## [ ] Claude Code v2.1.193 上游协议/工具变更评估
+
+发现协议/工具/用法变更：autoMode.classifyAllShell 扩大 Bash/PowerShell 权限分类范围、assistant_response OpenTelemetry 事件可能输出模型响应文本、MCP headersHelper 401/403 后自动重连。请评估对 ccx Messages 渠道和桌面端 Claude Code 集成的影响。
+
