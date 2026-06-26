@@ -822,6 +822,8 @@
   "cockpit.active": "Active: {count}",
   "cockpit.override": "Override: {count}",
   "cockpit.mainConversation": "Main conversation",
+  "cockpit.detail.requests": "Requests",
+  "cockpit.detail.duration": "Duration",
   "cockpit.mainRouting": "Main routing",
   "cockpit.subagentRouting": "Subagent routing",
   "cockpit.durationDefault": "30 min (default)",

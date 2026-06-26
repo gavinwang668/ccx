@@ -37,6 +37,8 @@
   "cockpit.column.idle": "Idle",
   "cockpit.subagents": "Subagent",
   "cockpit.mainConversation": "Percakapan utama",
+  "cockpit.detail.requests": "Putaran request",
+  "cockpit.detail.duration": "Durasi",
   "cockpit.mainRouting": "Routing utama",
   "cockpit.subagentRouting": "Routing subagent",
   "cockpit.subagentFollowMain": "Ikuti percakapan utama",

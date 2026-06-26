@@ -13,26 +13,27 @@ import (
 )
 
 type Conversation struct {
-	ID                   string     `json:"id"`
-	Kind                 string     `json:"kind"`
-	UserID               string     `json:"userId"`
-	RawUserID            string     `json:"rawUserId,omitempty"`
-	Title                string     `json:"title,omitempty"`
-	GeneratedTitle       string     `json:"-"`
-	FallbackTitle        string     `json:"-"`
-	SessionID            string     `json:"-"`
-	ParentThreadID       string     `json:"parentThreadId,omitempty"`
-	ParentConversationID string     `json:"parentConversationId,omitempty"`
-	ChildConversationIDs []string   `json:"childConversationIds,omitempty"`
-	CreatedAt            time.Time  `json:"createdAt"`
-	LastActiveAt         time.Time  `json:"lastActiveAt"`
-	RequestCount         int        `json:"requestCount"`
-	Models               []string   `json:"models"`
-	CurrentChannel       int        `json:"currentChannel"`
-	ChannelName          string     `json:"channelName"`
-	Status               string     `json:"status"`
-	LastModel            string     `json:"lastModel"`
-	LastRequestID        string     `json:"lastRequestId"`
+	ID                   string    `json:"id"`
+	Kind                 string    `json:"kind"`
+	UserID               string    `json:"userId"`
+	RawUserID            string    `json:"rawUserId,omitempty"`
+	Title                string    `json:"title,omitempty"`
+	GeneratedTitle       string    `json:"-"`
+	FallbackTitle        string    `json:"-"`
+	SessionID            string    `json:"-"`
+	ParentThreadID       string    `json:"parentThreadId,omitempty"`
+	ParentConversationID string    `json:"parentConversationId,omitempty"`
+	ChildConversationIDs []string  `json:"childConversationIds,omitempty"`
+	CreatedAt            time.Time `json:"createdAt"`
+	LastActiveAt         time.Time `json:"lastActiveAt"`
+	RequestCount         int       `json:"requestCount"`
+	Models               []string  `json:"models"`
+	CurrentChannel       int       `json:"currentChannel"`
+	ChannelName          string    `json:"channelName"`
+	Status               string    `json:"status"`
+	LastModel            string    `json:"lastModel"`
+	LastRequestID        string    `json:"lastRequestId"`
+	LastUserMessage      string    `json:"lastUserMessage,omitempty"`
 
 	// subagent 观测（仅展示，不影响路由）
 	HasSubagents    bool `json:"hasSubagents,omitempty"`
@@ -181,8 +182,9 @@ func (ct *ConversationTracker) TrackWithStatus(kind, userID, model string, chann
 		conv.Models = append(conv.Models, model)
 	}
 
-	if fallback := fallbackTitleFromUserMessage(lastUserMessage); fallback != "" {
-		conv.FallbackTitle = fallback
+	if fullMessage := normalizeConversationContent(lastUserMessage); fullMessage != "" {
+		conv.LastUserMessage = truncateConversationContent(fullMessage)
+		conv.FallbackTitle = truncateTitle(fullMessage)
 		conv.recomputeTitle()
 	}
 
@@ -285,7 +287,6 @@ func (ct *ConversationTracker) SetLastRequestID(kind, userID, requestID string) 
 	ct.dirty = true
 }
 
-
 func (ct *ConversationTracker) GetActiveConversations(kindFilter string) []*Conversation {
 	ct.mu.RLock()
 	defer ct.mu.RUnlock()
@@ -381,6 +382,7 @@ func (ct *ConversationTracker) loadFromDisk() {
 			ChannelName:          item.ChannelName,
 			LastModel:            item.LastModel,
 			LastRequestID:        item.LastRequestID,
+			LastUserMessage:      item.LastUserMessage,
 			HasSubagents:         item.HasSubagents,
 			SubagentCount:        item.SubagentCount,
 			MainChannel:          item.MainChannel,
@@ -654,11 +656,23 @@ func containsString(slice []string, s string) bool {
 	return false
 }
 
-func fallbackTitleFromUserMessage(message string) string {
-	msg := strings.ReplaceAll(message, "\n", " ")
-	msg = strings.ReplaceAll(msg, "\r", "")
+func normalizeConversationContent(message string) string {
+	msg := strings.ReplaceAll(message, "\r", "")
 	msg = strings.TrimSpace(msg)
-	return truncateTitle(msg)
+	return msg
+}
+
+func truncateConversationContent(content string) string {
+	const maxContentRunes = 2000
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	runes := []rune(content)
+	if len(runes) > maxContentRunes {
+		return string(runes[:maxContentRunes]) + "..."
+	}
+	return content
 }
 
 func composeTitleWithFallback(title, fallback string) string {

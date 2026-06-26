@@ -51,7 +51,7 @@ const hasSubagentActivity = computed(() => props.conversation.hasSubagents || su
 const displaySubagentCount = computed(() => subagentSummary.value.total || props.conversation.subagentCount || subagents.value.length || 1)
 const visibleSubagents = computed(() => subagents.value.slice(0, props.expanded ? 12 : 4))
 const hasOverride = computed(() => !!props.override)
-const kindLabel = computed(() => `[ ${props.conversation.kind.toUpperCase()} ]`)
+const kindLabel = computed(() => props.conversation.kind.toUpperCase())
 
 const kindStyle = computed(() => {
   switch (props.conversation.kind) {
@@ -65,6 +65,7 @@ const kindStyle = computed(() => {
 })
 
 const displayLabel = computed(() => props.conversation.title || props.conversation.userId)
+const mainConversationText = computed(() => props.conversation.lastUserMessage || displayLabel.value)
 const tooltipText = computed(() => props.conversation.title || props.conversation.userId)
 const childConversationCount = computed(() => props.conversation.childConversationIds?.length ?? 0)
 const firstChildConversationId = computed(() => props.conversation.childConversationIds?.[0])
@@ -78,6 +79,11 @@ const duration = computed(() => {
   if (mins < 60) return `${mins}m`
   return `${Math.floor(mins / 60)}h${mins % 60}m`
 })
+
+const mainDetailRows = computed(() => [
+  { label: t('cockpit.detail.requests'), value: `${props.conversation.requestCount}x` },
+  { label: t('cockpit.detail.duration'), value: duration.value },
+])
 
 const remainingTime = computed(() => {
   if (!props.override?.expiresAt) return '--:--'
@@ -242,19 +248,11 @@ const subagentNextChannelInfo = computed(() => {
 
 const subagentNextChannelCircuitOpen = computed(() => subagentNextChannelInfo.value?.circuitOpen === true)
 
-const mainChannelLabel = computed(() => {
-  const index = props.conversation.mainChannel ?? props.conversation.currentChannel
-  return getChannelName(index)
+const subagentRouteLabel = computed(() => {
+  if (props.conversation.subagentChannel === undefined) return t('cockpit.subagentFollowMain')
+  return t('cockpit.subagentOverride')
 })
 
-const subagentChannelLabel = computed(() => {
-  const index = props.conversation.subagentChannel
-  return index === undefined ? 'fallback' : getChannelName(index)
-})
-
-function getChannelName(index: number): string {
-  return normalizedAvailableChannels.value.find(channel => channel.index === index)?.name || `Channel ${index}`
-}
 
 function subagentStatusClass(status: ConversationInfo['status']): string {
   switch (status) {
@@ -353,6 +351,7 @@ function shortId(value: string): string {
   if (value.length <= 12) return value
   return `${value.slice(0, 8)}...${value.slice(-4)}`
 }
+
 </script>
 
 <template>
@@ -370,7 +369,7 @@ function shortId(value: string): string {
     <!-- Row 1: LED + Kind + Title/User + Stats -->
     <div class="mb-3 flex min-w-0 items-center gap-2">
       <span class="status-led" :class="`status-led--${conversation.status}`" />
-      <span class="kind-chip border px-1.5 py-0.5 text-[9px] font-bold tracking-[0.08em]" :class="kindStyle.chip">
+      <span class="kind-chip border px-1 py-0.5 text-[9px] font-bold tracking-[0.08em]" :class="kindStyle.chip">
         {{ kindLabel }}
       </span>
       <span class="display-label min-w-0 flex-1 font-mono text-xs text-muted-foreground" :title="tooltipText">
@@ -380,7 +379,7 @@ function shortId(value: string): string {
       <span class="shrink-0 text-xs text-muted-foreground">{{ duration }}</span>
       <span
         v-if="hasSubagentActivity"
-        class="inline-flex items-center rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-500"
+        class="inline-flex shrink-0 items-center border border-amber-500/50 bg-amber-500/10 px-1 py-0.5 text-[10px] font-medium text-amber-500"
       >
         SA {{ displaySubagentCount }}
       </span>
@@ -428,7 +427,13 @@ function shortId(value: string): string {
         <span>{{ shortId(conversation.id) }}</span>
       </div>
       <div class="main-conversation-text mt-1.5 text-xs font-semibold leading-relaxed text-foreground">
-        {{ displayLabel }}
+        {{ mainConversationText }}
+      </div>
+      <div class="mt-2 grid grid-cols-2 gap-2">
+        <div v-for="row in mainDetailRows" :key="row.label" class="min-w-0 border-t border-dashed border-border pt-1.5">
+          <span class="block truncate text-[10px] font-semibold text-muted-foreground">{{ row.label }}</span>
+          <strong class="mt-0.5 block truncate text-[11px] font-bold text-foreground/85">{{ row.value }}</strong>
+        </div>
       </div>
     </div>
 
@@ -514,11 +519,7 @@ function shortId(value: string): string {
           <span v-if="subagentSummary.total > 0" class="truncate">
             {{ subagentSummary.streaming }} {{ t('cockpit.board.streaming') }} / {{ subagentSummary.active }} {{ t('cockpit.board.active') }} / {{ subagentSummary.idle }} {{ t('cockpit.board.idle') }}
           </span>
-          <template v-else>
-            <span class="truncate">{{ mainChannelLabel }}</span>
-            <span>→</span>
-            <span class="truncate">{{ subagentChannelLabel }}</span>
-          </template>
+          <span v-else class="truncate">{{ subagentRouteLabel }}</span>
         </div>
       </div>
 
@@ -682,12 +683,6 @@ function shortId(value: string): string {
   white-space: nowrap;
 }
 
-.display-label-text--expanded {
-  display: -webkit-box;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
 
 .main-conversation-detail,
 .subagent-summary,
@@ -696,11 +691,8 @@ function shortId(value: string): string {
 }
 
 .main-conversation-text {
-  display: -webkit-box;
-  overflow: hidden;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
+  white-space: pre-wrap;
 }
 
 .next-label {

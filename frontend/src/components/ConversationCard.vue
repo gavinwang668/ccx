@@ -13,25 +13,15 @@
     <v-card-text class="pa-4">
       <div class="task-card-title-row">
         <span :class="['status-led', `status-led--${conversation.status}`]"></span>
-        <span class="task-card-title">
-          <v-tooltip :text="tooltipText" location="top" :open-delay="150" content-class="ccx-tooltip">
-            <template #activator="{ props: tp }">
-              <span v-bind="tp" :class="['display-label-text', { 'display-label-text--expanded': expanded }]">{{ displayLabel }}</span>
-            </template>
-          </v-tooltip>
+        <span :class="['kind-chip', `kind-chip--${conversation.kind}`]">{{ kindLabel }}</span>
+        <span class="task-card-title" :title="tooltipText">
+          <span :class="['display-label-text', { 'display-label-text--expanded': expanded }]">{{ displayLabel }}</span>
         </span>
-      </div>
-
-      <div class="task-card-meta">
-        <v-chip class="kind-chip" :color="kindColor" size="x-small" variant="outlined">{{ kindLabel }}</v-chip>
-        <span class="task-meta-item">
-          <span class="task-meta-dot"></span>
-          {{ conversation.requestCount }}x
+        <span class="task-meta-item task-title-stat">{{ conversation.requestCount }}x</span>
+        <span class="task-meta-item task-title-stat">{{ duration }}</span>
+        <span v-if="hasSubagentActivity" class="task-subagent-chip">
+          SA {{ displaySubagentCount }}
         </span>
-        <span class="task-meta-item">{{ duration }}</span>
-        <v-chip :color="statusColor" size="x-small" variant="tonal" class="task-status-chip">
-          {{ conversation.status.toUpperCase() }}
-        </v-chip>
       </div>
 
       <div v-if="!expanded && hasSubagentActivity" class="subagent-summary" @click.stop="$emit('toggleExpand')">
@@ -42,11 +32,7 @@
         </div>
         <div class="subagent-summary-route">
           <span v-if="subagentSummary.total > 0">{{ subagentSummary.streaming }} streaming / {{ subagentSummary.active }} active</span>
-          <template v-else>
-          <span>{{ mainChannelLabel }}</span>
-          <v-icon size="13">mdi-arrow-right</v-icon>
-          <span>{{ subagentChannelLabel }}</span>
-          </template>
+          <span v-else>{{ subagentRouteLabel }}</span>
         </div>
       </div>
 
@@ -96,7 +82,13 @@
           <span>{{ t('cockpit.mainConversation') }}</span>
           <span>{{ shortConversationId }}</span>
         </div>
-        <div class="main-conversation-text">{{ displayLabel }}</div>
+        <div class="main-conversation-text">{{ mainConversationText }}</div>
+        <div class="main-conversation-grid">
+          <div v-for="row in mainDetailRows" :key="row.label" class="main-conversation-field">
+            <span>{{ row.label }}</span>
+            <strong>{{ row.value }}</strong>
+          </div>
+        </div>
       </div>
 
       <!-- Row 2: Model + Channel chips (collapsed) -->
@@ -173,11 +165,7 @@
           </div>
           <div class="subagent-summary-route">
             <span v-if="subagentSummary.total > 0">{{ subagentSummary.streaming }} {{ t('cockpit.column.streaming') }} / {{ subagentSummary.active }} {{ t('cockpit.column.active') }} / {{ subagentSummary.idle }} {{ t('cockpit.column.idle') }}</span>
-            <template v-else>
-              <span>{{ mainChannelLabel }}</span>
-              <v-icon size="13">mdi-arrow-right</v-icon>
-              <span>{{ subagentChannelLabel }}</span>
-            </template>
+            <span v-else>{{ subagentRouteLabel }}</span>
           </div>
         </div>
 
@@ -279,27 +267,9 @@ const hasSubagentActivity = computed(() => props.conversation.hasSubagents || su
 const displaySubagentCount = computed(() => subagentSummary.value.total || props.conversation.subagentCount || subagents.value.length || 1)
 const visibleSubagents = computed(() => subagents.value.slice(0, props.expanded ? 12 : 4))
 const hasOverride = computed(() => !!props.override)
-const kindLabel = computed(() => `[ ${props.conversation.kind.toUpperCase()} ]`)
+const kindLabel = computed(() => props.conversation.kind.toUpperCase())
 
-const kindColor = computed(() => {
-  switch (props.conversation.kind) {
-    case 'messages': return 'purple'
-    case 'chat': return 'blue'
-    case 'responses': return 'teal'
-    case 'gemini': return 'orange'
-    case 'images': return 'pink'
-    default: return 'grey'
-  }
-})
 
-const statusColor = computed(() => {
-  switch (props.conversation.status) {
-    case 'streaming': return 'error'
-    case 'active': return 'primary'
-    case 'idle': return 'success'
-    default: return 'grey'
-  }
-})
 
 function subagentStatusColor(status: ConversationInfo['status']): string {
   switch (status) {
@@ -322,6 +292,7 @@ const kindCssColor = computed(() => {
 })
 
 const displayLabel = computed(() => props.conversation.title || props.conversation.userId)
+const mainConversationText = computed(() => props.conversation.lastUserMessage || displayLabel.value)
 const shortConversationId = computed(() => props.conversation.id.slice(0, 12))
 const childConversationCount = computed(() => props.conversation.childConversationIds?.length ?? 0)
 const firstChildConversationId = computed(() => props.conversation.childConversationIds?.[0])
@@ -334,11 +305,17 @@ const tooltipText = computed(() => {
 
 const duration = computed(() => {
   const start = new Date(props.conversation.createdAt).getTime()
+  if (!Number.isFinite(start)) return '<1m'
   const mins = Math.floor((props.nowMs - start) / 60000)
   if (mins < 1) return '<1m'
   if (mins < 60) return `${mins}m`
   return `${Math.floor(mins / 60)}h${mins % 60}m`
 })
+
+const mainDetailRows = computed(() => [
+  { label: t('cockpit.detail.requests'), value: `${props.conversation.requestCount}x` },
+  { label: t('cockpit.detail.duration'), value: duration.value },
+])
 
 const remainingTime = computed(() => {
   if (!props.override) return ''
@@ -390,19 +367,11 @@ const hasSubagentOverride = computed(() => !!props.override?.subagentSequence &&
 const showSubagentSection = computed(() => hasSubagentActivity.value || hasSubagentOverride.value)
 const subagentCurrentChannel = computed(() => props.conversation.subagentChannel ?? -1)
 
-const mainChannelLabel = computed(() => {
-  const index = props.conversation.mainChannel ?? props.conversation.currentChannel
-  return getChannelName(index)
+const subagentRouteLabel = computed(() => {
+  if (props.conversation.subagentChannel === undefined) return t('cockpit.subagentFollowMain')
+  return t('cockpit.subagentOverride')
 })
 
-const subagentChannelLabel = computed(() => {
-  const index = props.conversation.subagentChannel
-  return index === undefined ? 'fallback' : getChannelName(index)
-})
-
-function getChannelName(index: number): string {
-  return props.availableChannels.find(ch => ch.index === index)?.name || `Channel ${index}`
-}
 
 const currentChannelInfo = computed(() => {
   const existing = channelSequence.value.find(ch => ch.index === props.conversation.currentChannel)
@@ -551,6 +520,7 @@ function shortId(value: string): string {
   return `${value.slice(0, 8)}...${value.slice(-4)}`
 }
 
+
 </script>
 
 <style scoped>
@@ -601,7 +571,7 @@ function shortId(value: string): string {
 
 .task-card-title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   min-width: 0;
 }
@@ -630,6 +600,24 @@ function shortId(value: string): string {
   color: rgb(var(--v-theme-on-surface) / 64%);
   font-size: 11px;
   font-weight: 700;
+}
+
+.task-title-stat,
+.task-subagent-chip {
+  flex-shrink: 0;
+}
+
+.task-subagent-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid rgb(var(--v-theme-warning));
+  color: rgb(var(--v-theme-warning));
+  background: rgba(var(--v-theme-warning), 0.1);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .task-meta-dot {
@@ -681,11 +669,23 @@ function shortId(value: string): string {
 
 /* Kind chip */
 .kind-chip {
-  border-radius: 0 !important;
-  font-size: 9px !important;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
+  line-height: 1;
 }
+
+.kind-chip--messages { color: var(--ccx-kind-messages); }
+.kind-chip--chat { color: var(--ccx-kind-chat); }
+.kind-chip--responses { color: var(--ccx-kind-responses); }
+.kind-chip--gemini { color: var(--ccx-kind-gemini); }
+.kind-chip--images { color: var(--ccx-kind-images); }
 
 /* Display label (title/userId) */
 .display-label {
@@ -699,12 +699,6 @@ function shortId(value: string): string {
   white-space: nowrap;
 }
 
-.display-label-text--expanded {
-  display: -webkit-box;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
 
 .main-conversation-detail {
   margin-top: 10px;
@@ -726,17 +720,48 @@ function shortId(value: string): string {
 }
 
 .main-conversation-text {
-  display: -webkit-box;
   margin-top: 6px;
-  overflow: hidden;
   color: rgb(var(--v-theme-on-surface) / 86%);
   font-size: 12px;
   font-weight: 700;
-  line-height: 1.45;
-  white-space: normal;
+  line-height: 1.55;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
+}
+
+.main-conversation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.main-conversation-field {
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.main-conversation-field span,
+.main-conversation-field strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-conversation-field span {
+  color: rgb(var(--v-theme-on-surface) / 48%);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.main-conversation-field strong {
+  margin-top: 3px;
+  color: rgb(var(--v-theme-on-surface) / 82%);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .main-routing-section {

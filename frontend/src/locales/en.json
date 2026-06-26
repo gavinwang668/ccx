@@ -37,6 +37,8 @@
   "cockpit.column.idle": "Idle",
   "cockpit.subagents": "Subagents",
   "cockpit.mainConversation": "Main conversation",
+  "cockpit.detail.requests": "Requests",
+  "cockpit.detail.duration": "Duration",
   "cockpit.mainRouting": "Main routing",
   "cockpit.subagentRouting": "Subagent routing",
   "cockpit.subagentFollowMain": "Follow main",

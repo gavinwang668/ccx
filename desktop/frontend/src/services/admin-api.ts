@@ -654,6 +654,7 @@ export interface ConversationInfo {
   requestCount: number
   channelName: string
   lastRequestId: string
+  lastUserMessage?: string
   createdAt: string
   lastActiveAt: string
   parentThreadId?: string
