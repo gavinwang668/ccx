@@ -1,3 +1,15 @@
+## [v2.9.20] - 2026-06-27
+
+### 新增
+
+- **展示 Claude Code recap** - cockpit: 展示 Claude Code recap
+- **记录并展示 Claude Code recap** - cockpit: 记录并展示 Claude Code recap
+
+### 其他
+
+- **限制 macOS 公证任务时长** - release: 限制 macOS 公证任务时长
+- **并行化 macOS 签名公证流程** - release: 并行化 macOS 签名公证流程
+
 ## [v2.9.19] - 2026-06-27
 
 ### 新增
