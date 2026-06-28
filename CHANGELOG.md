@@ -1,8 +1,21 @@
-## [Unreleased]
+## [v2.9.21] - 2026-06-28
+
+### 新增
+
+- **渠道日志复制操作** - channel: 为渠道日志添加复制操作，便于快速复制日志内容排查问题
+- **GPT-5.6 能力探测与渠道选项** - capability: 接入 GPT-5.6 能力探测与渠道配置选项
+- **GPT-5.6 Amazon Bedrock 模型定义** - model-registry: 新增 GPT-5.6 Amazon Bedrock 模型定义
 
 ### 修复
 
-- **适配 Kimi-K2.7-Code 输出与思考限制** - model-registry/backend: 将 Kimi-K2.7-Code 最大输出与推荐输出修正为 32768，发送上游前按模型能力自动下调超限 `max_tokens`，并让能力测试为强制思考模型自动携带 thinking/reasoning 参数，避免火山方舟/百炼等平台返回参数错误或能力误判
+- **保留 Claude 主 API Key** - desktop: 修复桌面端配置同步时 Claude 主 API key 被覆盖或丢失的问题
+- **Base URL 哈希诊断校验** - 修复 base url hash 诊断校验逻辑，提升问题定位准确性
+- **桌面端流式超时默认值** - desktop: 对齐并保留 stream timeout 默认值
+- **渠道菜单浮层稳定性** - frontend: 稳定渠道操作菜单 overlay 展示，避免交互抖动
+- **Copilot OAuth 国际化文案** - desktop: 补齐 Copilot OAuth 桌面端多语言文案
+- **输出 token 按模型限制裁剪** - routing: 根据模型能力限制下调超限输出 token，避免上游参数错误
+- **能力探测携带必需 thinking 参数** - capability: 强制思考模型探测时自动携带 thinking/reasoning 参数，避免能力误判
+- **Kimi K2.7 输出限制修正** - model-registry: 将 Kimi-K2.7-Code 最大输出与推荐输出修正为 32768
 
 ## [v2.9.20] - 2026-06-27
 
