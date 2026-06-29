@@ -144,7 +144,7 @@ func TryUpstreamWithAllKeys(
 
 	// 历史图片轮次限制：替换历史图片为占位符，避免不必要的 vision 回退
 	if kind != scheduler.ChannelKindImages {
-		effectiveLimit := resolveHistoricalImageTurnLimit(envCfg, cfgManager, upstream)
+		effectiveLimit := resolveHistoricalImageTurnLimit(upstream)
 		if effectiveLimit > 0 {
 			if replaced, modified := StripHistoricalImagesWithContext(c, requestBody, effectiveLimit, envCfg.EnableRequestLogs, apiType); modified {
 				requestBody = replaced

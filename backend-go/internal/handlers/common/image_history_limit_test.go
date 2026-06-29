@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/BenedictKing/ccx/internal/config"
 )
 
 // countImageBlocks 递归统计 JSON 字节中图片块/图片 part 的数量
@@ -386,5 +388,31 @@ func TestStripHistoricalImages_MultiChannelNoPollution(t *testing.T) {
 	// 原始 body 不被污染
 	if countImageBlocks(t, originalBytes) != 3 {
 		t.Errorf("original body polluted: images = %d, want 3", countImageBlocks(t, originalBytes))
+	}
+}
+
+func TestResolveHistoricalImageTurnLimit_DefaultUnlimited(t *testing.T) {
+	if got := resolveHistoricalImageTurnLimit(nil); got != 0 {
+		t.Fatalf("default limit = %d, want 0 (unlimited)", got)
+	}
+
+	upstream := &config.UpstreamConfig{HistoricalImageTurnLimit: 0}
+	if got := resolveHistoricalImageTurnLimit(upstream); got != 0 {
+		t.Fatalf("disabled channel limit = %d, want 0 (unlimited)", got)
+	}
+
+	upstream.HistoricalImageTurnLimit = 1
+	if got := resolveHistoricalImageTurnLimit(upstream); got != config.HistoricalImageTurnLimitMin {
+		t.Fatalf("channel limit = %d, want min %d", got, config.HistoricalImageTurnLimitMin)
+	}
+
+	upstream.HistoricalImageTurnLimit = 5
+	if got := resolveHistoricalImageTurnLimit(upstream); got != 5 {
+		t.Fatalf("channel limit = %d, want 5", got)
+	}
+
+	upstream.HistoricalImageTurnLimit = 11
+	if got := resolveHistoricalImageTurnLimit(upstream); got != config.HistoricalImageTurnLimitMax {
+		t.Fatalf("channel limit = %d, want max %d", got, config.HistoricalImageTurnLimitMax)
 	}
 }

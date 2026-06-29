@@ -278,21 +278,11 @@ func StripHistoricalImagesWithContext(c *gin.Context, bodyBytes []byte, turnLimi
 	return newBytes, true
 }
 
-// resolveHistoricalImageTurnLimit 解析有效的历史图片轮次限制。
-// 该功能始终开启（无"不限制"语义），返回值始终 >= 3。
-// 优先级：
-//   - 渠道级 >0：覆盖全局，应用最低 3 约束
-//   - 否则：全局值（cfgManager 优先，回退 envCfg），应用默认 5 / 最低 3 归一
-func resolveHistoricalImageTurnLimit(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, upstream *config.UpstreamConfig) int {
+// resolveHistoricalImageTurnLimit 解析渠道级历史图片轮次限制。
+// 返回 0 表示该渠道不裁剪；大于 0 时归一到 2-10。
+func resolveHistoricalImageTurnLimit(upstream *config.UpstreamConfig) int {
 	if upstream != nil && upstream.HistoricalImageTurnLimit > 0 {
 		return config.NormalizeChannelHistoricalImageTurnLimit(upstream.HistoricalImageTurnLimit)
 	}
-	if cfgManager != nil {
-		// GetHistoricalImageTurnLimit 已归一（始终 >= 3）
-		return cfgManager.GetHistoricalImageTurnLimit()
-	}
-	if envCfg != nil {
-		return config.NormalizeHistoricalImageTurnLimit(envCfg.HistoricalImageTurnLimit)
-	}
-	return config.HistoricalImageTurnLimitDefault
+	return 0
 }

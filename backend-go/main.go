@@ -755,10 +755,6 @@ func main() {
 		apiGroup.GET("/settings/fuzzy-mode", handlers.GetFuzzyMode(cfgManager))
 		apiGroup.PUT("/settings/fuzzy-mode", handlers.SetFuzzyMode(cfgManager))
 
-		// 历史图片轮次限制设置
-		apiGroup.GET("/settings/historical-image-turn-limit", handlers.GetHistoricalImageTurnLimit(cfgManager))
-		apiGroup.PUT("/settings/historical-image-turn-limit", handlers.SetHistoricalImageTurnLimit(cfgManager))
-
 		// 熔断器运行时设置
 		apiGroup.GET("/settings/circuit-breaker", handlers.GetCircuitBreaker(messagesMetricsManager.GetCircuitBreakerConfig, envCfg))
 		apiGroup.PUT("/settings/circuit-breaker", handlers.SetCircuitBreaker(cfgManager))

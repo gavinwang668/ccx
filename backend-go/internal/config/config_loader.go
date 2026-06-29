@@ -133,7 +133,6 @@ func (cm *ConfigManager) createDefaultConfig() error {
 		GeminiUpstream:           []UpstreamConfig{},
 		FuzzyModeEnabled:         true, // 默认启用 Fuzzy 模式
 		// StripBillingHeader 旧全局字段默认关闭；新语义已下沉到渠道级开关
-		// HistoricalImageTurnLimit 默认 0（不限制），int 零值语义正确，无需显式赋值
 	}
 
 	if err := os.MkdirAll(filepath.Dir(cm.configFile), 0700); err != nil {

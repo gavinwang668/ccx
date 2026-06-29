@@ -39,40 +39,6 @@ func SetFuzzyMode(cfgManager *config.ConfigManager) gin.HandlerFunc {
 	}
 }
 
-// GetHistoricalImageTurnLimit 获取全局历史图片轮次限制
-func GetHistoricalImageTurnLimit(cfgManager *config.ConfigManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"historicalImageTurnLimit": cfgManager.GetHistoricalImageTurnLimit(),
-		})
-	}
-}
-
-// SetHistoricalImageTurnLimit 设置全局历史图片轮次限制。
-// 该功能始终开启：入参会被归一化（无效值或 <3 用最低 3，未设置 0 用默认 5），
-// 返回归一后的实际生效值。
-func SetHistoricalImageTurnLimit(cfgManager *config.ConfigManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req struct {
-			Limit int `json:"limit"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "请求格式无效"})
-			return
-		}
-
-		if err := cfgManager.SetHistoricalImageTurnLimit(req.Limit); err != nil {
-			c.JSON(500, gin.H{"error": "保存配置失败"})
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"success":                  true,
-			"historicalImageTurnLimit": cfgManager.GetHistoricalImageTurnLimit(),
-		})
-	}
-}
-
 // GetCircuitBreaker 获取熔断器运行时配置
 // getCurrent: 返回当前运行时生效的熔断器参数的函数
 func GetCircuitBreaker(getCurrent func() metrics.CircuitBreakerParams, envCfg *config.EnvConfig) gin.HandlerFunc {

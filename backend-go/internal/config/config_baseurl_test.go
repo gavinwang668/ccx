@@ -774,7 +774,7 @@ func TestHistoricalImageTurnLimitUpdates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			limit := 3
+			limit := 5
 			if err := tt.update(UpstreamUpdate{HistoricalImageTurnLimit: &limit}); err != nil {
 				t.Fatalf("设置 historicalImageTurnLimit 失败: %v", err)
 			}
@@ -787,16 +787,24 @@ func TestHistoricalImageTurnLimitUpdates(t *testing.T) {
 				t.Fatalf("清除 historicalImageTurnLimit 失败: %v", err)
 			}
 			if got := tt.read(cm.GetConfig()); got != 0 {
-				t.Fatalf("cleared HistoricalImageTurnLimit = %d, want 0 (inherit global)", got)
+				t.Fatalf("cleared HistoricalImageTurnLimit = %d, want 0 (unlimited)", got)
 			}
 
-			// 0 < limit < 3 应归一到最低值 3
+			// 0 < limit < 2 应归一到最低值 2
 			belowMin := 1
 			if err := tt.update(UpstreamUpdate{HistoricalImageTurnLimit: &belowMin}); err != nil {
 				t.Fatalf("设置 historicalImageTurnLimit=1 失败: %v", err)
 			}
-			if got := tt.read(cm.GetConfig()); got != 3 {
-				t.Fatalf("normalized HistoricalImageTurnLimit = %d, want 3 (min)", got)
+			if got := tt.read(cm.GetConfig()); got != HistoricalImageTurnLimitMin {
+				t.Fatalf("normalized HistoricalImageTurnLimit = %d, want %d (min)", got, HistoricalImageTurnLimitMin)
+			}
+
+			aboveMax := 11
+			if err := tt.update(UpstreamUpdate{HistoricalImageTurnLimit: &aboveMax}); err != nil {
+				t.Fatalf("设置 historicalImageTurnLimit=11 失败: %v", err)
+			}
+			if got := tt.read(cm.GetConfig()); got != HistoricalImageTurnLimitMax {
+				t.Fatalf("normalized HistoricalImageTurnLimit = %d, want %d (max)", got, HistoricalImageTurnLimitMax)
 			}
 		})
 	}

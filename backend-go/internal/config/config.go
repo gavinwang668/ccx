@@ -97,7 +97,7 @@ type UpstreamConfig struct {
 	NoVisionModels      []string `json:"noVisionModels,omitempty"`      // 不支持图片输入的模型列表（匹配 modelMapping 后的实际模型名）
 	VisionFallbackModel string   `json:"visionFallbackModel,omitempty"` // 含图请求命中 noVisionModels 时使用的替代模型
 	// 历史图片轮次限制
-	HistoricalImageTurnLimit int `json:"historicalImageTurnLimit,omitempty"` // 超过此轮次的历史图片替换为占位符（0=不限制）
+	HistoricalImageTurnLimit int `json:"historicalImageTurnLimit,omitempty"` // 超过此轮次的历史图片替换为占位符（0=不限制，2-10=限制轮次）
 	// Compact 专用模型配置
 	CompactModel string `json:"compactModel,omitempty"` // 本地 compact 时使用的上游模型名（不经过 modelMapping，为空则使用原始请求的模型）
 }
@@ -420,7 +420,7 @@ type UpstreamUpdate struct {
 	NoVision            *bool    `json:"noVision"`
 	NoVisionModels      []string `json:"noVisionModels"`
 	VisionFallbackModel *string  `json:"visionFallbackModel"`
-	// 历史图片轮次限制
+	// 历史图片轮次限制（0=不限制，2-10=限制轮次）
 	HistoricalImageTurnLimit *int `json:"historicalImageTurnLimit"`
 }
 
@@ -466,9 +466,6 @@ type Config struct {
 
 	// 移除计费头中的 cch= 参数：兼容旧全局配置读取；新语义已下沉到渠道级字段
 	StripBillingHeader bool `json:"stripBillingHeader,omitempty"`
-
-	// 历史图片轮次限制：超过此轮次的历史图片替换为占位符（0=不限制）
-	HistoricalImageTurnLimit int `json:"historicalImageTurnLimit,omitempty"`
 
 	// 驾驶舱 override 默认有效期（分钟，1-1440；0 或未设置时使用环境变量 OVERRIDE_TTL_MINUTES）
 	OverrideTTLMinutes int `json:"overrideTtlMinutes,omitempty"`
@@ -787,32 +784,18 @@ func (cm *ConfigManager) SetFuzzyModeEnabled(enabled bool) error {
 // ============== HistoricalImageTurnLimit 相关方法 ==============
 
 // 历史图片轮次限制约束：
-//   - 始终开启（无"不限制"语义）
-//   - 全局默认值 5
-//   - 有效值最低 3；小于 3 或无效（<=0）的全局值一律归一到默认值
+//   - 0 表示不限制
+//   - 大于 0 时有效值范围为 2-10
 const (
-	HistoricalImageTurnLimitMin     = 3
-	HistoricalImageTurnLimitDefault = 5
+	HistoricalImageTurnLimitMin = 2
+	HistoricalImageTurnLimitMax = 10
 )
 
-// NormalizeHistoricalImageTurnLimit 归一化全局历史图片轮次限制。
-//   - limit <= 0（含未配置的 0 零值）→ 默认值 5
-//   - 0 < limit < 3 → 最低值 3
-//   - limit >= 3 → 原值
-func NormalizeHistoricalImageTurnLimit(limit int) int {
-	if limit <= 0 {
-		return HistoricalImageTurnLimitDefault
-	}
-	if limit < HistoricalImageTurnLimitMin {
-		return HistoricalImageTurnLimitMin
-	}
-	return limit
-}
-
 // NormalizeChannelHistoricalImageTurnLimit 归一化渠道级历史图片轮次限制。
-//   - limit <= 0 → 0（表示未设置渠道覆盖，继承全局）
-//   - 0 < limit < 3 → 最低值 3
-//   - limit >= 3 → 原值
+//   - limit <= 0 → 0（表示该渠道不裁剪历史图片）
+//   - 0 < limit < 2 → 最低值 2
+//   - 2 <= limit <= 10 → 原值
+//   - limit > 10 → 最高值 10
 func NormalizeChannelHistoricalImageTurnLimit(limit int) int {
 	if limit <= 0 {
 		return 0
@@ -820,33 +803,10 @@ func NormalizeChannelHistoricalImageTurnLimit(limit int) int {
 	if limit < HistoricalImageTurnLimitMin {
 		return HistoricalImageTurnLimitMin
 	}
-	return limit
-}
-
-// GetHistoricalImageTurnLimit 获取全局历史图片轮次限制（已归一，始终 >= 3）
-func (cm *ConfigManager) GetHistoricalImageTurnLimit() int {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return NormalizeHistoricalImageTurnLimit(cm.config.HistoricalImageTurnLimit)
-}
-
-// SetHistoricalImageTurnLimit 设置全局历史图片轮次限制。
-// 入参会被归一化（始终开启、最低 3、无效值用默认 5），存入 config.json 的即归一后的值。
-func (cm *ConfigManager) SetHistoricalImageTurnLimit(limit int) error {
-	cm.mu.Lock()
-
-	normalized := NormalizeHistoricalImageTurnLimit(limit)
-	cm.config.HistoricalImageTurnLimit = normalized
-
-	if err := cm.saveConfigLocked(cm.config); err != nil {
-		cm.mu.Unlock()
-		return err
+	if limit > HistoricalImageTurnLimitMax {
+		return HistoricalImageTurnLimitMax
 	}
-
-	log.Printf("[Config-HistoricalImageLimit] 历史图片轮次限制已设置为 %d 轮", normalized)
-
-	cm.fireConfigChangeCallbacks()
-	return nil
+	return limit
 }
 
 // SetOverrideTTLMinutes 设置驾驶舱 override 默认有效期（分钟）
