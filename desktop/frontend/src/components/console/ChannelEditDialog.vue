@@ -32,6 +32,7 @@ import { defaultStreamTimeouts } from '@/utils/stream-timeout-presets'
 import { claudeMessagesPresets } from '@/generated/claude-messages-presets'
 import { codexResponsesPresets } from '@/generated/codex-responses-presets'
 import { openaiMessagesPresets } from '@/generated/openai-messages-presets'
+import { openExternalLink } from '@/lib/external-link'
 import type { Channel, CompatDiagnoseResult, DisabledKeyInfo } from '@/services/admin-api'
 import ChannelEditorHeader from './channel-edit/ChannelEditorHeader.vue'
 import QuickCreatePanel from './channel-edit/QuickCreatePanel.vue'
@@ -128,11 +129,20 @@ async function startCopilotOAuth() {
     copilotDeviceCode.value = device.deviceCode
     copilotUserCode.value = device.userCode
     copilotVerificationUri.value = device.verificationUri
-    window.open(device.verificationUri, '_blank', 'noopener,noreferrer')
+    await openCopilotAuthorization()
     await pollCopilotToken(device.interval || 5)
   } catch (err) {
     copilotOAuthError.value = err instanceof Error ? err.message : String(err)
     copilotOAuthLoading.value = false; copilotPolling.value = false
+  }
+}
+
+async function openCopilotAuthorization() {
+  if (!copilotVerificationUri.value) return
+  try {
+    await openExternalLink(copilotVerificationUri.value)
+  } catch (err) {
+    copilotOAuthError.value = err instanceof Error ? err.message : String(err)
   }
 }
 
@@ -169,8 +179,8 @@ let scrollHandler: (() => void) | null = null
 // 导航 section 定义（使用 computed 保证语言切换后更新）
 const sections = computed(() => [
   { id: 'basic', label: t('channelEditor.nav.basic') },
-  { id: 'redirect', label: t('channelEditor.nav.redirect') },
   { id: 'auth', label: t('channelEditor.nav.auth') },
+  { id: 'redirect', label: t('channelEditor.nav.redirect') },
   { id: 'advanced', label: t('channelEditor.nav.advanced') },
   { id: 'custom', label: t('channelEditor.nav.custom') },
 ])
@@ -1771,6 +1781,54 @@ void toggleSupportedModelFilter
                       />
                     </section>
 
+                    <!-- Section: 认证管理 -->
+                    <section :ref="(el: any) => setSectionRef('auth', el)" data-section-id="auth" class="scroll-mt-4">
+                      <AuthPanel
+                        :existing-api-keys="existingApiKeys"
+                        :new-api-keys-text="newApiKeysText"
+                        :copied-key-index="copiedKeyIndex"
+                        :duplicate-key-index="duplicateKeyIndex"
+                        :disabled-api-keys="disabledApiKeys"
+                        :historical-api-keys="historicalApiKeys"
+                        :restoring-key="restoringKey"
+                        :local-restored-keys="localRestoredKeys"
+                        :key-models-status="keyModelsStatus"
+                        :errors="errors"
+                        @update:new-api-keys-text="newApiKeysText = $event; clearDuplicateKeyHighlight()"
+                        @add-new-api-keys="addNewApiKeys"
+                        @remove-existing-api-key="removeExistingApiKey"
+                        @move-api-key-to-top="moveApiKeyToTop"
+                        @move-api-key-to-bottom="moveApiKeyToBottom"
+                        @copy-api-key="copyApiKey"
+                        @handle-disabled-key-restore="handleDisabledKeyRestore"
+                      />
+
+                      <!-- GitHub Copilot OAuth 登录（仅 copilot 渠道显示） -->
+                      <div v-if="form.serviceType === 'copilot'" class="mt-4 rounded-xl border border-border/60 bg-card/40 p-5 space-y-3">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-primary">GitHub Copilot</h4>
+                        <div v-if="copilotUserCode" class="flex items-center gap-2 text-sm">
+                          <span class="text-muted-foreground">{{ t('copilotOAuth.userCode') }}</span>
+                          <code class="px-2 py-0.5 rounded bg-muted font-mono text-xs">{{ copilotUserCode }}</code>
+                          <button type="button" class="text-primary text-xs underline" @click="openCopilotAuthorization">{{ t('copilotOAuth.openAuthorize') }}</button>
+                        </div>
+                        <p v-if="copilotOAuthSuccess" class="text-xs text-emerald-600">{{ t('copilotOAuth.success') }}</p>
+                        <p v-if="copilotOAuthError" class="text-xs text-destructive">{{ copilotOAuthError }}</p>
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
+                            :disabled="copilotOAuthLoading || copilotPolling"
+                            @click="startCopilotOAuth"
+                          >
+                            <span v-if="copilotOAuthLoading || copilotPolling" class="animate-spin">⏳</span>
+                            {{ t('copilotOAuth.button') }}
+                          </button>
+                          <span v-if="copilotPolling" class="text-xs text-muted-foreground">{{ t('copilotOAuth.waiting') }}</span>
+                          <button v-if="copilotPolling || copilotOAuthLoading" type="button" class="text-xs text-muted-foreground underline" @click="clearCopilotPollTimer(); copilotPolling = false; copilotOAuthLoading = false">{{ t('copilotOAuth.cancel') }}</button>
+                        </div>
+                      </div>
+                    </section>
+
                     <!-- Section: 模型重定向 -->
                     <section :ref="(el: any) => setSectionRef('redirect', el)" data-section-id="redirect" class="scroll-mt-4">
                       <ModelMappingPanel
@@ -1831,54 +1889,6 @@ void toggleSupportedModelFilter
                         @update:rows="updateModelCapabilityRows"
                         @sync-upstream-models="syncUpstreamModels"
                       />
-                    </section>
-
-                    <!-- Section: 认证管理 -->
-                    <section :ref="(el: any) => setSectionRef('auth', el)" data-section-id="auth" class="scroll-mt-4">
-                      <AuthPanel
-                        :existing-api-keys="existingApiKeys"
-                        :new-api-keys-text="newApiKeysText"
-                        :copied-key-index="copiedKeyIndex"
-                        :duplicate-key-index="duplicateKeyIndex"
-                        :disabled-api-keys="disabledApiKeys"
-                        :historical-api-keys="historicalApiKeys"
-                        :restoring-key="restoringKey"
-                        :local-restored-keys="localRestoredKeys"
-                        :key-models-status="keyModelsStatus"
-                        :errors="errors"
-                        @update:new-api-keys-text="newApiKeysText = $event; clearDuplicateKeyHighlight()"
-                        @add-new-api-keys="addNewApiKeys"
-                        @remove-existing-api-key="removeExistingApiKey"
-                        @move-api-key-to-top="moveApiKeyToTop"
-                        @move-api-key-to-bottom="moveApiKeyToBottom"
-                        @copy-api-key="copyApiKey"
-                        @handle-disabled-key-restore="handleDisabledKeyRestore"
-                      />
-
-                      <!-- GitHub Copilot OAuth 登录（仅 copilot 渠道显示） -->
-                      <div v-if="form.serviceType === 'copilot'" class="mt-4 rounded-xl border border-border/60 bg-card/40 p-5 space-y-3">
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-primary">GitHub Copilot</h4>
-                        <div v-if="copilotUserCode" class="flex items-center gap-2 text-sm">
-                          <span class="text-muted-foreground">{{ t('copilotOAuth.userCode') }}</span>
-                          <code class="px-2 py-0.5 rounded bg-muted font-mono text-xs">{{ copilotUserCode }}</code>
-                          <a :href="copilotVerificationUri" target="_blank" rel="noopener noreferrer" class="text-primary text-xs underline">{{ t('copilotOAuth.openAuthorize') }}</a>
-                        </div>
-                        <p v-if="copilotOAuthSuccess" class="text-xs text-emerald-600">{{ t('copilotOAuth.success') }}</p>
-                        <p v-if="copilotOAuthError" class="text-xs text-destructive">{{ copilotOAuthError }}</p>
-                        <div class="flex items-center gap-2">
-                          <button
-                            type="button"
-                            class="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
-                            :disabled="copilotOAuthLoading || copilotPolling"
-                            @click="startCopilotOAuth"
-                          >
-                            <span v-if="copilotOAuthLoading || copilotPolling" class="animate-spin">⏳</span>
-                            {{ t('copilotOAuth.button') }}
-                          </button>
-                          <span v-if="copilotPolling" class="text-xs text-muted-foreground">{{ t('copilotOAuth.waiting') }}</span>
-                          <button v-if="copilotPolling || copilotOAuthLoading" type="button" class="text-xs text-muted-foreground underline" @click="clearCopilotPollTimer(); copilotPolling = false; copilotOAuthLoading = false">{{ t('copilotOAuth.cancel') }}</button>
-                        </div>
-                      </div>
                     </section>
 
                     <!-- Section: 高级选项 -->

@@ -9,7 +9,7 @@ import { useAdminApi } from '@/composables/useAdminApi'
 import { useDesktopActivity } from '@/composables/useDesktopActivity'
 import { useLanguage } from '@/composables/useLanguage'
 import type { CopilotDeviceCodeResponse, CopilotTokenResponse } from '@/services/admin-api'
-import { openProviderPromotion, openProviderConsole, providerConsoleLinks, providerPromotionLinks } from '@/lib/external-link'
+import { openExternalLink, openProviderPromotion, openProviderConsole, providerConsoleLinks, providerPromotionLinks } from '@/lib/external-link'
 import compshareIcon from '@/assets/compshare.png'
 import runapiIcon from '@/assets/runapi.svg'
 import unity2Icon from '@/assets/unity2.jpg'
@@ -281,11 +281,20 @@ async function startCopilotOAuth() {
     copilotDeviceCode.value = device.deviceCode
     copilotUserCode.value = device.userCode
     copilotVerificationUri.value = device.verificationUri
-    window.open(device.verificationUri, '_blank', 'noopener,noreferrer')
+    await openCopilotAuthorization()
     await pollCopilotToken(device.interval || 5)
   } catch (err) {
     copilotOAuthError.value = err instanceof Error ? err.message : String(err)
     copilotOAuthLoading.value = false; copilotPolling.value = false
+  }
+}
+
+async function openCopilotAuthorization() {
+  if (!copilotVerificationUri.value) return
+  try {
+    await openExternalLink(copilotVerificationUri.value)
+  } catch (err) {
+    copilotOAuthError.value = err instanceof Error ? err.message : String(err)
   }
 }
 
@@ -412,7 +421,7 @@ const submit = async () => {
         <div v-if="copilotUserCode" class="flex items-center gap-2 text-sm">
           <span class="text-muted-foreground">{{ t('copilotOAuth.userCode') }}</span>
           <code class="px-2 py-0.5 rounded bg-muted font-mono text-xs">{{ copilotUserCode }}</code>
-          <a :href="copilotVerificationUri" target="_blank" rel="noopener noreferrer" class="text-primary text-xs underline">{{ t('copilotOAuth.openAuthorize') }}</a>
+          <button type="button" class="text-primary text-xs underline" @click="openCopilotAuthorization">{{ t('copilotOAuth.openAuthorize') }}</button>
         </div>
         <p v-if="copilotOAuthSuccess" class="text-xs text-emerald-600">{{ t('copilotOAuth.success') }}</p>
         <p v-if="copilotOAuthError" class="text-xs text-destructive">{{ copilotOAuthError }}</p>
