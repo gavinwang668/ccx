@@ -91,6 +91,10 @@ func Handler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, channel
 		// 记录原始请求信息（仅在入口处记录一次）
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Messages")
 
+		if handleClaudeDesktopConnectionTest(c, claudeReq) {
+			return
+		}
+
 		// 检查是否为多渠道模式
 		isMultiChannel := channelScheduler.IsMultiChannelMode(scheduler.ChannelKindMessages)
 
@@ -632,6 +636,126 @@ func extractClaudeResponseText(contents []types.ClaudeContent) string {
 func responseTextString(value interface{}) string {
 	text, _ := value.(string)
 	return text
+}
+
+const claudeDesktopConnectionTestText = "I'm ready to help. What would you like to work on?"
+
+var claudeDesktopConnectionTestDeltas = []string{
+	"I",
+	"'m",
+	" ready to help",
+	".",
+	" What",
+	" would you like to work",
+	" on?",
+}
+
+func handleClaudeDesktopConnectionTest(c *gin.Context, req types.ClaudeRequest) bool {
+	if !isClaudeDesktopConnectionTestRequest(req) {
+		return false
+	}
+
+	common.RequestLogf(c, "[Messages-ConnectionTest] 命中 Claude Desktop 连接测试内置响应: model=%s, stream=%t", req.Model, req.Stream)
+	if req.Stream {
+		writeClaudeDesktopConnectionTestStream(c, req.Model)
+		return true
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":            "msg_ccx_connection_test",
+		"type":          "message",
+		"role":          "assistant",
+		"model":         req.Model,
+		"content":       []gin.H{{"type": "text", "text": claudeDesktopConnectionTestText}},
+		"stop_reason":   "end_turn",
+		"stop_sequence": nil,
+		"usage": gin.H{
+			"input_tokens":                15,
+			"output_tokens":               14,
+			"cache_creation_input_tokens": 0,
+			"cache_read_input_tokens":     0,
+		},
+	})
+	return true
+}
+
+func isClaudeDesktopConnectionTestRequest(req types.ClaudeRequest) bool {
+	if strings.TrimSpace(req.Model) != "haiku" || req.MaxTokens != 1 || len(req.Messages) != 1 || len(req.Tools) > 0 || req.ToolChoice != nil {
+		return false
+	}
+
+	msg := req.Messages[0]
+	if msg.Role != "user" {
+		return false
+	}
+	texts := extractRawUserTextBlocks(msg)
+	return len(texts) == 1 && strings.TrimSpace(texts[0]) == "."
+}
+
+func writeClaudeDesktopConnectionTestStream(c *gin.Context, model string) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	writeClaudeSSEEvent(c, "message_start", gin.H{
+		"type": "message_start",
+		"message": gin.H{
+			"id":      "msg_ccx_connection_test",
+			"type":    "message",
+			"role":    "assistant",
+			"model":   model,
+			"content": []interface{}{},
+			"usage": gin.H{
+				"input_tokens":                15,
+				"output_tokens":               0,
+				"cache_creation_input_tokens": 0,
+				"cache_read_input_tokens":     0,
+			},
+		},
+	})
+	writeClaudeSSEEvent(c, "content_block_start", gin.H{
+		"type":          "content_block_start",
+		"index":         0,
+		"content_block": gin.H{"type": "text", "text": ""},
+	})
+	for _, delta := range claudeDesktopConnectionTestDeltas {
+		writeClaudeSSEEvent(c, "content_block_delta", gin.H{
+			"type":  "content_block_delta",
+			"index": 0,
+			"delta": gin.H{"type": "text_delta", "text": delta},
+		})
+	}
+	writeClaudeSSEEvent(c, "content_block_stop", gin.H{
+		"type":  "content_block_stop",
+		"index": 0,
+	})
+	writeClaudeSSEEvent(c, "message_delta", gin.H{
+		"type": "message_delta",
+		"delta": gin.H{
+			"stop_reason":   "end_turn",
+			"stop_sequence": nil,
+			"stop_details":  nil,
+		},
+		"usage": gin.H{
+			"input_tokens":                15,
+			"output_tokens":               14,
+			"cache_creation_input_tokens": 0,
+			"cache_read_input_tokens":     0,
+		},
+	})
+	writeClaudeSSEEvent(c, "message_stop", gin.H{
+		"type": "message_stop",
+	})
+}
+
+func writeClaudeSSEEvent(c *gin.Context, event string, data gin.H) {
+	payload, _ := json.Marshal(data)
+	_, _ = fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, payload)
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func countUserMessages(messages []types.ClaudeMessage) int {
