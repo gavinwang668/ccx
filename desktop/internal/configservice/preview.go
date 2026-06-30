@@ -8,7 +8,7 @@ import (
 
 func (s *Service) previewApplyClaude(req ApplyAgentConfigRequest, port int, accessKey string) (ConfigDiffResult, error) {
 	provider := normalizeClaudeProvider(req.Provider)
-	baseURL, authToken, apiKey, err := resolveClaudeProvider(req, port, accessKey)
+	baseURL, authToken, apiKey, err := resolveClaudeProvider(req, port, accessKey, s.localHTTPS())
 	if err != nil {
 		return ConfigDiffResult{}, err
 	}

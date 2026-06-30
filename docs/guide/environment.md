@@ -39,6 +39,10 @@ ccx/
 ```bash
 # 服务器配置
 PORT=3688                              # 服务器端口（程序内部默认 3000，建议 .env 中显式设置为 3688）
+ENABLE_HTTPS=false                     # 是否启用本地 HTTPS 监听（默认 false）
+TLS_AUTO_CERT=true                     # 未配置证书文件时自动生成 localhost 临时自签名证书（默认 true）
+TLS_CERT_FILE=/path/to/localhost.pem   # 可选 TLS 证书文件；设置时必须同时设置 TLS_KEY_FILE
+TLS_KEY_FILE=/path/to/localhost-key.pem # 可选 TLS 私钥文件；设置时必须同时设置 TLS_CERT_FILE
 
 # 运行环境
 ENV=production                         # 运行环境: development | production
@@ -77,6 +81,14 @@ CORS_ORIGIN=*                          # CORS 允许的源
 # METRICS_WINDOW_SIZE=10               # 滑动窗口大小（最小 3，默认 10）
 # METRICS_FAILURE_THRESHOLD=0.5        # 失败率阈值（0-1，默认 0.5 即 50%）
 ```
+
+#### 本地 HTTPS
+
+`ENABLE_HTTPS=true` 会让 CCX 直接以 HTTPS 协议监听当前 `PORT`，用于 Claude Desktop 等只接受 HTTPS Gateway Base URL 的客户端。开启后本地访问地址从 `http://localhost:3688` 变为 `https://localhost:3688`。
+
+- 默认 `TLS_AUTO_CERT=true`：未配置证书文件时，CCX 会在进程内生成仅包含 `localhost`、`127.0.0.1`、`::1` 的临时自签名证书，适合本地转发和桌面端自检。
+- 如客户端严格要求系统信任证书，请使用 `mkcert`、企业证书或手动签发证书，并同时设置 `TLS_CERT_FILE` 与 `TLS_KEY_FILE`。
+- `TLS_CERT_FILE` 和 `TLS_KEY_FILE` 必须成对设置；只设置其中一个会导致启动失败。
 
 `EXTRA_PROXY_ACCESS_KEYS` 用于给多个客户端分配额外代理访问密钥，不提供用户管理、用量统计、模型权限或限速能力。只要配置了该变量，管理接口就不再回退到 `PROXY_ACCESS_KEY`：必须显式设置独立的 `ADMIN_ACCESS_KEY`，并且它不能等于 `PROXY_ACCESS_KEY` 或任何额外代理密钥。修改这些访问控制环境变量后需要重启服务。
 

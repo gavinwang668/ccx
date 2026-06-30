@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -441,7 +442,12 @@ func (s *DesktopService) createChannel(ctx context.Context, target string, paylo
 	}
 	baseURL := s.manager.WebURL()
 	path := "/api/" + strings.TrimSpace(target) + "/channels"
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // 仅连接本机 CCX，兼容本地自签名 HTTPS。
+		},
+	}
 
 	// 查找同名渠道，存在则覆盖更新
 	if existingID, err := s.findChannelIndexByName(ctx, client, baseURL, path, payload.Name, adminKey); err == nil && existingID >= 0 {

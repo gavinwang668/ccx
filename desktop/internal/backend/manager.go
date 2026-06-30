@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -88,6 +89,9 @@ func NewManager(options Options) *Manager {
 		port:    port,
 		client: &http.Client{
 			Timeout: 900 * time.Millisecond,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // 仅用于本机健康检查，支持 CCX 本地自签名 HTTPS。
+			},
 		},
 	}
 	// 提前探测二进制路径，使 Status() 在未启动时也能返回路径
@@ -498,7 +502,7 @@ func (m *Manager) fetchHealth(ctx context.Context, port int) (map[string]any, er
 	if port == 0 {
 		return nil, fmt.Errorf("端口未设置")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/health", port), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s://127.0.0.1:%d/health", m.scheme(), port), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -531,6 +535,11 @@ func (m *Manager) buildEnv(port int) []string {
 		env = setEnv(env, "ENV", userEnv)
 	} else {
 		env = setEnv(env, "ENV", "production")
+	}
+	for _, key := range []string{"ENABLE_HTTPS", "TLS_AUTO_CERT", "TLS_CERT_FILE", "TLS_KEY_FILE"} {
+		if value := readEnvValueFromFile(envPath, key); value != "" {
+			env = setEnv(env, key, value)
+		}
 	}
 
 	if key, err := m.EnsureProxyAccessKey(); err == nil && key != "" {
@@ -616,7 +625,29 @@ func (m *Manager) urlLocked() string {
 	if port == 0 {
 		port = defaultPort
 	}
-	return fmt.Sprintf("http://127.0.0.1:%d", port)
+	return fmt.Sprintf("%s://127.0.0.1:%d", m.schemeLocked(), port)
+}
+
+func (m *Manager) scheme() string {
+	if isEnvHTTPS(m.dataDir) {
+		return "https"
+	}
+	return "http"
+}
+
+func (m *Manager) schemeLocked() string {
+	if isEnvHTTPS(m.dataDir) {
+		return "https"
+	}
+	return "http"
+}
+
+func isEnvHTTPS(dataDir string) bool {
+	value := readEnvValueFromFile(filepath.Join(dataDir, ".env"), "ENABLE_HTTPS")
+	if value != "" {
+		return strings.EqualFold(value, "true")
+	}
+	return strings.EqualFold(os.Getenv("ENABLE_HTTPS"), "true")
 }
 
 func ensureProxyAccessKey(dataDir string, rootDir string) (string, error) {

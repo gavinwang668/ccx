@@ -11,6 +11,10 @@ import (
 type EnvConfig struct {
 	Port                 int
 	Env                  string
+	EnableHTTPS          bool
+	TLSCertFile          string
+	TLSKeyFile           string
+	TLSAutoCert          bool
 	EnableWebUI          bool
 	UILanguage           string
 	ProxyAccessKey       string
@@ -60,6 +64,10 @@ func NewEnvConfig() *EnvConfig {
 	return &EnvConfig{
 		Port:                 getEnvAsInt("PORT", 3000),
 		Env:                  env,
+		EnableHTTPS:          getEnv("ENABLE_HTTPS", "false") == "true",
+		TLSCertFile:          getEnv("TLS_CERT_FILE", ""),
+		TLSKeyFile:           getEnv("TLS_KEY_FILE", ""),
+		TLSAutoCert:          getEnv("TLS_AUTO_CERT", "true") != "false",
 		EnableWebUI:          getEnv("ENABLE_WEB_UI", "true") != "false",
 		UILanguage:           normalizeUILanguage(getEnv("APP_UI_LANGUAGE", "zh-CN")),
 		ProxyAccessKey:       getEnv("PROXY_ACCESS_KEY", "your-proxy-access-key"),

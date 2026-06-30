@@ -108,6 +108,28 @@ func TestFetchHealth(t *testing.T) {
 		}
 	})
 
+	t.Run("healthy https self-signed", func(t *testing.T) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"healthy","version":"2.7.12"}`))
+		}))
+		defer srv.Close()
+
+		dataDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("ENABLE_HTTPS=true\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		port := srv.Listener.Addr().(*net.TCPAddr).Port
+		m := NewManager(Options{RootDir: t.TempDir(), DataDir: dataDir})
+		data, err := m.fetchHealth(t.Context(), port)
+		if err != nil {
+			t.Fatalf("expected success, got: %v", err)
+		}
+		if data["status"] != "healthy" {
+			t.Errorf("status = %v", data["status"])
+		}
+	})
+
 	t.Run("unhealthy status code", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -444,6 +466,43 @@ func TestSetEnv(t *testing.T) {
 	})
 }
 
+func TestBuildEnvIncludesHTTPSSettings(t *testing.T) {
+	dataDir := t.TempDir()
+	content := strings.Join([]string{
+		"PROXY_ACCESS_KEY=desktop-key",
+		"ENABLE_HTTPS=true",
+		"TLS_AUTO_CERT=false",
+		"TLS_CERT_FILE=/tmp/localhost.pem",
+		"TLS_KEY_FILE=/tmp/localhost-key.pem",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(Options{RootDir: t.TempDir(), DataDir: dataDir})
+
+	got := m.buildEnv(8443)
+	for _, want := range []string{
+		"PORT=8443",
+		"ENABLE_HTTPS=true",
+		"TLS_AUTO_CERT=false",
+		"TLS_CERT_FILE=/tmp/localhost.pem",
+		"TLS_KEY_FILE=/tmp/localhost-key.pem",
+	} {
+		if !containsEnv(got, want) {
+			t.Fatalf("buildEnv() missing %s in %#v", want, got)
+		}
+	}
+}
+
+func containsEnv(env []string, want string) bool {
+	for _, item := range env {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestUniquePaths(t *testing.T) {
 	got := uniquePaths([]string{"/a", "/b", "/a", "/c", "/b"})
 	if len(got) != 3 {
@@ -463,6 +522,17 @@ func TestWebURL(t *testing.T) {
 	m := NewManager(Options{RootDir: t.TempDir(), DataDir: t.TempDir(), DefaultPort: 7777})
 	if got := m.WebURL(); got != "http://127.0.0.1:7777" {
 		t.Errorf("WebURL = %q, want %q", got, "http://127.0.0.1:7777")
+	}
+}
+
+func TestWebURLHTTPS(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, ".env"), []byte("ENABLE_HTTPS=true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(Options{RootDir: t.TempDir(), DataDir: dataDir, DefaultPort: 7777})
+	if got := m.WebURL(); got != "https://127.0.0.1:7777" {
+		t.Errorf("WebURL = %q, want %q", got, "https://127.0.0.1:7777")
 	}
 }
 

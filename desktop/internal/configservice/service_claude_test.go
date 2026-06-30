@@ -201,6 +201,44 @@ func TestApplyAndRestoreClaudeXFyunProvider(t *testing.T) {
 	}
 }
 
+func TestApplyClaudeSenseNovaProvider(t *testing.T) {
+	svc := newTestService(t)
+	settingsPath := filepath.Join(svc.homeDir, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(settingsPath), 0o755)
+
+	err := svc.Apply(ApplyAgentConfigRequest{Platform: PlatformClaude, Provider: ProviderSenseNova, APIKey: "sensenova-key"}, 3688, "proxy-key")
+	if err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	var after map[string]any
+	readJSON(settingsPath, &after)
+	env := after["env"].(map[string]any)
+	if env["ANTHROPIC_BASE_URL"] != sensenovaClaudeBaseURL {
+		t.Errorf("base_url = %v, want %s", env["ANTHROPIC_BASE_URL"], sensenovaClaudeBaseURL)
+	}
+	if env["ANTHROPIC_AUTH_TOKEN"] != "sensenova-key" {
+		t.Errorf("auth_token = %v", env["ANTHROPIC_AUTH_TOKEN"])
+	}
+	if env["ANTHROPIC_MODEL"] != "sensenova-6.7-flash-lite" {
+		t.Errorf("model = %v", env["ANTHROPIC_MODEL"])
+	}
+	if env["ANTHROPIC_SMALL_FAST_MODEL"] != "sensenova-6.7-flash-lite" {
+		t.Errorf("small_fast_model = %v", env["ANTHROPIC_SMALL_FAST_MODEL"])
+	}
+
+	status, err := svc.GetStatus(PlatformClaude, 3688)
+	if err != nil {
+		t.Fatalf("GetStatus failed: %v", err)
+	}
+	if status.Provider != ProviderSenseNova {
+		t.Errorf("provider = %q, want %q", status.Provider, ProviderSenseNova)
+	}
+	if !status.Configured {
+		t.Error("SenseNova Claude provider should be configured")
+	}
+}
+
 func TestApplyAndRestoreClaude(t *testing.T) {
 	svc := newTestService(t)
 	settingsPath := filepath.Join(svc.homeDir, ".claude", "settings.json")
@@ -245,6 +283,50 @@ func TestApplyAndRestoreClaude(t *testing.T) {
 	env = restored["env"].(map[string]any)
 	if env["ANTHROPIC_BASE_URL"] != "https://original.example.com" {
 		t.Errorf("restored base_url = %v", env["ANTHROPIC_BASE_URL"])
+	}
+}
+
+func TestApplyClaudeUsesHTTPSWhenEnabled(t *testing.T) {
+	svc := newTestService(t)
+	if err := os.WriteFile(filepath.Join(filepath.Dir(svc.stateDir), ".env"), []byte("ENABLE_HTTPS=true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(svc.homeDir, ".claude", "settings.json")
+
+	err := svc.Apply(ApplyAgentConfigRequest{Platform: PlatformClaude}, 8443, "test-key")
+	if err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	var after map[string]any
+	readJSON(settingsPath, &after)
+	env := after["env"].(map[string]any)
+	if env["ANTHROPIC_BASE_URL"] != "https://127.0.0.1:8443" {
+		t.Errorf("base_url = %v", env["ANTHROPIC_BASE_URL"])
+	}
+}
+
+func TestGetStatusClaudeMatchesHTTPSLocalBaseURL(t *testing.T) {
+	svc := newTestService(t)
+	if err := os.WriteFile(filepath.Join(filepath.Dir(svc.stateDir), ".env"), []byte("ENABLE_HTTPS=true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(svc.homeDir, ".claude", "settings.json")
+	writeJSON(settingsPath, map[string]any{
+		"env": map[string]any{
+			"ANTHROPIC_BASE_URL": "https://127.0.0.1:8443",
+		},
+	})
+
+	status, err := svc.GetStatus(PlatformClaude, 8443)
+	if err != nil {
+		t.Fatalf("GetStatus failed: %v", err)
+	}
+	if !status.MatchesCurrentPort {
+		t.Error("HTTPS local base URL should match current port")
+	}
+	if status.TargetBaseURL != "https://127.0.0.1:8443" {
+		t.Errorf("TargetBaseURL = %q", status.TargetBaseURL)
 	}
 }
 

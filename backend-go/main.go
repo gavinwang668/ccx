@@ -848,6 +848,7 @@ func main() {
 
 	// 启动服务器
 	addr := fmt.Sprintf(":%d", envCfg.Port)
+	endpoint := endpointForEnv(envCfg)
 	fmt.Printf("\n[Server-Startup] CCX API代理服务器已启动\n")
 	fmt.Printf("[Server-Info] 版本: %s\n", Version)
 	if BuildTime != "unknown" {
@@ -856,8 +857,9 @@ func main() {
 	if GitCommit != "unknown" {
 		fmt.Printf("[Server-Info] Git提交: %s\n", GitCommit)
 	}
-	fmt.Printf("[Server-Info] 管理界面: http://localhost:%d\n", envCfg.Port)
-	fmt.Printf("[Server-Info] API 地址: http://localhost:%d/v1\n", envCfg.Port)
+	fmt.Printf("[Server-Info] 协议: %s\n", strings.ToUpper(endpoint.Scheme))
+	fmt.Printf("[Server-Info] 管理界面: %s\n", endpoint.URL(""))
+	fmt.Printf("[Server-Info] API 地址: %s\n", endpoint.URL("/v1"))
 	fmt.Printf("[Server-Info] Claude Messages: POST /v1/messages\n")
 	fmt.Printf("[Server-Info] Codex Responses: POST /v1/responses\n")
 	fmt.Printf("[Server-Info] Gemini API: POST /v1beta/models/{model}:generateContent\n")
@@ -901,6 +903,16 @@ func main() {
 		ReadTimeout:       time.Duration(envCfg.ServerReadTimeout) * time.Millisecond, // 仅控制服务端读取入站请求，避免与上游请求超时耦合
 		IdleTimeout:       120 * time.Second,
 	}
+	if err := configureServerTLS(srv, envCfg); err != nil {
+		log.Fatalf("[Server-Fatal] HTTPS 配置无效: %v", err)
+	}
+	if envCfg.EnableHTTPS {
+		if envCfg.TLSCertFile == "" {
+			fmt.Printf("[Server-Info] HTTPS 证书: 自动生成 localhost 自签名证书（仅建议本地使用）\n")
+		} else {
+			fmt.Printf("[Server-Info] HTTPS 证书: %s\n", envCfg.TLSCertFile)
+		}
+	}
 
 	// 用于传递关闭结果
 	shutdownDone := make(chan struct{})
@@ -942,7 +954,7 @@ func main() {
 	}()
 
 	// 启动服务器（阻塞直到关闭）
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := startHTTPServer(srv, envCfg); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
 

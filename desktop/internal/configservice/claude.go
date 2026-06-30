@@ -3,12 +3,13 @@ package configservice
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 func (s *Service) getClaudeStatus(port int) (AgentConfigStatus, error) {
 	path := s.claudeSettingsPath()
-	target := claudeBaseURL(port)
+	target := s.claudeBaseURL(port)
 	status := AgentConfigStatus{
 		Platform:       PlatformClaude,
 		Provider:       ProviderCustom,
@@ -26,14 +27,14 @@ func (s *Service) getClaudeStatus(port int) (AgentConfigStatus, error) {
 	status.CurrentBaseURL = baseURL
 	status.Provider = detectClaudeProvider(baseURL)
 	status.MatchesCurrentPort = baseURL == target
-	status.Configured = status.MatchesCurrentPort || status.Provider == ProviderDeepSeek || status.Provider == ProviderMiMo || status.Provider == ProviderCompshare || status.Provider == ProviderRunAPI || status.Provider == ProviderXFyun
+	status.Configured = status.MatchesCurrentPort || status.Provider == ProviderDeepSeek || status.Provider == ProviderMiMo || status.Provider == ProviderCompshare || status.Provider == ProviderRunAPI || status.Provider == ProviderXFyun || status.Provider == ProviderSenseNova
 	status.NeedsUpdate = baseURL != "" && isLocalBaseURL(baseURL) && !status.MatchesCurrentPort
 	return status, nil
 }
 
 func (s *Service) applyClaude(req ApplyAgentConfigRequest, port int, accessKey string) error {
 	provider := normalizeClaudeProvider(req.Provider)
-	baseURL, authToken, apiKey, err := resolveClaudeProvider(req, port, accessKey)
+	baseURL, authToken, apiKey, err := resolveClaudeProvider(req, port, accessKey, s.localHTTPS())
 	if err != nil {
 		return err
 	}
@@ -143,6 +144,11 @@ func applyClaudeProviderModelEnv(env map[string]any, provider string, originalMo
 		env["ANTHROPIC_SMALL_FAST_MODEL"] = "astron-code-latest"
 		return
 	}
+	if provider == ProviderSenseNova {
+		env["ANTHROPIC_MODEL"] = "sensenova-6.7-flash-lite"
+		env["ANTHROPIC_SMALL_FAST_MODEL"] = "sensenova-6.7-flash-lite"
+		return
+	}
 	restoreStringField(env, "ANTHROPIC_MODEL", originalModel)
 	restoreStringField(env, "ANTHROPIC_SMALL_FAST_MODEL", originalSmallFast)
 }
@@ -156,7 +162,28 @@ func (s *Service) readClaudeState() (ClaudeProxyState, bool) {
 }
 
 func claudeBaseURL(port int) string {
-	return fmt.Sprintf("http://127.0.0.1:%d", port)
+	return localBaseURL(port, false)
+}
+
+func (s *Service) claudeBaseURL(port int) string {
+	return localBaseURL(port, s.localHTTPS())
+}
+
+func localBaseURL(port int, https bool) string {
+	scheme := "http"
+	if https {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://127.0.0.1:%d", scheme, port)
+}
+
+func (s *Service) localHTTPS() bool {
+	dataDir := filepath.Dir(s.stateDir)
+	value := readEnvValueFromFile(filepath.Join(dataDir, ".env"), "ENABLE_HTTPS")
+	if value != "" {
+		return strings.EqualFold(value, "true")
+	}
+	return strings.EqualFold(os.Getenv("ENABLE_HTTPS"), "true")
 }
 
 func normalizeClaudeProvider(provider string) string {
@@ -177,6 +204,8 @@ func normalizeClaudeProvider(provider string) string {
 		return ProviderKimi
 	case ProviderGLM:
 		return ProviderGLM
+	case ProviderSenseNova:
+		return ProviderSenseNova
 	case ProviderMiniMax:
 		return ProviderMiniMax
 	case ProviderDashScope:
@@ -198,7 +227,7 @@ func normalizeClaudeProvider(provider string) string {
 	}
 }
 
-func resolveClaudeProvider(req ApplyAgentConfigRequest, port int, accessKey string) (string, string, string, error) {
+func resolveClaudeProvider(req ApplyAgentConfigRequest, port int, accessKey string, localHTTPS bool) (string, string, string, error) {
 	provider := normalizeClaudeProvider(req.Provider)
 	switch provider {
 	case ProviderCCX:
@@ -208,7 +237,7 @@ func resolveClaudeProvider(req ApplyAgentConfigRequest, port int, accessKey stri
 		if accessKey == "" {
 			return "", "", "", fmt.Errorf("PROXY_ACCESS_KEY 为空")
 		}
-		return claudeBaseURL(port), accessKey, "", nil
+		return localBaseURL(port, localHTTPS), accessKey, "", nil
 	case ProviderDeepSeek:
 		apiKey := strings.TrimSpace(req.APIKey)
 		if apiKey == "" {
@@ -267,6 +296,16 @@ func resolveClaudeProvider(req ApplyAgentConfigRequest, port int, accessKey stri
 		baseURL := strings.TrimSpace(req.BaseURL)
 		if baseURL == "" {
 			baseURL = glmClaudeBaseURL
+		}
+		return baseURL, apiKey, "", nil
+	case ProviderSenseNova:
+		apiKey := strings.TrimSpace(req.APIKey)
+		if apiKey == "" {
+			return "", "", "", fmt.Errorf("SenseNova API Key 不能为空")
+		}
+		baseURL := strings.TrimSpace(req.BaseURL)
+		if baseURL == "" {
+			baseURL = sensenovaClaudeBaseURL
 		}
 		return baseURL, apiKey, "", nil
 	case ProviderMiniMax:
@@ -361,6 +400,8 @@ func detectClaudeProvider(baseURL string) string {
 		return ProviderKimi
 	case strings.Contains(value, "bigmodel.cn"):
 		return ProviderGLM
+	case strings.Contains(value, "sensenova.cn"):
+		return ProviderSenseNova
 	case strings.Contains(value, "minimaxi.com") || strings.Contains(value, "minimax.chat"):
 		return ProviderMiniMax
 	case strings.Contains(value, "dashscope.aliyuncs.com"):
