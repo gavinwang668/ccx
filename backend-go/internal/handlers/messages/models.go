@@ -35,17 +35,28 @@ var errNoChannelWithDisabledKeys = errors.New("no channel with disabled keys")
 
 // ModelsResponse OpenAI 兼容的 models 响应格式
 type ModelsResponse struct {
-	Object string       `json:"object"`
-	Data   []ModelEntry `json:"data"`
+	Object  string       `json:"object"`
+	Data    []ModelEntry `json:"data"`
+	HasMore bool         `json:"has_more"`
+	FirstID string       `json:"first_id,omitempty"`
+	LastID  string       `json:"last_id,omitempty"`
 }
 
 // ModelEntry 单个模型条目
 type ModelEntry struct {
-	ID              string   `json:"id"`
-	Object          string   `json:"object"`
-	Created         int64    `json:"created"`
-	OwnedBy         string   `json:"owned_by"`
-	InputModalities []string `json:"input_modalities,omitempty"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name,omitempty"`
+	Object              string   `json:"object"`
+	Type                string   `json:"type,omitempty"`
+	Created             int64    `json:"created"`
+	CreatedAt           string   `json:"created_at,omitempty"`
+	OwnedBy             string   `json:"owned_by"`
+	DisplayName         string   `json:"display_name,omitempty"`
+	LabelOverride       string   `json:"labelOverride,omitempty"`
+	Supports1M          bool     `json:"supports1m,omitempty"`
+	AnthropicFamilyTier string   `json:"anthropicFamilyTier,omitempty"`
+	IsFamilyDefault     bool     `json:"isFamilyDefault,omitempty"`
+	InputModalities     []string `json:"input_modalities,omitempty"`
 }
 
 // ModelsHandler 处理 /v1/models 请求，从 Messages、Responses、Chat、Gemini 和 Images 渠道获取并合并模型列表
@@ -83,10 +94,7 @@ func ModelsHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, c
 			return
 		}
 
-		response := ModelsResponse{
-			Object: "list",
-			Data:   mergedModels,
-		}
+		response := buildModelsResponse(mergedModels)
 
 		log.Printf("[Models] 合并完成: messages=%d, responses=%d, chat=%d, gemini=%d, images=%d, merged=%d",
 			len(messagesModels), len(responsesModels), len(chatModels), len(geminiModels), len(imagesModels), len(mergedModels))
@@ -284,7 +292,7 @@ func fetchModelsFromCandidate(ctx context.Context, cfgManager *config.ConfigMana
 	if !ok {
 		return nil
 	}
-	return parseModelsResponseForKind(body, upstream, kind)
+	return parseModelsResponseForKind(body, upstream, cfgManager.GetConfig().UpstreamModelCapabilities, kind)
 }
 
 func fetchModelsFromDisabledKeyFallback(req modelsCollectionRequest, kind scheduler.ChannelKind, failedChannels map[int]bool) []ModelEntry {
@@ -296,7 +304,7 @@ func fetchModelsFromDisabledKeyFallback(req modelsCollectionRequest, kind schedu
 		log.Printf("[%s-Models] 活跃渠道不可用，回退到挂起渠道查询模型: channel=%s, reason=%s", channelKindLabel(kind), selection.Upstream.Name, selection.Reason)
 		body, upstream, ok := requestModelsFromSelection(req.ctx, req.cfgManager, selection, "GET", "", kind)
 		if ok {
-			return parseModelsResponseForKind(body, upstream, kind)
+			return parseModelsResponseForKind(body, upstream, req.cfgManager.GetConfig().UpstreamModelCapabilities, kind)
 		}
 		failedChannels[selection.ChannelIndex] = true
 	}
@@ -309,13 +317,13 @@ func fetchModelsFromChannels(c *gin.Context, cfgManager *config.ConfigManager, c
 	if !ok {
 		return nil
 	}
-	return parseModelsResponseForKind(body, upstream, kind)
+	return parseModelsResponseForKind(body, upstream, cfgManager.GetConfig().UpstreamModelCapabilities, kind)
 }
 
-func parseModelsResponseForKind(body []byte, upstream *config.UpstreamConfig, kind scheduler.ChannelKind) []ModelEntry {
+func parseModelsResponseForKind(body []byte, upstream *config.UpstreamConfig, globalCapabilities map[string]config.UpstreamModelCapability, kind scheduler.ChannelKind) []ModelEntry {
 	// Gemini 渠道或 serviceType=gemini 的渠道返回 {"models": [...]} 格式
 	if kind == scheduler.ChannelKindGemini {
-		return enrichModelModalitiesForUpstream(parseGeminiModelsResponse(body), upstream)
+		return enrichModelsForUpstream(parseGeminiModelsResponse(body), upstream, globalCapabilities)
 	}
 
 	// 尝试 OpenAI 格式解析
@@ -328,26 +336,31 @@ func parseModelsResponseForKind(body []byte, upstream *config.UpstreamConfig, ki
 	// 如果 data 为空，尝试 Gemini 格式（Responses 渠道中 serviceType=gemini 的情况）
 	if len(resp.Data) == 0 {
 		if geminiModels := parseGeminiModelsResponse(body); len(geminiModels) > 0 {
-			return enrichModelModalitiesForUpstream(geminiModels, upstream)
+			return enrichModelsForUpstream(geminiModels, upstream, globalCapabilities)
 		}
 	}
 
-	return enrichModelModalitiesForUpstream(resp.Data, upstream)
+	return enrichModelsForUpstream(resp.Data, upstream, globalCapabilities)
 }
 
 func enrichModelModalitiesForUpstream(models []ModelEntry, upstream *config.UpstreamConfig) []ModelEntry {
+	return enrichModelsForUpstream(models, upstream, nil)
+}
+
+func enrichModelsForUpstream(models []ModelEntry, upstream *config.UpstreamConfig, globalCapabilities map[string]config.UpstreamModelCapability) []ModelEntry {
 	if upstream == nil {
-		return models
+		return normalizeModelEntries(models, nil, globalCapabilities)
 	}
 
 	enriched := make([]ModelEntry, 0, len(models)+1)
 	seen := make(map[string]int, len(models)+1)
 	addOrUpdate := func(model ModelEntry) {
+		model = normalizeModelEntry(model, upstream, globalCapabilities)
 		if model.ID == "" {
 			return
 		}
 		if idx, exists := seen[model.ID]; exists {
-			enriched[idx].InputModalities = mergeInputModalities(enriched[idx].InputModalities, model.InputModalities)
+			enriched[idx] = mergeModelEntryMetadata(enriched[idx], model)
 			return
 		}
 		seen[model.ID] = len(enriched)
@@ -355,10 +368,14 @@ func enrichModelModalitiesForUpstream(models []ModelEntry, upstream *config.Upst
 	}
 
 	for _, model := range models {
-		if _, isRequestModel := upstream.ModelMapping[model.ID]; isRequestModel {
-			model.InputModalities = inputModalitiesForRequestModel(upstream, model.ID)
+		modelID := strings.TrimSpace(model.ID)
+		if modelID == "" {
+			modelID = strings.TrimSpace(model.Name)
+		}
+		if _, isRequestModel := upstream.ModelMapping[modelID]; isRequestModel {
+			model.InputModalities = inputModalitiesForRequestModel(upstream, modelID)
 		} else {
-			model.InputModalities = inputModalitiesForActualModel(upstream, model.ID)
+			model.InputModalities = inputModalitiesForActualModel(upstream, modelID)
 		}
 		addOrUpdate(model)
 	}
@@ -384,6 +401,136 @@ func enrichModelModalitiesForUpstream(models []ModelEntry, upstream *config.Upst
 	}
 
 	return enriched
+}
+
+func normalizeModelEntries(models []ModelEntry, upstream *config.UpstreamConfig, globalCapabilities map[string]config.UpstreamModelCapability) []ModelEntry {
+	normalized := make([]ModelEntry, 0, len(models))
+	for _, model := range models {
+		model = normalizeModelEntry(model, upstream, globalCapabilities)
+		if model.ID != "" {
+			normalized = append(normalized, model)
+		}
+	}
+	return normalized
+}
+
+func normalizeModelEntry(model ModelEntry, upstream *config.UpstreamConfig, globalCapabilities map[string]config.UpstreamModelCapability) ModelEntry {
+	model.ID = strings.TrimSpace(model.ID)
+	model.Name = strings.TrimSpace(model.Name)
+	if model.ID == "" {
+		model.ID = model.Name
+	}
+	if model.Name == "" {
+		model.Name = model.ID
+	}
+	if model.Object == "" {
+		model.Object = "model"
+	}
+	if model.Type == "" {
+		model.Type = "model"
+	}
+	if model.CreatedAt == "" && model.Created > 0 {
+		model.CreatedAt = time.Unix(model.Created, 0).UTC().Format(time.RFC3339)
+	}
+
+	resolved := config.ResolveUpstreamCapability(model.ID, upstream, globalCapabilities)
+	if model.DisplayName == "" {
+		model.DisplayName = resolved.Capability.DisplayName
+	}
+	if model.LabelOverride == "" {
+		model.LabelOverride = model.DisplayName
+	}
+	if !model.Supports1M && resolved.Capability.ContextWindowTokens >= 1000000 {
+		model.Supports1M = true
+	}
+	if model.AnthropicFamilyTier == "" {
+		model.AnthropicFamilyTier = anthropicFamilyTierForModel(model.ID, resolved.ActualModel, resolved.Capability.DisplayName)
+	}
+
+	return model
+}
+
+func mergeModelEntryMetadata(existing, incoming ModelEntry) ModelEntry {
+	existing.InputModalities = mergeInputModalities(existing.InputModalities, incoming.InputModalities)
+	if existing.Name == "" {
+		existing.Name = incoming.Name
+	}
+	if existing.Object == "" {
+		existing.Object = incoming.Object
+	}
+	if existing.Type == "" {
+		existing.Type = incoming.Type
+	}
+	if existing.Created == 0 {
+		existing.Created = incoming.Created
+	}
+	if existing.CreatedAt == "" {
+		existing.CreatedAt = incoming.CreatedAt
+	}
+	if existing.OwnedBy == "" {
+		existing.OwnedBy = incoming.OwnedBy
+	}
+	if existing.DisplayName == "" {
+		existing.DisplayName = incoming.DisplayName
+	}
+	if existing.LabelOverride == "" {
+		existing.LabelOverride = incoming.LabelOverride
+	}
+	existing.Supports1M = existing.Supports1M || incoming.Supports1M
+	if existing.AnthropicFamilyTier == "" {
+		existing.AnthropicFamilyTier = incoming.AnthropicFamilyTier
+	}
+	existing.IsFamilyDefault = existing.IsFamilyDefault || incoming.IsFamilyDefault
+	return existing
+}
+
+func buildModelsResponse(models []ModelEntry) ModelsResponse {
+	markAnthropicFamilyDefaults(models)
+	resp := ModelsResponse{
+		Object:  "list",
+		Data:    models,
+		HasMore: false,
+	}
+	if len(models) > 0 {
+		resp.FirstID = models[0].ID
+		resp.LastID = models[len(models)-1].ID
+	}
+	return resp
+}
+
+func markAnthropicFamilyDefaults(models []ModelEntry) {
+	seen := make(map[string]bool)
+	for i := range models {
+		tier := models[i].AnthropicFamilyTier
+		if tier == "" {
+			continue
+		}
+		if seen[tier] {
+			models[i].IsFamilyDefault = false
+			continue
+		}
+		models[i].IsFamilyDefault = true
+		seen[tier] = true
+	}
+}
+
+func anthropicFamilyTierForModel(requestModel, actualModel, displayName string) string {
+	for _, value := range []string{requestModel, actualModel, displayName} {
+		lower := strings.ToLower(value)
+		switch {
+		case strings.Contains(lower, "fable"):
+			return "fable"
+		case strings.Contains(lower, "mythos"):
+			return "mythos"
+		case strings.Contains(lower, "opus"):
+			return "opus"
+		case strings.Contains(lower, "sonnet"):
+			return "sonnet"
+		case strings.Contains(lower, "haiku"):
+			return "haiku"
+		}
+	}
+	return ""
 }
 
 func inputModalitiesForActualModel(upstream *config.UpstreamConfig, modelID string) []string {
@@ -571,7 +718,7 @@ func mergeModels(modelLists ...[]ModelEntry) []ModelEntry {
 	for _, models := range modelLists {
 		for _, m := range models {
 			if idx, exists := seen[m.ID]; exists {
-				result[idx].InputModalities = mergeInputModalities(result[idx].InputModalities, m.InputModalities)
+				result[idx] = mergeModelEntryMetadata(result[idx], m)
 			} else {
 				seen[m.ID] = len(result)
 				result = append(result, m)

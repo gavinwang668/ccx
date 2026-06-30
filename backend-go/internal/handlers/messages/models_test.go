@@ -104,6 +104,65 @@ func TestModelsHandler_UsesActiveKey(t *testing.T) {
 	}
 }
 
+func TestModelsHandler_AddsClaudeDesktopModelMetadata(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"claude-sonnet-4-6","object":"model"}]}`))
+	}))
+	defer upstream.Close()
+
+	cfgManager := setupModelsConfigManager(t, config.Config{
+		Upstream: []config.UpstreamConfig{{
+			Name:        "messages-active",
+			BaseURL:     upstream.URL,
+			APIKeys:     []string{"sk-active"},
+			ServiceType: "claude",
+		}},
+	})
+	sch := newModelsTestScheduler(cfgManager)
+	router := newModelsRouterForAggregate(&config.EnvConfig{ProxyAccessKey: "test-key"}, cfgManager, sch)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+
+	var resp ModelsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	model := findModelEntry(resp.Data, "claude-sonnet-4-6")
+	if model == nil {
+		t.Fatalf("缺少 Claude 模型: %#v", resp.Data)
+	}
+	if model.Name != "claude-sonnet-4-6" {
+		t.Fatalf("name = %q, want model id", model.Name)
+	}
+	if model.Type != "model" {
+		t.Fatalf("type = %q, want model", model.Type)
+	}
+	if model.DisplayName != "Claude Sonnet 4.6" {
+		t.Fatalf("display_name = %q, want Claude Sonnet 4.6", model.DisplayName)
+	}
+	if !model.Supports1M {
+		t.Fatalf("supports1m = false, want true")
+	}
+	if model.AnthropicFamilyTier != "sonnet" {
+		t.Fatalf("anthropicFamilyTier = %q, want sonnet", model.AnthropicFamilyTier)
+	}
+	if !model.IsFamilyDefault {
+		t.Fatalf("isFamilyDefault = false, want true")
+	}
+	if resp.FirstID != "claude-sonnet-4-6" || resp.LastID != "claude-sonnet-4-6" {
+		t.Fatalf("first/last id = %q/%q, want claude-sonnet-4-6", resp.FirstID, resp.LastID)
+	}
+}
+
 func TestModelsHandler_FallbackToDisabledKey(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer sk-disabled" {
@@ -661,6 +720,33 @@ func TestEnrichModelModalitiesForUpstream_MappedModelNeedsVisionFallback(t *test
 	}
 	if !sameStrings(alias.InputModalities, []string{"text", "image"}) {
 		t.Fatalf("alias-pro input_modalities = %v, want [text image]", alias.InputModalities)
+	}
+}
+
+func TestParseModelsResponseForKind_PreservesAnthropicFields(t *testing.T) {
+	body := []byte(`{"object":"list","data":[{"id":"claude-opus-4-6","type":"model","display_name":"Claude Opus 4.6","created_at":"2026-01-01T00:00:00Z"}]}`)
+	upstream := &config.UpstreamConfig{ServiceType: "claude"}
+
+	result := parseModelsResponseForKind(body, upstream, nil, scheduler.ChannelKindMessages)
+
+	model := findModelEntry(result, "claude-opus-4-6")
+	if model == nil {
+		t.Fatalf("缺少 Anthropic 模型: %#v", result)
+	}
+	if model.Type != "model" {
+		t.Fatalf("type = %q, want model", model.Type)
+	}
+	if model.DisplayName != "Claude Opus 4.6" {
+		t.Fatalf("display_name = %q, want Claude Opus 4.6", model.DisplayName)
+	}
+	if model.CreatedAt != "2026-01-01T00:00:00Z" {
+		t.Fatalf("created_at = %q, want preserved value", model.CreatedAt)
+	}
+	if !model.Supports1M {
+		t.Fatalf("supports1m = false, want true")
+	}
+	if model.AnthropicFamilyTier != "opus" {
+		t.Fatalf("anthropicFamilyTier = %q, want opus", model.AnthropicFamilyTier)
 	}
 }
 
