@@ -29,6 +29,7 @@ const emit = defineEmits<{
 
 const {
   presets,
+  keyAssets,
   keysByProvider,
   creating,
   error,
@@ -134,7 +135,20 @@ const localizeTargetDescription = (preset: ProviderPreset, target: ChannelTarget
 }
 
 const currentAsset = computed(() => {
-  return selectedProvider.value ? keysByProvider.value[selectedProvider.value] : undefined
+  const provider = selectedProvider.value.trim()
+  if (!provider) return undefined
+
+  const providerAssets = keyAssets.value.filter((item) => item.provider === provider && item.apiKey)
+  const planId = selectedPlan.value.trim()
+  if (planId) {
+    const exact = providerAssets.find((item) => (item.planId || '') === planId)
+    if (exact) return exact
+
+    const hasPlanScopedAsset = providerAssets.some((item) => !!item.planId)
+    return hasPlanScopedAsset ? undefined : providerAssets.find((item) => !item.planId)
+  }
+
+  return providerAssets.find((item) => !item.planId) || providerAssets[0]
 })
 
 const savedApiKeyMask = computed(() => {
