@@ -12,6 +12,7 @@ export const providerConsoleLinks: Record<string, string> = {
   qianfan: 'https://console.bce.baidu.com/qianfan/resource/subscribe',
   originrouter: 'https://easytransnote.com/ai/console/#key',
   glm: 'https://open.bigmodel.cn/coding-plan/personal/overview',
+  sensenova: 'https://platform.sensenova.cn/console',
   minimax: 'https://platform.minimaxi.com/user-center/payment/balance',
   dashscope: 'https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key',
   'opencode-zen': 'https://opencode.ai/',

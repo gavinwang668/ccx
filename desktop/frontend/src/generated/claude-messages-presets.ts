@@ -161,6 +161,28 @@ export const claudeMessagesPresets: Record<string, ClaudeMessagesPreset> = {
     "noVisionModels": [],
     "visionFallbackModel": ""
   },
+  "sensenova": {
+    "modelMapping": {
+      "fable": "glm-5.2",
+      "haiku": "deepseek-v4-flash",
+      "opus": "glm-5.2",
+      "sonnet": "glm-5.2"
+    },
+    "reasoningMapping": {},
+    "reasoningParamStyle": "",
+    "passbackReasoningContent": false,
+    "passbackThinkingBlocks": false,
+    "stripEmptyTextBlocks": false,
+    "normalizeSystemRoleToTopLevel": true,
+    "stripImageGenerationTool": false,
+    "normalizeNonstandardChatRoles": false,
+    "noVision": false,
+    "noVisionModels": [
+      "glm-5.2",
+      "deepseek-v4-flash"
+    ],
+    "visionFallbackModel": "sensenova-6.7-flash-lite"
+  },
   "minimax": {
     "modelMapping": {
       "fable": "MiniMax-M3",

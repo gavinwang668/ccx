@@ -100,6 +100,8 @@ func normalizeOpenCodeProvider(provider string) string {
 		return ProviderKimi
 	case ProviderGLM:
 		return ProviderGLM
+	case ProviderSenseNova:
+		return ProviderSenseNova
 	case ProviderMiniMax:
 		return ProviderMiniMax
 	case ProviderDashScope:
@@ -123,7 +125,7 @@ func normalizeOpenCodeProvider(provider string) string {
 
 func isOpenCodeDirectProvider(provider string) bool {
 	switch provider {
-	case ProviderDeepSeek, ProviderMiMo, ProviderCompshare, ProviderRunAPI, ProviderUnity2, ProviderKimi, ProviderGLM, ProviderMiniMax, ProviderDashScope, ProviderXFyun, ProviderOpenCodeZen, ProviderOpenCodeGo, ProviderTencentLkeap, ProviderVolcArk, ProviderQianfan:
+	case ProviderDeepSeek, ProviderMiMo, ProviderCompshare, ProviderRunAPI, ProviderUnity2, ProviderKimi, ProviderGLM, ProviderSenseNova, ProviderMiniMax, ProviderDashScope, ProviderXFyun, ProviderOpenCodeZen, ProviderOpenCodeGo, ProviderTencentLkeap, ProviderVolcArk, ProviderQianfan:
 		return true
 	default:
 		return false
@@ -144,6 +146,8 @@ func openCodeDirectBaseURL(provider string) (string, bool) {
 		return "https://api.moonshot.cn/v1", true
 	case ProviderGLM:
 		return "https://open.bigmodel.cn/api/paas/v4", true
+	case ProviderSenseNova:
+		return sensenovaChatBaseURL, true
 	case ProviderMiniMax:
 		return "https://api.minimax.chat/v1", true
 	case ProviderDashScope:
@@ -179,6 +183,8 @@ func openCodeDirectLabel(provider string) string {
 		return "Kimi"
 	case ProviderGLM:
 		return "GLM"
+	case ProviderSenseNova:
+		return "SenseNova"
 	case ProviderMiniMax:
 		return "MiniMax"
 	case ProviderDashScope:

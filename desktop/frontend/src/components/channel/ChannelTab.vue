@@ -74,6 +74,7 @@ const presetOrder = [
   'openrouter',
   'kimi',
   'glm',
+  'sensenova',
   'minimax',
   'dashscope',
   'modelscope',

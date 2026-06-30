@@ -15,6 +15,7 @@ const (
 	ProviderUnity2       = "unity2"
 	ProviderKimi         = "kimi"
 	ProviderGLM          = "glm"
+	ProviderSenseNova    = "sensenova"
 	ProviderMiniMax      = "minimax"
 	ProviderDashScope    = "dashscope"
 	ProviderTencentLkeap = "tencent-lkeap"
@@ -138,6 +139,7 @@ var providerConsoleURLs = map[string]string{
 	ProviderUnity2:       "https://unity2.ai/dashboard",
 	ProviderKimi:         "https://platform.moonshot.cn/console/account",
 	ProviderGLM:          "https://open.bigmodel.cn/coding-plan/personal/overview",
+	ProviderSenseNova:    "https://platform.sensenova.cn/console",
 	ProviderMiniMax:      "https://platform.minimaxi.com/user-center/payment/balance",
 	ProviderDashScope:    "https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key",
 	ProviderTencentLkeap: "https://console.cloud.tencent.com/lkeap/token-plan",
@@ -278,6 +280,22 @@ func Presets() []ProviderPreset {
 				{ID: "anthropic", Label: "Anthropic-compatible", BaseURL: "https://open.bigmodel.cn/api/anthropic", Description: "Claude Messages 原生入口", Recommended: true},
 				{ID: "coding", Label: "Coding Plan (OpenAI)", BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4#", Description: "Coding Plan Chat / Responses 通用入口"},
 				{ID: "openai-chat", Label: "通用 (OpenAI)", BaseURL: "https://open.bigmodel.cn/api/paas/v4#", Description: "通用 Chat / Responses 入口"},
+			},
+			Targets:       defaultTargets(),
+			DefaultTarget: TargetMessages,
+		},
+		{
+			ID:                  ProviderSenseNova,
+			Order:               65,
+			Label:               "SenseNova",
+			Description:         "商汤日日新 SenseNova LLM API 平台，兼容 OpenAI 与 Anthropic 协议，支持轻量多模态模型和主流编程模型接入。",
+			DirectAgent:         true,
+			NativeMessages:      true,
+			ChatCompatible:      true,
+			ResponsesCompatible: true,
+			Plans: []ProviderPlan{
+				{ID: "anthropic", Label: "Anthropic-compatible", BaseURL: "https://token.sensenova.cn", Description: "Claude Messages 兼容入口", Recommended: true},
+				{ID: "openai-chat", Label: "OpenAI-compatible", BaseURL: "https://token.sensenova.cn/v1", Description: "Chat 入口，Responses 由 CCX 转换"},
 			},
 			Targets:       defaultTargets(),
 			DefaultTarget: TargetMessages,

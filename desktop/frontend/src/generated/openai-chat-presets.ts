@@ -110,6 +110,23 @@ export const openaiChatPresets: Record<string, OpenAIChatPreset> = {
     "noVisionModels": [],
     "visionFallbackModel": ""
   },
+  "sensenova": {
+    "modelMapping": {},
+    "reasoningMapping": {},
+    "reasoningParamStyle": "",
+    "passbackReasoningContent": false,
+    "passbackThinkingBlocks": false,
+    "stripEmptyTextBlocks": false,
+    "normalizeSystemRoleToTopLevel": false,
+    "stripImageGenerationTool": false,
+    "normalizeNonstandardChatRoles": true,
+    "noVision": false,
+    "noVisionModels": [
+      "glm-5.2",
+      "deepseek-v4-flash"
+    ],
+    "visionFallbackModel": "sensenova-6.7-flash-lite"
+  },
   "modelscope": {
     "modelMapping": {},
     "reasoningMapping": {},

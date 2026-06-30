@@ -11,6 +11,7 @@ func generatedClaudeMessagesTargetConfigs() map[string]channelTargetConfig {
 		"unity2":        channelTargetConfig{},
 		"kimi":          channelTargetConfig{ModelMapping: map[string]string{"fable": "kimi-k2.6", "haiku": "kimi-k2.6", "opus": "kimi-k2.6", "sonnet": "kimi-k2.6"}, NormalizeSystemRoleToTopLevel: true},
 		"glm":           channelTargetConfig{ModelMapping: map[string]string{"fable": "glm-5.2", "haiku": "glm-5.2", "opus": "glm-5.2", "sonnet": "glm-5.2"}, NormalizeSystemRoleToTopLevel: true},
+		"sensenova":     channelTargetConfig{ModelMapping: map[string]string{"fable": "glm-5.2", "haiku": "deepseek-v4-flash", "opus": "glm-5.2", "sonnet": "glm-5.2"}, NormalizeSystemRoleToTopLevel: true, NoVisionModels: []string{"glm-5.2", "deepseek-v4-flash"}, VisionFallbackModel: "sensenova-6.7-flash-lite"},
 		"minimax":       channelTargetConfig{ModelMapping: map[string]string{"fable": "MiniMax-M3", "haiku": "MiniMax-M2.7", "opus": "MiniMax-M3", "sonnet": "MiniMax-M3"}, PassbackReasoningContent: true, NormalizeSystemRoleToTopLevel: true, NoVision: true},
 		"dashscope":     channelTargetConfig{ModelMapping: map[string]string{"fable": "glm-5.2", "haiku": "glm-5.2", "opus": "glm-5.2", "sonnet": "glm-5.2"}, NormalizeSystemRoleToTopLevel: true},
 		"opencode-zen":  channelTargetConfig{ModelMapping: map[string]string{"fable": "glm-5.2", "haiku": "deepseek-v4-flash", "opus": "glm-5.2", "sonnet": "glm-5.2"}, ReasoningMapping: map[string]string{"fable": "max", "haiku": "high", "opus": "max", "sonnet": "max"}, NormalizeSystemRoleToTopLevel: true},

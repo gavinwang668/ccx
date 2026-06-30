@@ -31,6 +31,7 @@ const claudeProviderLabels: Record<AgentProvider | 'custom', string> = {
   originrouter: '极易云',
   kimi: 'Kimi',
   glm: 'GLM',
+  sensenova: 'SenseNova',
   minimax: 'MiniMax',
   dashscope: 'DashScope',
   openrouter: 'OpenRouter',
@@ -64,6 +65,7 @@ function getCodexProviderLabels(): ComputedRef<Record<AgentProvider | 'custom', 
       originrouter: '极易云',
       kimi: 'Kimi',
       glm: 'GLM',
+      sensenova: 'SenseNova',
       minimax: 'MiniMax',
       dashscope: 'DashScope',
       openrouter: 'OpenRouter',
@@ -111,6 +113,7 @@ const claudeProviderKeys = ref<Record<AgentProvider, string>>({
   originrouter: '',
   kimi: '',
   glm: '',
+  sensenova: '',
   minimax: '',
   dashscope: '',
   openrouter: '',
@@ -147,7 +150,7 @@ const migrateResult = ref<MigrateCodexSessionsResult | null>(null)
 const migrateError = ref('')
 
 const isClaudeProvider = (value?: string): value is AgentProvider => {
-  return value === 'ccx' || value === 'deepseek' || value === 'mimo' || value === 'compshare' || value === 'runapi' || value === 'unity2' || value === 'tencent-lkeap' || value === 'kimi' || value === 'glm' || value === 'minimax' || value === 'dashscope' || value === 'openrouter' || value === 'modelscope' || value === 'opencode-zen' || value === 'opencode-go' || value === 'xfyun' || value === 'volc-ark' || value === 'qianfan'
+  return value === 'ccx' || value === 'deepseek' || value === 'mimo' || value === 'compshare' || value === 'runapi' || value === 'unity2' || value === 'tencent-lkeap' || value === 'kimi' || value === 'glm' || value === 'sensenova' || value === 'minimax' || value === 'dashscope' || value === 'openrouter' || value === 'modelscope' || value === 'opencode-zen' || value === 'opencode-go' || value === 'xfyun' || value === 'volc-ark' || value === 'qianfan'
 }
 
 // Codex 支持快捷模式/插件模式切换的第三方 provider
@@ -188,6 +191,8 @@ const claudeTargetBaseUrl = () => {
       return 'https://api.moonshot.cn/anthropic'
     case 'glm':
       return 'https://open.bigmodel.cn/api/anthropic'
+    case 'sensenova':
+      return 'https://token.sensenova.cn'
     case 'minimax':
       return 'https://api.minimaxi.com/anthropic'
     case 'dashscope':
@@ -272,6 +277,8 @@ const openCodeTargetBaseUrl = () => {
       return 'https://api.moonshot.cn/v1'
     case 'glm':
       return 'https://open.bigmodel.cn/api/paas/v4'
+    case 'sensenova':
+      return 'https://token.sensenova.cn/v1'
     case 'minimax':
       return 'https://api.minimax.chat/v1'
     case 'runapi':

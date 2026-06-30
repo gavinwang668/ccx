@@ -225,6 +225,26 @@ export const codexResponsesPresets: Record<string, CodexResponsesPreset> = {
     "noVisionModels": [],
     "visionFallbackModel": ""
   },
+  "sensenova": {
+    "modelMapping": {
+      "codex": "deepseek-v4-flash",
+      "gpt": "glm-5.2",
+      "mini": "deepseek-v4-flash"
+    },
+    "reasoningMapping": {},
+    "reasoningParamStyle": "",
+    "codexNativeToolPassthrough": false,
+    "codexToolCompat": true,
+    "stripCodexClientTools": true,
+    "stripImageGenerationTool": false,
+    "normalizeNonstandardChatRoles": true,
+    "noVision": false,
+    "noVisionModels": [
+      "glm-5.2",
+      "deepseek-v4-flash"
+    ],
+    "visionFallbackModel": "sensenova-6.7-flash-lite"
+  },
   "openrouter": {
     "modelMapping": {},
     "reasoningMapping": {},

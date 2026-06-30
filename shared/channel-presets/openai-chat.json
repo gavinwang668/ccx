@@ -19,6 +19,11 @@
     "runapi": {},
     "unity2": {},
     "openrouter": {},
+    "sensenova": {
+      "normalizeNonstandardChatRoles": true,
+      "noVisionModels": ["glm-5.2", "deepseek-v4-flash"],
+      "visionFallbackModel": "sensenova-6.7-flash-lite"
+    },
     "modelscope": {
       "normalizeNonstandardChatRoles": true
     },

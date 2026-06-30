@@ -25,7 +25,7 @@ func (s *Service) GetSavedProviderKeys() map[string]string {
 		provider := asset.Provider
 		planID := asset.PlanID
 		switch provider {
-		case ProviderDeepSeek, ProviderMiMo, ProviderCompshare, ProviderRunAPI, ProviderUnity2, ProviderXFyun:
+		case ProviderDeepSeek, ProviderMiMo, ProviderCompshare, ProviderRunAPI, ProviderUnity2, ProviderXFyun, ProviderSenseNova:
 			if planID != "" {
 				keys[PlatformClaude+":"+provider+":"+planID] = asset.APIKey
 				continue
@@ -99,7 +99,7 @@ func (s *Service) SaveProviderKeyAsset(asset ProviderKeyAsset) error {
 	if asset.PlanID == "" {
 		store.Keys["channel:"+provider] = key
 		switch provider {
-		case ProviderDeepSeek, ProviderMiMo, ProviderCompshare, ProviderRunAPI, ProviderXFyun:
+		case ProviderDeepSeek, ProviderMiMo, ProviderCompshare, ProviderRunAPI, ProviderXFyun, ProviderSenseNova:
 			store.Keys[PlatformClaude+":"+provider] = key
 		case ProviderOpenAI:
 			store.Keys[PlatformCodex+":"+provider] = key

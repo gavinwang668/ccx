@@ -56,6 +56,21 @@ func TestApplyAndRestoreCodex(t *testing.T) {
 	}
 }
 
+func TestCodexDoesNotSupportSenseNovaDirectProvider(t *testing.T) {
+	if baseURL, ok := codexResponsesBaseURL(ProviderSenseNova); ok {
+		t.Fatalf("SenseNova should not be a Codex direct provider, got baseURL %q", baseURL)
+	}
+	if provider, ok := codexThirdPartyQuickBaseURL(sensenovaChatBaseURL); ok {
+		t.Fatalf("SenseNova chat endpoint should not be detected as Codex quick provider, got %q", provider)
+	}
+	if got := normalizeCodexProvider(ProviderSenseNova); got != ProviderCustom {
+		t.Fatalf("normalizeCodexProvider(%q) = %q, want %q", ProviderSenseNova, got, ProviderCustom)
+	}
+	if isCodexThirdPartyProvider(ProviderSenseNova) {
+		t.Fatal("SenseNova should not be in the Codex third-party provider whitelist")
+	}
+}
+
 func TestGetStatusCodex_ThirdPartyProvider(t *testing.T) {
 	svc := newTestService(t)
 	configPath := filepath.Join(svc.homeDir, ".codex", "config.toml")
@@ -334,6 +349,36 @@ func TestApplyOpenCode_RunAPIProvider(t *testing.T) {
 	_, key := openCodeAuthKeyFromMap(authData, ProviderRunAPI)
 	if key != "runapi-key" {
 		t.Errorf("RunAPI auth key = %q, want runapi-key", key)
+	}
+}
+
+func TestApplyOpenCode_SenseNovaProvider(t *testing.T) {
+	svc := newTestService(t)
+	configPath := filepath.Join(svc.homeDir, ".config", "opencode", "opencode.jsonc")
+	authPath := svc.openCodeAuthPath()
+
+	err := svc.Apply(ApplyAgentConfigRequest{
+		Platform: PlatformOpenCode,
+		Provider: ProviderSenseNova,
+		APIKey:   "sensenova-key",
+	}, 0, "")
+	if err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	content, _ := os.ReadFile(configPath)
+	s := string(content)
+	if !strings.Contains(s, `"sensenova"`) {
+		t.Error("opencode config should contain sensenova provider")
+	}
+	if !strings.Contains(s, `"baseURL": "https://token.sensenova.cn/v1"`) {
+		t.Error("opencode config should contain SenseNova chat baseURL")
+	}
+
+	authData, _, _ := readJSONMap(authPath)
+	_, key := openCodeAuthKeyFromMap(authData, ProviderSenseNova)
+	if key != "sensenova-key" {
+		t.Errorf("SenseNova auth key = %q, want sensenova-key", key)
 	}
 }
 

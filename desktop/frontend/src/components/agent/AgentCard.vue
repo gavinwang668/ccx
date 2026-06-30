@@ -364,6 +364,7 @@ const openFileInEditor = async (editorPath: string, filePath: string) => {
             <option value="runapi">{{ t('agent.provider.runapiDirect') }}</option>
             <option value="kimi">{{ t('agent.provider.kimiDirect') }}</option>
             <option value="glm">{{ t('agent.provider.glmDirect') }}</option>
+            <option value="sensenova">{{ t('agent.provider.sensenovaDirect') }}</option>
             <option value="minimax">{{ t('agent.provider.minimaxDirect') }}</option>
             <option value="dashscope">{{ t('agent.provider.dashscopeDirect') }}</option>
             <option value="xfyun">{{ t('agent.provider.xfyunDirect') }}</option>
