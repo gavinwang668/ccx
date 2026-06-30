@@ -270,6 +270,7 @@
   "copilotDiagnose.loading": "Mendiagnostik channel Copilot...",
   "copilotDiagnose.success": "Diagnostik selesai",
   "copilotDiagnose.failed": "Diagnostik gagal",
+  "copilotOAuth.quickAddKeyHint": "Tidak perlu menempelkan API key. Masuk dengan GitHub Copilot setelah channel dibuat.",
   "copilotOAuth.quickAddHint": "Channel GitHub Copilot tidak perlu menempelkan API key. Setelah dibuat, buka Edit channel → Autentikasi dan klik \"Masuk dengan GitHub Copilot\" untuk mengotorisasi. Base URL default-nya https://api.githubcopilot.com.",
   "addChannel.count": "{count}",
   "addChannel.customHeadersTitle": "Header Kustom",

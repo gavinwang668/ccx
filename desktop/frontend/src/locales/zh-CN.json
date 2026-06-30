@@ -621,6 +621,7 @@
   "addChannel.apiKeys": "API Keys",
   "addChannel.detectedKeys": "已检测到 {count} 个 API Key",
   "addChannel.enterApiKey": "请输入至少一个 API Key",
+  "copilotOAuth.quickAddKeyHint": "无需粘贴 API Key，创建后登录 GitHub Copilot 授权",
   "addChannel.newChannelPlacementLabel": "添加到队列末尾",
   "addChannel.expectedRequest": "预期请求",
   "addChannel.apiKeyLoadBalance": "可添加多个密钥作为故障转移备用",

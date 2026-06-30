@@ -89,7 +89,7 @@
                           :color="quickServiceTypeColor"
                           :menu-props="{ contentClass: 'upstream-select-menu' }"
                           class="upstream-select mt-n1"
-                          @update:model-value="quickServiceTypeTouched = true"
+                          @update:model-value="handleServiceTypeChange"
                           @update:menu="onMenuUpdate"
                         />
                       </div>
@@ -99,17 +99,13 @@
                   <v-col cols="12" md="5">
                     <div class="d-flex flex-column ga-3">
                       <div class="d-flex align-center ga-3 pa-3 rounded-lg apikeys-card">
-                        <v-icon :color="detectedApiKeys.length > 0 ? 'success' : 'error'" size="20">
-                          {{ detectedApiKeys.length > 0 ? 'mdi-check-circle' : 'mdi-alert-circle' }}
+                        <v-icon :color="apiKeyStatusColor" size="20">
+                          {{ apiKeyStatusIcon }}
                         </v-icon>
                         <div class="flex-grow-1">
                           <div class="text-body-2 font-weight-medium">{{ t('addChannel.apiKeys') }}</div>
-                          <div class="text-caption" :class="detectedApiKeys.length > 0 ? 'text-success' : 'text-error'">
-                            {{
-                              detectedApiKeys.length > 0
-                                ? t('addChannel.detectedKeys', { count: detectedApiKeys.length })
-                                : t('addChannel.enterApiKey')
-                            }}
+                          <div class="text-caption" :class="apiKeyStatusTextClass">
+                            {{ apiKeyStatusMessage }}
                           </div>
                         </div>
                         <v-chip v-if="detectedApiKeys.length > 0" size="x-small" color="success" variant="tonal">
@@ -217,6 +213,7 @@ const detectedServiceType = ref<ServiceType | null>(null)
 const quickServiceTypeTouched = ref(false)
 const quickServiceType = ref<ServiceType>(getDefaultServiceTypeValue())
 const randomSuffix = ref(generateRandomString(6))
+const copilotDefaultBaseUrl = 'https://api.githubcopilot.com'
 
 const isMac = computed(() => typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform))
 
@@ -317,6 +314,30 @@ const upstreamTypeCardStyle = computed(() => {
   }
 })
 
+const isCopilotQuickAdd = computed(() => quickServiceType.value === 'copilot')
+
+const apiKeyStatusColor = computed(() => {
+  if (detectedApiKeys.value.length > 0) return 'success'
+  return isCopilotQuickAdd.value ? 'info' : 'error'
+})
+
+const apiKeyStatusIcon = computed(() => {
+  if (detectedApiKeys.value.length > 0) return 'mdi-check-circle'
+  return isCopilotQuickAdd.value ? 'mdi-information' : 'mdi-alert-circle'
+})
+
+const apiKeyStatusTextClass = computed(() => {
+  if (detectedApiKeys.value.length > 0) return 'text-success'
+  return isCopilotQuickAdd.value ? 'text-info' : 'text-error'
+})
+
+const apiKeyStatusMessage = computed(() => {
+  if (detectedApiKeys.value.length > 0) {
+    return t('addChannel.detectedKeys', { count: detectedApiKeys.value.length })
+  }
+  return isCopilotQuickAdd.value ? t('copilotOAuth.quickAddKeyHint') : t('addChannel.enterApiKey')
+})
+
 const generatedChannelName = computed(() => {
   if (!detectedBaseUrl.value) {
     if (quickServiceType.value === 'copilot') {
@@ -329,7 +350,7 @@ const generatedChannelName = computed(() => {
 })
 
 const isQuickFormValid = computed(() => {
-  if (quickServiceType.value === 'copilot') {
+  if (isCopilotQuickAdd.value) {
     return detectedBaseUrls.value.length > 0
   }
   return detectedBaseUrls.value.length > 0 && detectedApiKeys.value.length > 0
@@ -367,10 +388,19 @@ function parseQuickInput() {
   if (!quickServiceTypeTouched.value && detectedServiceType.value) {
     quickServiceType.value = detectedServiceType.value
   }
-  if (quickServiceType.value === 'copilot' && !detectedBaseUrl.value) {
-    detectedBaseUrl.value = 'https://api.githubcopilot.com'
-    detectedBaseUrls.value = [detectedBaseUrl.value]
-  }
+  applyCopilotDefaults()
+}
+
+function applyCopilotDefaults() {
+  if (!isCopilotQuickAdd.value || detectedBaseUrl.value) return
+  detectedBaseUrl.value = copilotDefaultBaseUrl
+  detectedBaseUrls.value = [copilotDefaultBaseUrl]
+}
+
+function handleServiceTypeChange(value: ServiceType) {
+  quickServiceType.value = value
+  quickServiceTypeTouched.value = true
+  applyCopilotDefaults()
 }
 
 function getExpectedRequestUrl(inputBaseUrl: string): string {
@@ -400,14 +430,20 @@ function handleQuickSubmit() {
   parseQuickInput()
   if (!isQuickFormValid.value) return
 
-  emit('save', {
+  const channel = {
     name: generatedChannelName.value,
     serviceType: props.channelType === 'images' ? 'openai' : quickServiceType.value,
     baseUrl: detectedBaseUrl.value,
     baseUrls: detectedBaseUrls.value,
     apiKeys: detectedApiKeys.value,
     modelMapping: {},
-  }, { isQuickAdd: true })
+  }
+
+  if (props.channelType === 'responses') {
+    Object.assign(channel, { normalizeMetadataUserId: false })
+  }
+
+  emit('save', channel, { isQuickAdd: true })
 }
 
 function handleCancel() {

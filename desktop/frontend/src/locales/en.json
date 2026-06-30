@@ -621,6 +621,7 @@
   "addChannel.apiKeys": "API Keys",
   "addChannel.detectedKeys": "Detected {count} API key(s)",
   "addChannel.enterApiKey": "Enter at least one API key",
+  "copilotOAuth.quickAddKeyHint": "No pasted API key is required. Sign in with GitHub Copilot after creating the channel.",
   "addChannel.newChannelPlacementLabel": "Append to end",
   "addChannel.expectedRequest": "Expected request",
   "addChannel.apiKeyLoadBalance": "Multiple keys can be added as failover candidates",

@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { AlertCircle, ArrowDownToLine, Bot, CheckCircle2, Gem, MessageSquare, Sparkles, Tag } from 'lucide-vue-next'
+import { AlertCircle, ArrowDownToLine, Bot, CheckCircle2, Code2, Gem, Info, MessageSquare, Sparkles, Tag } from 'lucide-vue-next'
 import { useLanguage } from '@/composables/useLanguage'
 import { useChannelPlacementPreference } from '@/composables/useChannelPlacementPreference'
 
@@ -54,8 +54,14 @@ const serviceMetaMap: Record<string, ServiceMeta> = {
     iconClass: 'text-emerald-500',
     badgeClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
   },
+  copilot: {
+    icon: Code2,
+    iconClass: 'text-slate-600 dark:text-slate-300',
+    badgeClass: 'border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-200',
+  },
 }
 const serviceMeta = computed<ServiceMeta>(() => serviceMetaMap[props.serviceType] || serviceMetaMap.openai)
+const isCopilot = computed(() => props.serviceType === 'copilot')
 </script>
 
 <template>
@@ -134,11 +140,15 @@ const serviceMeta = computed<ServiceMeta>(() => serviceMetaMap[props.serviceType
             <div class="rounded-lg border border-border bg-background/70 p-3">
               <div class="flex items-center gap-2 text-xs font-semibold mb-1.5">
                 <CheckCircle2 v-if="detectedApiKeys.length" class="h-4 w-4 text-emerald-500" />
+                <Info v-else-if="isCopilot" class="h-4 w-4 text-sky-500" />
                 <AlertCircle v-else class="h-4 w-4 text-muted-foreground" />
                 {{ t('addChannel.apiKeys') }}
               </div>
               <p v-if="detectedApiKeys.length" class="text-xs text-emerald-600">
                 {{ t('addChannel.detectedKeys', { count: String(detectedApiKeys.length) }) }}
+              </p>
+              <p v-else-if="isCopilot" class="text-xs text-sky-600 dark:text-sky-300">
+                {{ t('copilotOAuth.quickAddKeyHint') }}
               </p>
               <p v-else class="text-xs text-muted-foreground">
                 {{ t('addChannel.enterApiKey') }}

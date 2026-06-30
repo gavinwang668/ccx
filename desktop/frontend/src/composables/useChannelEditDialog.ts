@@ -49,6 +49,8 @@ const { t } = useLanguage()
   const diagnosingCompat = ref(false)
   const quickInput = ref('')
   const quickServiceTypeTouched = ref(false)
+  const copilotDefaultBaseUrl = 'https://api.githubcopilot.com'
+  const defaultNormalizeMetadataUserId = () => props.channelType !== 'responses'
   const disabledApiKeys = computed<DisabledKeyInfo[]>(() => props.channel?.disabledApiKeys ?? [])
   const historicalApiKeys = computed(() => props.channel?.historicalApiKeys ?? [])
   const {
@@ -163,7 +165,7 @@ const { t } = useLanguage()
     stripThoughtSignature: false,
     stripEmptyTextBlocks: false,
     normalizeSystemRoleToTopLevel: false,
-    normalizeMetadataUserId: true,
+    normalizeMetadataUserId: defaultNormalizeMetadataUserId(),
     stripBillingHeader: false,
     normalizeNonstandardChatRoles: false,
     autoBlacklistBalance: true,
@@ -240,7 +242,12 @@ const { t } = useLanguage()
   })
   
   const quickDetection = computed(() => parseQuickInput(quickInput.value, form.serviceType || undefined))
-  const detectedBaseUrls = computed(() => quickDetection.value.detectedBaseUrls)
+  const detectedBaseUrls = computed(() => {
+    if (form.serviceType === 'copilot' && quickDetection.value.detectedBaseUrls.length === 0) {
+      return [copilotDefaultBaseUrl]
+    }
+    return quickDetection.value.detectedBaseUrls
+  })
   const detectedApiKeys = computed(() => quickDetection.value.detectedApiKeys)
   const detectedServiceType = computed(() => quickDetection.value.detectedServiceType)
   const {
@@ -336,7 +343,7 @@ const { t } = useLanguage()
     form.stripThoughtSignature = false
     form.stripEmptyTextBlocks = false
     form.normalizeSystemRoleToTopLevel = false
-    form.normalizeMetadataUserId = true
+    form.normalizeMetadataUserId = defaultNormalizeMetadataUserId()
     form.stripBillingHeader = false
     form.normalizeNonstandardChatRoles = false
     form.autoBlacklistBalance = true
@@ -528,11 +535,18 @@ const { t } = useLanguage()
     }
     if (result.detectedServiceType && !quickServiceTypeTouched.value) form.serviceType = result.detectedServiceType
     if (!form.serviceType) form.serviceType = defaultServiceTypeForChannel()
+    applyQuickCopilotDefaults()
   }
   
   function updateQuickServiceType(value: string) {
     form.serviceType = value as typeof form.serviceType
     quickServiceTypeTouched.value = true
+    applyQuickCopilotDefaults()
+  }
+
+  function applyQuickCopilotDefaults() {
+    if (isEditMode.value || form.serviceType !== 'copilot' || form.baseUrlsText.trim()) return
+    form.baseUrlsText = copilotDefaultBaseUrl
   }
   
   function buildSubmitPayload() {
@@ -614,6 +628,7 @@ const { t } = useLanguage()
   
   async function persistCurrentDraft(options: { notifyParent?: boolean; close?: boolean } = {}) {
     syncModelCapabilitiesFromMapping()
+    applyQuickCopilotDefaults()
   
     if (!isValid.value) {
       error.value = Object.values(errors.value)[0] || ''
