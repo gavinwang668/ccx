@@ -43,6 +43,13 @@ export interface CopilotTokenResponse {
   errorDescription?: string
 }
 
+export interface CopilotVerifyResponse {
+  login: string
+  id?: number
+  avatarUrl?: string
+  htmlUrl?: string
+}
+
 export interface CopilotDiagnoseResult {
   githubUser?: { login?: string; id?: number }
   githubUserError?: string
