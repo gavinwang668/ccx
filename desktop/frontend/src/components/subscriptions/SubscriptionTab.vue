@@ -34,9 +34,11 @@ const existingCopilotChannels = ref<Record<CopilotTarget, Channel | null>>({
 const savedCopilotAsset = ref<ProviderKeyAsset | null>(null)
 const checkingCopilotChannel = ref(false)
 const addingCopilotChannel = ref(false)
+const channelStatusLoaded = ref(false)
 const verifyingAccount = ref(false)
 const removingKey = ref('')
 const pendingRemoveKey = ref('')
+const savedTokenFailed = ref(false)
 
 const {
   copilotOAuthLoading,
@@ -60,7 +62,7 @@ const hasSavedCopilotAuthorization = computed(() => Boolean(savedCopilotToken.va
 const copilotAccounts = computed(() => (selectedCopilotChannel.value ? buildBaseConfigs(selectedCopilotChannel.value) : []))
 const accountCount = computed(() => copilotAccounts.value.length)
 const copilotBusy = computed(() =>
-  copilotOAuthLoading.value || copilotPolling.value || creating.value || addingCopilotChannel.value || verifyingAccount.value,
+  copilotOAuthLoading.value || copilotPolling.value || creating.value || addingCopilotChannel.value || verifyingAccount.value || checkingCopilotChannel.value,
 )
 const copilotTargetOptions = computed<Array<{ value: CopilotTarget; label: string; description: string }>>(() => [
   { value: 'messages', label: t('subscription.targetClaude'), description: t('subscription.targetClaudeDesc') },
@@ -101,17 +103,20 @@ async function refreshCopilotChannelStatus() {
       }),
     )
     existingCopilotChannels.value = Object.fromEntries(entries) as Record<CopilotTarget, Channel | null>
+    channelStatusLoaded.value = true
     const channelWithProxy = entries.map(([, channel]) => channel).find(channel => channel?.proxyUrl)
     if (channelWithProxy?.proxyUrl && !copilotProxyUrl.value.trim()) {
       copilotProxyUrl.value = channelWithProxy.proxyUrl
     }
   } catch {
+    // 加载失败时清空渠道数据，避免使用陈旧的 channel.index。
     existingCopilotChannels.value = {
       messages: null,
       chat: null,
       responses: null,
       gemini: null,
     }
+    channelStatusLoaded.value = false
   } finally {
     checkingCopilotChannel.value = false
   }
@@ -125,6 +130,20 @@ async function startCopilotAuthorization() {
 }
 
 function handleCopilotPrimaryAction() {
+  // 已有保存的授权 token 且当前 target 无渠道时，先尝试直接复用。
+  // 必须等渠道状态检查完成且加载成功，避免误判为无渠道而覆盖已有配置。
+  // savedTokenFailed 标记上一次复用失败（token 过期等），避免无限重试同一失效 token。
+  const saved = savedCopilotToken.value
+  if (saved && channelStatusLoaded.value && !hasCopilotChannel.value && !copilotBusy.value && !checkingCopilotChannel.value && !savedTokenFailed.value) {
+    savedTokenFailed.value = true
+    copilotOAuthError.value = ''
+    void processNewToken(saved).then((ok) => {
+      // 复用成功：清除失败标记，使切换 target 时仍可复用同一个有效保存 token。
+      if (ok) savedTokenFailed.value = false
+    })
+    return
+  }
+  savedTokenFailed.value = false
   void startCopilotAuthorization()
 }
 
@@ -135,8 +154,9 @@ function cancelCopilotAuthorization() {
 }
 
 // 授权拿到新 token 后：反查 GitHub 用户名 -> 必要时建渠道 -> 合并进渠道 key 池。
-async function processNewToken(token: string) {
-  if (!token || verifyingAccount.value || addingCopilotChannel.value) return
+// 返回 true 表示成功加入，false 表示失败（错误已写入 accountActionError）。
+async function processNewToken(token: string): Promise<boolean> {
+  if (!token || verifyingAccount.value || addingCopilotChannel.value) return false
   const target = selectedCopilotTarget.value
   accountActionError.value = ''
   copilotCreateError.value = ''
@@ -160,11 +180,15 @@ async function processNewToken(token: string) {
       channel = existingCopilotChannels.value[target]
     }
     if (!channel) throw new Error(t('subscription.channelResolveFailed'))
+    // 已有渠道时不传 proxyUrl，避免用页面陈旧值覆盖渠道当前代理配置。
+    // 新建渠道时 proxyUrl 已在 createChannel 调用中设置。
     await addAccount(target, channel, token, login)
     await refreshSavedCopilotAsset()
     await refreshCopilotChannelStatus()
+    return true
   } catch (err) {
     accountActionError.value = err instanceof Error ? err.message : String(err)
+    return false
   } finally {
     verifyingAccount.value = false
     addingCopilotChannel.value = false
