@@ -122,6 +122,8 @@
   "subscription.copilotAuthorizationSavedOnly": "Authorized. No {target} channel detected — click the button below to add it.",
   "subscription.retryAddAccount": "Retry adding account",
   "subscription.accountsTitle": "{target} authorized accounts ({count})",
+  "subscription.accountCountShort": "{count} account(s)",
+  "subscription.accountsEmpty": "No authorized accounts on the {target} channel yet.",
   "subscription.accountsSummary": "{count} authorized account(s) pooled on the {target} channel",
   "subscription.accountUnnamed": "Unnamed account",
   "subscription.accountRemove": "Remove this account",

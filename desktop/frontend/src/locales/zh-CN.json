@@ -122,6 +122,8 @@
   "subscription.copilotAuthorizationSavedOnly": "已获授权；当前未检测到 {target} 渠道，点击下方按钮即可添加。",
   "subscription.retryAddAccount": "重试加入账号",
   "subscription.accountsTitle": "{target} 已授权账号（{count}）",
+  "subscription.accountCountShort": "{count} 个账号",
+  "subscription.accountsEmpty": "当前 {target} 渠道还没有已授权账号。",
   "subscription.accountsSummary": "{target} 渠道已累积 {count} 个授权账号",
   "subscription.accountUnnamed": "未命名账号",
   "subscription.accountRemove": "移除该账号",

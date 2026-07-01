@@ -61,6 +61,12 @@ const hasCopilotChannel = computed(() => Boolean(selectedCopilotChannel.value))
 const hasSavedCopilotAuthorization = computed(() => Boolean(savedCopilotToken.value))
 const copilotAccounts = computed(() => (selectedCopilotChannel.value ? buildBaseConfigs(selectedCopilotChannel.value) : []))
 const accountCount = computed(() => copilotAccounts.value.length)
+const copilotAccountCounts = computed<Record<CopilotTarget, number>>(() => ({
+  messages: existingCopilotChannels.value.messages ? buildBaseConfigs(existingCopilotChannels.value.messages).length : 0,
+  chat: existingCopilotChannels.value.chat ? buildBaseConfigs(existingCopilotChannels.value.chat).length : 0,
+  responses: existingCopilotChannels.value.responses ? buildBaseConfigs(existingCopilotChannels.value.responses).length : 0,
+  gemini: existingCopilotChannels.value.gemini ? buildBaseConfigs(existingCopilotChannels.value.gemini).length : 0,
+}))
 const copilotBusy = computed(() =>
   copilotOAuthLoading.value || copilotPolling.value || creating.value || addingCopilotChannel.value || verifyingAccount.value || checkingCopilotChannel.value,
 )
@@ -245,53 +251,27 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,520px)_1fr]">
-      <section class="bg-glass dark:bg-glass-dark border border-border rounded-2xl p-5 space-y-5">
-        <div class="flex items-start gap-3">
-          <div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary ring-1 ring-border">
-            <Github class="h-5 w-5 text-foreground" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <h4 class="text-base font-semibold text-foreground">GitHub Copilot</h4>
-              <span
-                v-if="copilotOAuthSuccess || hasSavedCopilotAuthorization || accountCount > 0"
-                class="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
-              >
-                {{ t('subscription.authorized') }}
-              </span>
+    <div class="grid grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:overflow-hidden md:grid-cols-[280px_1fr]">
+      <div class="space-y-1.5 md:min-h-0 md:overflow-y-auto md:overscroll-contain md:pr-1">
+        <button
+          v-for="target in copilotTargetOptions"
+          :key="target.value"
+          type="button"
+          :class="[
+            'w-full rounded-xl border p-3 text-left transition-colors duration-200',
+            selectedCopilotTarget === target.value
+              ? 'border-border bg-secondary/60 dark:border-white/10 dark:bg-white/[0.04]'
+              : 'border-border bg-card/40 hover:bg-card/70 dark:hover:bg-white/[0.03]',
+          ]"
+          @click="selectedCopilotTarget = target.value"
+        >
+          <div class="flex items-start gap-3">
+            <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary ring-1 ring-border">
+              <ShieldCheck class="h-4 w-4 text-foreground" />
             </div>
-            <p class="mt-1 text-sm text-muted-foreground">{{ t('subscription.copilotDescription') }}</p>
-          </div>
-        </div>
-
-        <div class="space-y-1.5">
-          <Label class="text-xs text-muted-foreground">{{ t('channelEditor.transport.proxyUrl.label') }}</Label>
-          <Input
-            v-model="copilotProxyUrl"
-            class="font-mono text-xs"
-            :placeholder="t('channelEditor.transport.proxyUrl.placeholder')"
-          />
-          <p class="text-xs text-muted-foreground">{{ t('channelEditor.transport.proxyUrl.hint') }}</p>
-        </div>
-
-        <div class="space-y-2">
-          <Label class="text-xs text-muted-foreground">{{ t('subscription.targetLabel') }}</Label>
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button
-              v-for="target in copilotTargetOptions"
-              :key="target.value"
-              type="button"
-              :class="[
-                'rounded-lg border px-3 py-2 text-left transition-colors',
-                selectedCopilotTarget === target.value
-                  ? 'border-primary/50 bg-primary/10 text-primary'
-                  : 'border-border bg-background/70 text-foreground hover:bg-secondary/60',
-              ]"
-              @click="selectedCopilotTarget = target.value"
-            >
+            <div class="min-w-0 flex-1">
               <div class="flex items-center justify-between gap-2">
-                <span class="text-sm font-semibold">{{ target.label }}</span>
+                <span class="font-semibold text-foreground">{{ target.label }}</span>
                 <span
                   v-if="existingCopilotChannels[target.value]"
                   class="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
@@ -299,16 +279,63 @@ onMounted(() => {
                   {{ t('subscription.channelExists') }}
                 </span>
               </div>
-              <p class="mt-1 text-xs text-muted-foreground">{{ target.description }}</p>
-            </button>
+              <p class="mt-1 truncate text-xs text-muted-foreground">{{ target.description }}</p>
+              <p v-if="copilotAccountCounts[target.value] > 0" class="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400">
+                {{ t('subscription.accountCountShort', { count: String(copilotAccountCounts[target.value]) }) }}
+              </p>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <section class="bg-glass dark:bg-glass-dark border border-border rounded-2xl p-5 space-y-5 md:min-h-0 md:overflow-y-auto md:overscroll-contain">
+        <div class="space-y-3">
+          <div class="flex items-start gap-3">
+            <div class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary ring-1 ring-border">
+              <Github class="h-5 w-5 text-foreground" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <h4 class="text-base font-semibold text-foreground">GitHub Copilot</h4>
+                <span class="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-700 dark:text-blue-300">
+                  {{ selectedCopilotTargetOption.label }}
+                </span>
+                <span
+                  v-if="copilotOAuthSuccess || hasSavedCopilotAuthorization || accountCount > 0"
+                  class="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-400"
+                >
+                  {{ t('subscription.authorized') }}
+                </span>
+              </div>
+              <p class="mt-1 text-sm text-muted-foreground">{{ t('subscription.copilotDescription') }}</p>
+              <p class="mt-1 text-xs text-muted-foreground">{{ selectedCopilotTargetOption.description }}</p>
+            </div>
           </div>
         </div>
 
-        <div v-if="accountCount > 0" class="space-y-2">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div class="space-y-1.5">
+            <Label class="text-xs text-muted-foreground">{{ t('channelEditor.transport.proxyUrl.label') }}</Label>
+            <Input
+              v-model="copilotProxyUrl"
+              class="font-mono text-xs"
+              :placeholder="t('channelEditor.transport.proxyUrl.placeholder')"
+            />
+            <p class="text-xs text-muted-foreground">{{ t('channelEditor.transport.proxyUrl.hint') }}</p>
+          </div>
+
+          <div class="rounded-xl border border-border bg-secondary/50 p-3 text-xs text-muted-foreground">
+            <Label class="text-xs text-muted-foreground">{{ t('subscription.targetLabel') }}</Label>
+            <p class="mt-1 text-sm font-medium text-foreground">{{ selectedCopilotTargetOption.label }}</p>
+            <p class="mt-1">{{ selectedCopilotTargetOption.description }}</p>
+          </div>
+        </div>
+
+        <div class="space-y-2">
           <Label class="text-xs text-muted-foreground">
             {{ t('subscription.accountsTitle', { target: selectedCopilotTargetOption.label, count: String(accountCount) }) }}
           </Label>
-          <div class="space-y-2">
+          <div v-if="accountCount > 0" class="space-y-2">
             <div
               v-for="account in copilotAccounts"
               :key="account.key"
@@ -354,6 +381,9 @@ onMounted(() => {
                 </button>
               </div>
             </div>
+          </div>
+          <div v-else class="rounded-lg border border-dashed border-border bg-background/50 px-3 py-4 text-sm text-muted-foreground">
+            {{ t('subscription.accountsEmpty', { target: selectedCopilotTargetOption.label }) }}
           </div>
         </div>
 
@@ -423,7 +453,6 @@ onMounted(() => {
             {{ t('subscription.retryAddAccount') }}
           </button>
         </div>
-
       </section>
     </div>
   </div>
