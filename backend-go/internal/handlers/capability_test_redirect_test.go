@@ -68,6 +68,29 @@ func TestExpandCapabilityProtocolsForChannel_SkipsSameProtocolWithoutModelMappin
 	}
 }
 
+func TestExpandCapabilityProtocolsForChannel_TreatsCopilotAsResponses(t *testing.T) {
+	channel := &config.UpstreamConfig{
+		ServiceType: "copilot",
+	}
+
+	got := expandCapabilityProtocolsForChannel("responses", channel, []string{"responses"})
+	want := []string{"responses"}
+	if len(got) != len(want) {
+		t.Fatalf("protocols length=%d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("protocols[%d]=%q, want %q: %v", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestServiceTypeToChannelKind_TreatsCopilotAsResponses(t *testing.T) {
+	if got := serviceTypeToChannelKind("copilot"); got != "responses" {
+		t.Fatalf("serviceTypeToChannelKind(copilot)=%q, want responses", got)
+	}
+}
+
 func TestRunRedirectVerification_UsesChannelServiceTypeForVirtualProtocol(t *testing.T) {
 	resetCapabilityTestState()
 

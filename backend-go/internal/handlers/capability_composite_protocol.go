@@ -37,7 +37,7 @@ func normalizeServiceTypeToProtocol(serviceType string) (CapabilityBaseProtocol,
 		return CapabilityProtocolMessages, true
 	case "openai", "openai-chat", "chat":
 		return CapabilityProtocolChat, true
-	case "responses", "codex":
+	case "responses", "codex", "copilot":
 		return CapabilityProtocolResponses, true
 	case "gemini":
 		return CapabilityProtocolGemini, true

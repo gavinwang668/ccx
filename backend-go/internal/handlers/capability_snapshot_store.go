@@ -349,7 +349,7 @@ func serviceTypeToChannelKind(serviceType string) string {
 		return "messages"
 	case "openai":
 		return "chat"
-	case "responses":
+	case "responses", "copilot":
 		return "responses"
 	case "gemini":
 		return "gemini"
