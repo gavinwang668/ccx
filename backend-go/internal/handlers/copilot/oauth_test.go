@@ -1,6 +1,7 @@
 package copilot
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,6 +30,33 @@ func TestRequestDeviceCodeSuccess(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"userCode":"USER-1"`) {
 		t.Fatalf("body = %s", w.Body.String())
+	}
+}
+
+func TestRequestDeviceCodeUsesProxyClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"device_code":"dev-1","user_code":"USER-1","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}`))
+	}))
+	defer upstream.Close()
+
+	oldFactory := newOAuthClient
+	newOAuthClient = func(client *http.Client) *corecopilot.OAuthClient {
+		if client == nil {
+			t.Fatal("expected proxy-aware HTTP client")
+		}
+		oauth := corecopilot.NewOAuthClient(upstream.Client())
+		oauth.DeviceCodeURL = upstream.URL + "/device/code"
+		return oauth
+	}
+	t.Cleanup(func() {
+		newOAuthClient = oldFactory
+	})
+
+	w := performRequestDeviceCodeWithBody(`{"proxyUrl":"http://127.0.0.1:7890"}`)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
 	}
 }
 
@@ -76,10 +104,17 @@ func withOAuthClient(t *testing.T, httpClient *http.Client, deviceCodeURL, acces
 }
 
 func performRequestDeviceCode() *httptest.ResponseRecorder {
+	return performRequestDeviceCodeWithBody("")
+}
+
+func performRequestDeviceCodeWithBody(body string) *httptest.ResponseRecorder {
 	router := gin.New()
 	router.POST("/api/copilot/oauth/device/code", RequestDeviceCode())
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/copilot/oauth/device/code", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/copilot/oauth/device/code", bytes.NewBufferString(body))
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	router.ServeHTTP(w, req)
 	return w
 }
