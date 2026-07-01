@@ -12,6 +12,8 @@ import (
 
 // ============== 工具函数 ==============
 
+const defaultCopilotBaseURL = "https://api.githubcopilot.com"
+
 // deduplicateStrings 去重字符串切片，保持原始顺序
 func deduplicateStrings(items []string) []string {
 	if len(items) <= 1 {
@@ -78,6 +80,13 @@ func deduplicateBaseURLs(urls []string, serviceType string) []string {
 		}
 	}
 	return result
+}
+
+func applyDefaultBaseURL(upstream *UpstreamConfig) {
+	if upstream == nil || upstream.ServiceType != "copilot" || strings.TrimSpace(upstream.BaseURL) != "" || len(upstream.BaseURLs) > 0 {
+		return
+	}
+	upstream.BaseURL = defaultCopilotBaseURL
 }
 
 // ConfigError 配置错误

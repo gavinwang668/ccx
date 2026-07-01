@@ -93,6 +93,7 @@ func (cm *ConfigManager) AddChatUpstream(upstream UpstreamConfig) error {
 	upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, upstream.APIKeyConfigs)
 	upstream.BaseURL = utils.CanonicalBaseURL(upstream.BaseURL, upstream.ServiceType)
 	upstream.BaseURLs = deduplicateBaseURLs(upstream.BaseURLs, upstream.ServiceType)
+	applyDefaultBaseURL(&upstream)
 
 	cm.config.ChatUpstream = append([]UpstreamConfig{upstream}, cm.config.ChatUpstream...)
 
@@ -139,6 +140,7 @@ func (cm *ConfigManager) UpdateChatUpstream(index int, updates UpstreamUpdate) (
 	if updates.ServiceType != nil {
 		upstream.ServiceType = serviceType
 	}
+	applyDefaultBaseURL(upstream)
 	if updates.AuthHeader != nil {
 		authHeader, err := applyAuthHeader(*updates.AuthHeader)
 		if err != nil {

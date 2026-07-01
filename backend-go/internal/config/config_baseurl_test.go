@@ -6,6 +6,15 @@ import (
 	"testing"
 )
 
+func TestApplyDefaultBaseURL_Copilot(t *testing.T) {
+	upstream := UpstreamConfig{ServiceType: "copilot"}
+	applyDefaultBaseURL(&upstream)
+
+	if upstream.BaseURL != defaultCopilotBaseURL {
+		t.Fatalf("BaseURL = %q, want %q", upstream.BaseURL, defaultCopilotBaseURL)
+	}
+}
+
 // TestUpdateUpstream_BaseURLConsistency 测试更新 baseUrl 时的一致性
 // 覆盖场景：
 // 1. 只更新 baseUrl 时，baseUrls 应被清空

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -332,12 +333,17 @@ func (cm *ConfigManager) applyServiceTypeDefaults() bool {
 	apply := func(channels []UpstreamConfig, fallback, channelName string) {
 		for i := range channels {
 			normalized := normalizeUpstreamServiceType(channels[i].ServiceType, fallback)
-			if channels[i].ServiceType == normalized {
-				continue
+			if channels[i].ServiceType != normalized {
+				channels[i].ServiceType = normalized
+				updated = true
+				log.Printf("[Config-Migration] %s 渠道 [%d] %s serviceType 为空，已回填为 %s", channelName, i, channels[i].Name, normalized)
 			}
-			channels[i].ServiceType = normalized
-			updated = true
-			log.Printf("[Config-Migration] %s 渠道 [%d] %s serviceType 为空，已回填为 %s", channelName, i, channels[i].Name, normalized)
+
+			if channels[i].ServiceType == "copilot" && strings.TrimSpace(channels[i].BaseURL) == "" && len(channels[i].BaseURLs) == 0 {
+				applyDefaultBaseURL(&channels[i])
+				updated = true
+				log.Printf("[Config-Migration] %s 渠道 [%d] %s Copilot BaseURL 为空，已回填为 %s", channelName, i, channels[i].Name, channels[i].BaseURL)
+			}
 		}
 	}
 

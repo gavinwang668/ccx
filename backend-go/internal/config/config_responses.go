@@ -93,6 +93,7 @@ func (cm *ConfigManager) AddResponsesUpstream(upstream UpstreamConfig) error {
 	upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, upstream.APIKeyConfigs)
 	upstream.BaseURL = utils.CanonicalBaseURL(upstream.BaseURL, upstream.ServiceType)
 	upstream.BaseURLs = deduplicateBaseURLs(upstream.BaseURLs, upstream.ServiceType)
+	applyDefaultBaseURL(&upstream)
 
 	cm.config.ResponsesUpstream = append([]UpstreamConfig{upstream}, cm.config.ResponsesUpstream...)
 
@@ -139,6 +140,7 @@ func (cm *ConfigManager) UpdateResponsesUpstream(index int, updates UpstreamUpda
 	if updates.ServiceType != nil {
 		upstream.ServiceType = serviceType
 	}
+	applyDefaultBaseURL(upstream)
 	if updates.AuthHeader != nil {
 		authHeader, err := applyAuthHeader(*updates.AuthHeader)
 		if err != nil {
