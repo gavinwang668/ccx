@@ -463,10 +463,22 @@ const { t } = useLanguage()
     form.baseUrl = baseUrl
   }, { immediate: true })
   
-  // API Key 是否满足必填：现有 + 新增；编辑模式下有可恢复 disabled key 也算
+  // 快速创建的 textarea 是创建模式的数据源；粘贴事件只作为增强，不能作为提交前提。
+  const submitBaseUrls = computed(() => {
+    const formBaseUrls = parseLines(form.baseUrlsText)
+    if (isEditMode.value) return formBaseUrls
+    return detectedBaseUrls.value.length > 0 ? detectedBaseUrls.value : formBaseUrls
+  })
+  const submitBaseUrl = computed(() => submitBaseUrls.value[0] || form.baseUrl)
+  const submitApiKeys = computed(() => {
+    const apiKeys = getSubmitApiKeys()
+    if (isEditMode.value) return apiKeys
+    return [...new Set([...apiKeys, ...detectedApiKeys.value])]
+  })
+
+  // API Key 是否满足必填：现有 + 新增；创建模式同时包含快速输入解析结果；编辑模式下有可恢复 disabled key 也算
   const hasConfigurableKeys = computed(() => {
-    if (existingApiKeys.value.length > 0) return true
-    if (parseLines(newApiKeysText.value).length > 0) return true
+    if (submitApiKeys.value.length > 0) return true
     if (isEditMode.value && visibleDisabledKeys.value.length > 0) return true
     return false
   })
@@ -476,7 +488,7 @@ const { t } = useLanguage()
     if (isEditMode.value && !form.name.trim()) errs.name = t('channelEditor.basic.name.required')
     if (!isEditMode.value && !generatedChannelName.value.trim()) errs.name = t('channelEditor.basic.name.required')
     if (!form.serviceType) errs.serviceType = t('channelEditor.basic.serviceType.required')
-    if (form.serviceType !== 'copilot' && !form.baseUrlsText.trim()) errs.baseUrl = t('channelEditor.basic.baseUrl.required')
+    if (form.serviceType !== 'copilot' && submitBaseUrls.value.length === 0) errs.baseUrl = t('channelEditor.basic.baseUrl.required')
     // copilot 渠道通过 OAuth 登录，apiKeys 由登录流程填充，此处豁免必填校验
     if (!hasConfigurableKeys.value && form.serviceType !== 'copilot') errs.apiKeys = t('channelEditor.auth.apiKeyRequired')
     if (String(form.requestTimeoutMs).trim()) {
@@ -552,8 +564,8 @@ const { t } = useLanguage()
           name: generatedChannelName.value,
           serviceType: form.serviceType,
           authHeader: form.authHeader,
-          baseUrl: form.baseUrl,
-          baseUrls: parseLines(form.baseUrlsText),
+          baseUrl: submitBaseUrl.value,
+          baseUrls: submitBaseUrls.value,
           website: form.website,
           insecureSkipVerify: form.insecureSkipVerify,
           lowQuality: form.lowQuality,
@@ -562,7 +574,7 @@ const { t } = useLanguage()
           passbackReasoningContent: form.passbackReasoningContent,
           passbackThinkingBlocks: form.passbackThinkingBlocks,
           description: form.description,
-          apiKeys: getSubmitApiKeys(),
+          apiKeys: submitApiKeys.value,
           modelMapping: parseJsonObject<Record<string, string>>(form.modelMappingText, 'Model mapping'),
           modelCapabilityRows: modelCapabilityRows.value,
           reasoningMapping: parseJsonObject<Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>>(form.reasoningMappingText, 'Reasoning mapping'),
