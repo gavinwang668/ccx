@@ -443,10 +443,6 @@ const { t } = useLanguage()
   }
   
   watch(() => props.channel, (ch) => {
-    console.log('[watch channel] 渠道变化', { 
-      hasChannel: !!ch, 
-      hasMappings: ch?.modelMapping ? Object.keys(ch.modelMapping).length : 0 
-    })
     resetForm()
     if (ch) {
       populateFromChannel(ch)
@@ -454,9 +450,7 @@ const { t } = useLanguage()
       // 如果有模型映射配置，主动触发一次模型列表获取
       // 使用 nextTick 确保表单数据已填充完成
       if (ch.modelMapping && Object.keys(ch.modelMapping).length > 0) {
-        console.log('[watch channel] 检测到模型映射，准备预加载')
         nextTick(() => {
-          console.log('[watch channel] nextTick 后触发预加载')
           void fetchTargetModelsAndShowDropdown()
         })
       }
@@ -763,6 +757,15 @@ const { t } = useLanguage()
   function syncUpstreamModels() {
     void fetchTargetModelsAndShowDropdown()
   }
+
+  // 目标模型列表异步到达时，若输入框仍处于焦点态，补刷下拉可见性：
+  // 首次 focus 时数据未返回，showTargetDropdown 按空 datalist 将 showTargetSuggestions
+  // 置为 false，加载完成后不会自动翻转，导致下拉不出现，必须重新 focus 才行。
+  watch(targetModelDatalist, (list) => {
+    if (activeTargetInputId.value && list.length > 0 && !showTargetSuggestions.value) {
+      showTargetSuggestions.value = true
+    }
+  })
   
   // ── 编辑头部动作：noVision toggle + Test Capability ──
   
