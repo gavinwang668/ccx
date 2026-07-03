@@ -1,3 +1,13 @@
+## [v2.9.31] - 2026-07-03
+
+### 新增
+
+- **DeepSeek tool_use passback 双重降级缓存** - thinking: DeepSeek tool_use passback 双重降级缓存
+
+### 修复
+
+- **opaque encrypted_reasoning 占位保障 DeepSeek thinking passback** - responses: opaque encrypted_reasoning 占位保障 DeepSeek thinking passback
+
 ## [v2.9.30] - 2026-07-03
 
 ### 新增
