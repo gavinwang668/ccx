@@ -343,6 +343,61 @@ func isAccountPoolUnavailableMap(m map[string]interface{}) bool {
 	return false
 }
 
+// isTemporarilyOverloadedMap 判断错误对象是否表示上游临时过载
+// （CPU 过载、服务暂时不可用等），用于触发渠道短时间冷却。
+func isTemporarilyOverloadedMap(m map[string]interface{}) bool {
+	combined := strings.ToLower(strings.Join([]string{
+		toStringField(m, "code"),
+		toStringField(m, "type"),
+		toStringField(m, "message"),
+		toStringField(m, "detail"),
+		toStringField(m, "msg"),
+	}, " "))
+
+	overloadedMarkers := []string{
+		"system_cpu_overloaded",
+		"cpu_overloaded",
+		"server_overloaded",
+		"overloaded_error",
+		"overloaded",
+		"service_unavailable",
+		"service_temporarily_unavailable",
+		"temporarily_unavailable",
+		"系统过载",
+		"服务暂时不可用",
+		"服务不可用",
+	}
+	for _, marker := range overloadedMarkers {
+		if strings.Contains(combined, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsUpstreamTemporarilyOverloaded 判断上游响应体是否表示临时过载
+// （如 503 system_cpu_overloaded、529 overloaded_error）。
+// 命中后调用方应对渠道施加短时间冷却，避免反复重试过载的上游。
+func IsUpstreamTemporarilyOverloaded(bodyBytes []byte) bool {
+	var errResp map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &errResp); err != nil {
+		return false
+	}
+
+	if isTemporarilyOverloadedMap(errResp) {
+		return true
+	}
+	if errObj, ok := errResp["error"].(map[string]interface{}); ok {
+		if isTemporarilyOverloadedMap(errObj) {
+			return true
+		}
+		if upstreamErr, ok := errObj["upstream_error"].(map[string]interface{}); ok {
+			return isTemporarilyOverloadedMap(upstreamErr)
+		}
+	}
+	return false
+}
+
 func classifyMessageFromMap(m map[string]interface{}) (bool, bool, string) {
 	messageFields := []string{"message", "param", "upstream_error", "detail", "error_description", "msg"}
 	for _, field := range messageFields {

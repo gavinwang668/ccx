@@ -24,6 +24,7 @@ import (
 
 const (
 	upstreamAccountPoolCooldown = time.Minute
+	upstreamOverloadedCooldown  = 15 * time.Second
 	halfOpenProbeWaitTimeout    = 5 * time.Second
 	halfOpenProbePollInterval   = 100 * time.Millisecond
 )
@@ -429,6 +430,11 @@ func TryUpstreamWithAllKeys(
 					if IsUpstreamAccountPoolUnavailable(respBodyBytes) {
 						channelScheduler.MarkChannelCooldown(kind, channelIndex, upstreamAccountPoolCooldown)
 						RequestLogf(c, "[%s-Channel] 渠道 [%d] %s 上游账号池不可用，冷却 %s 并尝试下一个渠道", apiType, channelIndex, upstream.Name, upstreamAccountPoolCooldown)
+						return false, "", 0, lastFailoverError, nil, lastError
+					}
+					if IsUpstreamTemporarilyOverloaded(respBodyBytes) {
+						channelScheduler.MarkChannelCooldown(kind, channelIndex, upstreamOverloadedCooldown)
+						RequestLogf(c, "[%s-Channel] 渠道 [%d] %s 上游临时过载，冷却 %s 并尝试下一个渠道", apiType, channelIndex, upstream.Name, upstreamOverloadedCooldown)
 						return false, "", 0, lastFailoverError, nil, lastError
 					}
 					continue
