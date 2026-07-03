@@ -1,3 +1,23 @@
+## [v2.9.30] - 2026-07-03
+
+### 新增
+
+- **原生 WebSocket v2 透传** - responses: 支持原生 WebSocket v2 透传
+- **流式 session 回写与 incomplete 合成** - responses: 流式路径 session 回写并在 post-commit stall 时合成 incomplete
+- **Responses reasoning encrypted_content 缓存** - thinkingcache: 扩展存储 Responses reasoning encrypted_content
+- **分层保真 compact** - compact: 增加分层保真 compact 与 function_call_output 摘要
+
+### 修复
+
+- **快速创建渠道数据源提交** - desktop: 统一快速创建渠道时提交数据源
+- **视觉回退上下文校验** - failover: 校验 vision fallback context，避免无效视觉回退上下文继续传播
+- **agent skills 路径与 Store MSIX tag 下载** - skill: 修复 `.agents/skills` 内 skill 文档误指向 `.claude/skills` 的路径，并确保 store-update 脚本的 `--tag` 会传递给 `gh release download`
+
+### 其他
+
+- **desktop-store-update 技能清理** - skill: 删除 desktop-store-update 技能并更新工具配置
+- **agent skills 同步** - skill: 同步 agent skills 文档、脚本和 upstream-check 状态
+
 ## [v2.9.29] - 2026-07-03
 
 ### 新增
@@ -8,7 +28,6 @@
 
 ### 修复
 
-- **agent skills 路径与 Store MSIX tag 下载** - skill: 修复 `.agents/skills` 内 skill 文档误指向 `.claude/skills` 的路径，并确保 store-update 脚本的 `--tag` 会传递给 `gh release download`
 - **MiniMax M2 系列上下文与输出元数据** - model-registry: 修正 MiniMax M2 系列上下文与输出元数据
 - **火山方舟 quota exceeded 识别与临时限流误判** - failover: 识别火山方舟 quota exceeded 并修复临时 token-per-minute 限流误判
 - **桌面渠道模型映射下拉框显示** - desktop: 修复渠道模型映射下拉框显示并清理调试日志
