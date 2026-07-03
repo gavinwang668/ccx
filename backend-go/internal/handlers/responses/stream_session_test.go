@@ -12,6 +12,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/session"
+	"github.com/BenedictKing/ccx/internal/thinkingcache"
 	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/gin-gonic/gin"
 )
@@ -169,5 +170,76 @@ func TestHandleStreamSuccess_PostCommitStallSynthesizesIncompleteEvent(t *testin
 	}
 	if !strings.Contains(body, "stream_stalled") {
 		t.Fatalf("response.incomplete 应包含 incomplete_details.reason=stream_stalled，实际输出:\n%s", body)
+	}
+}
+
+func TestHandleStreamSuccess_StoresReasoningEncryptedContentToThinkingCache(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5","stream":true}`))
+
+	thinkingcache.ResetForTest()
+	sessionManager := session.NewSessionManager(time.Hour, 100, 100000)
+
+	reader, writer := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       reader,
+	}
+
+	go func() {
+		defer writer.Close()
+		writeSSE := func(s string) { io.WriteString(writer, s) }
+
+		writeSSE("event: response.output_item.added\n")
+		writeSSE("data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"reasoning\"}}\n\n")
+		writeSSE("event: response.reasoning_summary_text.delta\n")
+		writeSSE("data: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":0,\"text\":\"thinking\"}\n\n")
+		writeSSE("event: response.output_item.done\n")
+		writeSSE("data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rs_cache_test\",\"encrypted_content\":\"CACHED_ENCRYPTED_BLOB\"}}\n\n")
+
+		writeSSE("event: response.output_item.added\n")
+		writeSSE("data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"message\",\"role\":\"assistant\"}}\n\n")
+		writeSSE("event: response.output_text.delta\n")
+		writeSSE("data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"content_index\":0,\"delta\":\"answer\"}\n\n")
+		writeSSE("event: response.output_item.done\n")
+		writeSSE("data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\"}]}}\n\n")
+
+		writeSSE("event: response.completed\n")
+		writeSSE("data: {\"type\":\"response.completed\",\"sequence_number\":5,\"response\":{\"id\":\"resp_cache_test\",\"status\":\"completed\",\"output\":[]},\"usage\":{\"input_tokens\":5,\"output_tokens\":5}}\n\n")
+	}()
+
+	originalReq := &types.ResponsesRequest{
+		Model:  "gpt-5",
+		Input:  "hello",
+		Stream: true,
+	}
+
+	if _, err := handleStreamSuccess(
+		c, resp, "responses",
+		&config.EnvConfig{LogLevel: "info"},
+		sessionManager,
+		time.Now(),
+		originalReq,
+		[]byte(`{"model":"gpt-5","stream":true}`),
+		common.StreamPreflightTimeouts{FirstContentTimeoutMs: 5000, InactivityTimeoutMs: 3000},
+	); err != nil {
+		t.Fatalf("handleStreamSuccess() err = %v", err)
+	}
+
+	// 通过 responseID 找到 session，验证 reasoning encrypted_content 已存入 thinkingcache
+	sess, err := sessionManager.GetSessionByResponseID("resp_cache_test")
+	if err != nil {
+		t.Fatalf("GetSessionByResponseID() err = %v", err)
+	}
+
+	got, ok := thinkingcache.LookupResponsesReasoning(sess.ID, "rs_cache_test")
+	if !ok {
+		t.Fatal("期望 thinkingcache 命中 rs_cache_test 的 encrypted_content")
+	}
+	if got != "CACHED_ENCRYPTED_BLOB" {
+		t.Fatalf("thinkingcache 中的 encrypted_content = %q, want CACHED_ENCRYPTED_BLOB", got)
 	}
 }

@@ -32,9 +32,10 @@ type Config struct {
 }
 
 type cacheEntry struct {
-	Thinking  string
-	ExpiresAt time.Time
-	UpdatedAt time.Time
+	Thinking         string
+	EncryptedContent string // Responses reasoning 的加密推理状态快照（Codex encrypted_content）
+	ExpiresAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type cacheStore struct {
@@ -293,6 +294,34 @@ func LookupClaudeThinkingForContent(sessionID string, content interface{}) (stri
 	return globalStore.lookup(sessionID, fingerprint)
 }
 
+// responsesReasoningFingerprintPrefix 用于区分 Responses reasoning 缓存与 Claude thinking 缓存，
+// 避免不同语义的条目共享同一 key 空间。
+const responsesReasoningFingerprintPrefix = "resp_enc:"
+
+// StoreResponsesReasoning 存储 Responses 协议 reasoning item 的 encrypted_content，
+// 按 sessionID + itemID 索引。供 converter 路径在把 reasoning 降级为 thinking 块时
+// 以 side-effect 保留加密推理状态，供未来续接重放使用。
+func StoreResponsesReasoning(sessionID, itemID, encryptedContent string) bool {
+	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(itemID) == "" {
+		return false
+	}
+	if strings.TrimSpace(encryptedContent) == "" {
+		return false
+	}
+	fingerprint := responsesReasoningFingerprintPrefix + itemID
+	globalStore.storeEncrypted(sessionID, fingerprint, encryptedContent)
+	return true
+}
+
+// LookupResponsesReasoning 返回之前缓存的 reasoning encrypted_content。
+func LookupResponsesReasoning(sessionID, itemID string) (string, bool) {
+	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(itemID) == "" {
+		return "", false
+	}
+	fingerprint := responsesReasoningFingerprintPrefix + itemID
+	return globalStore.lookupEncrypted(sessionID, fingerprint)
+}
+
 func (s *cacheStore) store(sessionID, fingerprint, thinking string) {
 	now := time.Now()
 	sessionHash := hashSessionID(sessionID)
@@ -318,7 +347,7 @@ func (s *cacheStore) store(sessionID, fingerprint, thinking string) {
 		UpdatedAt: now,
 	}
 	if s.db != nil {
-		if err := s.upsertLocked(key, sessionHash, fingerprint, thinking, now, now.Add(ttl)); err != nil {
+		if err := s.upsertLocked(key, sessionHash, fingerprint, thinking, "", now, now.Add(ttl)); err != nil {
 			log.Printf("[ThinkingCache] 警告: 写入 SQLite 缓存失败: %v", err)
 		}
 	}
@@ -361,6 +390,103 @@ func (s *cacheStore) lookup(sessionID, fingerprint string) (string, bool) {
 	}
 	s.mu.Unlock()
 	return thinking, true
+}
+
+// storeEncrypted 存储 Responses reasoning 的 encrypted_content，用 fingerprint 区分条目。
+// 与 Claude thinking 缓存共用 entries map 和 SQLite 表，但 fingerprint 带 resp_enc: 前缀避免冲突。
+func (s *cacheStore) storeEncrypted(sessionID, fingerprint, encryptedContent string) {
+	now := time.Now()
+	sessionHash := hashSessionID(sessionID)
+	key := cacheKeyFromParts(sessionHash, fingerprint)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.evictExpiredLocked(now)
+	if _, exists := s.entries[key]; !exists {
+		for len(s.entries) >= defaultMaxEntries {
+			s.evictOldestLocked()
+		}
+	}
+
+	ttl := s.ttl
+	if ttl <= 0 {
+		ttl = defaultTTL
+	}
+	s.entries[key] = cacheEntry{
+		EncryptedContent: encryptedContent,
+		ExpiresAt:        now.Add(ttl),
+		UpdatedAt:        now,
+	}
+	if s.db != nil {
+		if err := s.upsertLocked(key, sessionHash, fingerprint, "", encryptedContent, now, now.Add(ttl)); err != nil {
+			log.Printf("[ThinkingCache] 警告: 写入 SQLite reasoning 缓存失败: %v", err)
+		}
+	}
+}
+
+// lookupEncrypted 查找 Responses reasoning 的 encrypted_content。
+func (s *cacheStore) lookupEncrypted(sessionID, fingerprint string) (string, bool) {
+	now := time.Now()
+	key := cacheKey(sessionID, fingerprint)
+
+	s.mu.Lock()
+	entry, ok := s.entries[key]
+	if ok && !s.isExpiredLocked(entry, now) {
+		enc := entry.EncryptedContent
+		s.mu.Unlock()
+		return enc, enc != ""
+	}
+	if ok {
+		delete(s.entries, key)
+		s.mu.Unlock()
+		return "", false
+	}
+
+	if s.db == nil {
+		s.mu.Unlock()
+		return "", false
+	}
+	enc, updatedAt, ok := s.lookupEncryptedSQLiteLocked(key, now)
+	if !ok {
+		s.mu.Unlock()
+		return "", false
+	}
+	ttl := s.ttl
+	if ttl <= 0 {
+		ttl = defaultTTL
+	}
+	s.entries[key] = cacheEntry{
+		EncryptedContent: enc,
+		UpdatedAt:        updatedAt,
+		ExpiresAt:        updatedAt.Add(ttl),
+	}
+	s.mu.Unlock()
+	return enc, enc != ""
+}
+
+func (s *cacheStore) lookupEncryptedSQLiteLocked(key string, now time.Time) (string, time.Time, bool) {
+	ttl := s.ttl
+	if ttl <= 0 {
+		ttl = defaultTTL
+	}
+	cutoff := now.Add(-ttl).Unix()
+
+	var encryptedContent string
+	var updatedAtUnix int64
+	err := s.db.QueryRow(`
+		SELECT encrypted_content, updated_at
+		FROM claude_thinking_cache
+		WHERE cache_key = ? AND updated_at >= ?
+	`, key, cutoff).Scan(&encryptedContent, &updatedAtUnix)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", time.Time{}, false
+		}
+		log.Printf("[ThinkingCache] 警告: 查询 SQLite reasoning 缓存失败: %v", err)
+		return "", time.Time{}, false
+	}
+	return encryptedContent, time.Unix(updatedAtUnix, 0), encryptedContent != ""
 }
 
 func (s *cacheStore) evictExpiredLocked(now time.Time) {
@@ -448,6 +574,7 @@ func initSQLiteSchema(db *sql.DB) error {
 			session_hash TEXT NOT NULL,
 			fingerprint TEXT NOT NULL,
 			thinking TEXT NOT NULL,
+			encrypted_content TEXT NOT NULL DEFAULT '',
 			expires_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL
 		);
@@ -461,19 +588,27 @@ func initSQLiteSchema(db *sql.DB) error {
 	if _, err := db.Exec(schema); err != nil {
 		return fmt.Errorf("初始化 thinking cache schema 失败: %w", err)
 	}
+	// 为已有数据库补充 encrypted_content 列（ALTER TABLE IF NOT EXISTS 从 SQLite 3.35 起支持）
+	if _, err := db.Exec(`ALTER TABLE claude_thinking_cache ADD COLUMN encrypted_content TEXT NOT NULL DEFAULT ''`); err != nil {
+		// 列已存在时忽略错误（SQLite 返回 "duplicate column name"）
+		if !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("[ThinkingCache] 警告: 迁移 encrypted_content 列失败: %v", err)
+		}
+	}
 	return nil
 }
 
-func (s *cacheStore) upsertLocked(key, sessionHash, fingerprint, thinking string, updatedAt, expiresAt time.Time) error {
+func (s *cacheStore) upsertLocked(key, sessionHash, fingerprint, thinking, encryptedContent string, updatedAt, expiresAt time.Time) error {
 	_, err := s.db.Exec(`
 		INSERT INTO claude_thinking_cache
-			(cache_key, session_hash, fingerprint, thinking, expires_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+			(cache_key, session_hash, fingerprint, thinking, encrypted_content, expires_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(cache_key) DO UPDATE SET
 			thinking = excluded.thinking,
+			encrypted_content = excluded.encrypted_content,
 			expires_at = excluded.expires_at,
 			updated_at = excluded.updated_at
-	`, key, sessionHash, fingerprint, thinking, expiresAt.Unix(), updatedAt.Unix())
+	`, key, sessionHash, fingerprint, thinking, encryptedContent, expiresAt.Unix(), updatedAt.Unix())
 	return err
 }
 
@@ -527,7 +662,7 @@ func (s *cacheStore) loadValidEntriesLocked(now time.Time) error {
 	}
 	cutoff := now.Add(-ttl).Unix()
 	rows, err := s.db.Query(`
-		SELECT cache_key, thinking, updated_at
+		SELECT cache_key, thinking, encrypted_content, updated_at
 		FROM claude_thinking_cache
 		WHERE updated_at >= ?
 		ORDER BY updated_at DESC
@@ -541,15 +676,17 @@ func (s *cacheStore) loadValidEntriesLocked(now time.Time) error {
 	for rows.Next() {
 		var key string
 		var thinking string
+		var encryptedContent string
 		var updatedAtUnix int64
-		if err := rows.Scan(&key, &thinking, &updatedAtUnix); err != nil {
+		if err := rows.Scan(&key, &thinking, &encryptedContent, &updatedAtUnix); err != nil {
 			return err
 		}
 		updatedAt := time.Unix(updatedAtUnix, 0)
 		s.entries[key] = cacheEntry{
-			Thinking:  thinking,
-			UpdatedAt: updatedAt,
-			ExpiresAt: updatedAt.Add(ttl),
+			Thinking:         thinking,
+			EncryptedContent: encryptedContent,
+			UpdatedAt:        updatedAt,
+			ExpiresAt:        updatedAt.Add(ttl),
 		}
 	}
 	if err := rows.Err(); err != nil {

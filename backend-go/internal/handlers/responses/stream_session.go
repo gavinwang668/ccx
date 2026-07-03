@@ -84,23 +84,24 @@ func extractSSEDataLine(line string) (string, bool) {
 // writeStreamSession 将流式收集到的 input/output items 回写到 session。
 // 即使客户端中途断连也应执行，以保证会话历史（含 reasoning encrypted_content）完整。
 // 与非流式路径 response.go:handleSuccess 的回写逻辑对齐，但不修改任何客户端可见输出。
+// 返回写入的 sessionID（空字符串表示未创建/未写入 session）。
 func writeStreamSession(
 	sessionManager *session.SessionManager,
 	originalReq *types.ResponsesRequest,
 	collector *streamOutputCollector,
-) {
+) string {
 	if sessionManager == nil || originalReq == nil {
-		return
+		return ""
 	}
 	// 尊重 store 语义，与非流式路径一致
 	if originalReq.Store != nil && !*originalReq.Store {
-		return
+		return ""
 	}
 
 	sess, err := sessionManager.GetOrCreateSession(originalReq.PreviousResponseID)
 	if err != nil {
 		// previousResponseID 无效时不创建新会话，与非流式路径行为一致
-		return
+		return ""
 	}
 
 	inputItems, _ := parseInputToItems(originalReq.Input)
@@ -119,4 +120,5 @@ func writeStreamSession(
 
 	sessionManager.UpdateLastResponseID(sess.ID, responseID)
 	sessionManager.RecordResponseMapping(responseID, sess.ID)
+	return sess.ID
 }
