@@ -8,7 +8,7 @@ import type {
 } from '@/services/admin-api'
 import { useAdminApi } from '@/composables/useAdminApi'
 
-export type ManagedChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+export type ManagedChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
 export interface ChannelTypeApi {
   getMetrics: () => Promise<ChannelMetrics[]>
@@ -59,7 +59,7 @@ export function getChannelTypeApi(channelType: ManagedChannelType): ChannelTypeA
     deleteChannel: (channelId) => api.del(`${prefix}/channels/${channelId}`),
     pingChannel: (channelId) => api.post(`${prefix}/ping/${channelId}`),
     pingAll: () => api.post(`${prefix}/ping`),
-    addApiKey: (channelId, key) => api.post(`${prefix}/channels/${channelId}/keys`, { key }),
+    addApiKey: (channelId, key) => api.post(`${prefix}/channels/${channelId}/keys`, { apiKey: key }),
     removeApiKey: (channelId, key) => api.del(`${prefix}/channels/${channelId}/keys/${encodeURIComponent(key)}`),
     restoreApiKey: (channelId, key) => api.post(`${prefix}/channels/${channelId}/keys/restore`, { apiKey: key }),
     moveApiKeyToTop: (channelId, key) => api.post(`${prefix}/channels/${channelId}/keys/${encodeURIComponent(key)}/top`),

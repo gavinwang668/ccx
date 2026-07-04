@@ -166,7 +166,7 @@ import { effectiveChartIntervalMs } from '@/utils/chart-sampling'
 
 const props = withDefaults(
   defineProps<{
-    apiType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+    apiType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
     compact?: boolean
     chartInterval?: string
   }>(),

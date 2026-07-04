@@ -1,6 +1,6 @@
 import type { ApiService, ChannelMetrics, ChannelStatus, ResumeChannelResponse, SchedulerStatsResponse } from '../services/api'
 
-export type ManagedChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+export type ManagedChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
 type ChannelTypeApi = {
   getMetrics: () => Promise<ChannelMetrics[]>
@@ -17,27 +17,32 @@ type ChannelApiSubset = Pick<ApiService,
   | 'getChatChannelMetrics'
   | 'getGeminiChannelMetrics'
   | 'getImagesChannelMetrics'
+  | 'getVectorsChannelMetrics'
   | 'getSchedulerStats'
   | 'reorderChannels'
   | 'reorderResponsesChannels'
   | 'reorderChatChannels'
   | 'reorderGeminiChannels'
   | 'reorderImagesChannels'
+  | 'reorderVectorsChannels'
   | 'setChannelStatus'
   | 'setResponsesChannelStatus'
   | 'setChatChannelStatus'
   | 'setGeminiChannelStatus'
   | 'setImagesChannelStatus'
+  | 'setVectorsChannelStatus'
   | 'resumeChannel'
   | 'resumeResponsesChannel'
   | 'resumeChatChannel'
   | 'resumeGeminiChannel'
   | 'resumeImagesChannel'
+  | 'resumeVectorsChannel'
   | 'setChannelPromotion'
   | 'setResponsesChannelPromotion'
   | 'setChatChannelPromotion'
   | 'setGeminiChannelPromotion'
   | 'setImagesChannelPromotion'
+  | 'setVectorsChannelPromotion'
 >
 
 export const getChannelTypeApi = (api: ChannelApiSubset, channelType: ManagedChannelType): ChannelTypeApi => {
@@ -68,6 +73,15 @@ export const getChannelTypeApi = (api: ChannelApiSubset, channelType: ManagedCha
         setStatus: (channelId, status) => api.setImagesChannelStatus(channelId, status),
         resume: (channelId) => api.resumeImagesChannel(channelId),
         promote: (channelId, durationSeconds) => api.setImagesChannelPromotion(channelId, durationSeconds)
+      }
+    case 'vectors':
+      return {
+        getMetrics: () => api.getVectorsChannelMetrics(),
+        getSchedulerStats: () => api.getSchedulerStats('vectors'),
+        reorder: (order) => api.reorderVectorsChannels(order),
+        setStatus: (channelId, status) => api.setVectorsChannelStatus(channelId, status),
+        resume: (channelId) => api.resumeVectorsChannel(channelId),
+        promote: (channelId, durationSeconds) => api.setVectorsChannelPromotion(channelId, durationSeconds)
       }
     case 'responses':
       return {

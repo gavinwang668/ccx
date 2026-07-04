@@ -110,6 +110,10 @@
             {{ t('app.tabs.images') }}
           </router-link>
           <span class="api-type-text separator">/</span>
+          <router-link to="/channels/vectors" class="api-type-text" :class="{ active: channelStore.activeTab === 'vectors' && route.path !== '/conversations' }">
+            {{ t('app.tabs.vectors') }}
+          </router-link>
+          <span class="api-type-text separator">/</span>
           <router-link to="/channels/responses" class="api-type-text" :class="{ active: channelStore.activeTab === 'responses' && route.path !== '/conversations' }">
             {{ t('app.tabs.responses') }}
           </router-link>

@@ -183,7 +183,7 @@ import { useI18n } from '../i18n'
 import { usePreferencesStore } from '../stores/preferences'
 
 type ServiceType = 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot'
-type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
 interface Props {
   show: boolean
@@ -259,6 +259,8 @@ const serviceTypeOptions = computed(() => {
       return reorder(allOptions, 'gemini')
     case 'images':
       return [{ title: 'OpenAI Images', value: 'openai' as const }]
+    case 'vectors':
+      return [{ title: 'OpenAI Embeddings', value: 'openai' as const }]
     default:
       return allOptions
   }
@@ -360,7 +362,7 @@ function getDefaultServiceTypeValue(): ServiceType {
   if (props.channelType === 'chat') return 'openai'
   if (props.channelType === 'gemini') return 'gemini'
   if (props.channelType === 'responses') return 'responses'
-  if (props.channelType === 'images') return 'openai'
+  if (props.channelType === 'images' || props.channelType === 'vectors') return 'openai'
   return 'claude'
 }
 
@@ -374,14 +376,14 @@ function generateRandomString(length: number): string {
 }
 
 function parseQuickInput() {
-  const fallbackServiceType = props.channelType === 'images'
+  const fallbackServiceType = props.channelType === 'images' || props.channelType === 'vectors'
     ? 'openai'
     : quickServiceType.value
   const result = parseQuickInputUtil(quickInput.value, fallbackServiceType)
   detectedBaseUrl.value = result.detectedBaseUrl
   detectedBaseUrls.value = result.detectedBaseUrls
   detectedApiKeys.value = result.detectedApiKeys
-  detectedServiceType.value = props.channelType === 'images'
+  detectedServiceType.value = props.channelType === 'images' || props.channelType === 'vectors'
     ? 'openai'
     : result.detectedServiceType
 
@@ -405,7 +407,7 @@ function handleServiceTypeChange(value: ServiceType) {
 
 function getExpectedRequestUrl(inputBaseUrl: string): string {
   if (!inputBaseUrl) return ''
-  const serviceType = props.channelType === 'images' ? 'openai' : quickServiceType.value
+  const serviceType = props.channelType === 'images' || props.channelType === 'vectors' ? 'openai' : quickServiceType.value
   return buildExpectedRequestUrls(props.channelType, serviceType, inputBaseUrl)[0]?.expectedUrl || ''
 }
 
@@ -432,7 +434,7 @@ function handleQuickSubmit() {
 
   const channel = {
     name: generatedChannelName.value,
-    serviceType: props.channelType === 'images' ? 'openai' : quickServiceType.value,
+    serviceType: props.channelType === 'images' || props.channelType === 'vectors' ? 'openai' : quickServiceType.value,
     baseUrl: detectedBaseUrl.value,
     baseUrls: detectedBaseUrls.value,
     apiKeys: detectedApiKeys.value,

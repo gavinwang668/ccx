@@ -54,6 +54,7 @@ const kindFilterOptions = [
   { label: 'MESSAGES', value: 'messages', class: 'border-purple-500/50 text-purple-500 data-[active=true]:bg-purple-500/10' },
   { label: 'CHAT', value: 'chat', class: 'border-blue-500/50 text-blue-500 data-[active=true]:bg-blue-500/10' },
   { label: 'IMAGES', value: 'images', class: 'border-pink-500/50 text-pink-500 data-[active=true]:bg-pink-500/10' },
+  { label: 'VECTORS', value: 'vectors', class: 'border-sky-500/50 text-sky-500 data-[active=true]:bg-sky-500/10' },
   { label: 'RESPONSES', value: 'responses', class: 'border-teal-500/50 text-teal-500 data-[active=true]:bg-teal-500/10' },
   { label: 'GEMINI', value: 'gemini', class: 'border-orange-500/50 text-orange-500 data-[active=true]:bg-orange-500/10' },
 ]

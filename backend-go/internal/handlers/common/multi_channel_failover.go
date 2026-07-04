@@ -64,6 +64,38 @@ func HandleMultiChannelFailoverWithContextRequirement(
 	onHandled OnMultiChannelHandledFunc,
 	handleAllFailed HandleAllFailedFunc,
 ) {
+	HandleMultiChannelFailoverWithSelectionFilter(
+		c,
+		envCfg,
+		channelScheduler,
+		kind,
+		apiType,
+		userID,
+		model,
+		contextRequirement,
+		agentRole,
+		nil,
+		trySelectedChannel,
+		onHandled,
+		handleAllFailed,
+	)
+}
+
+func HandleMultiChannelFailoverWithSelectionFilter(
+	c *gin.Context,
+	envCfg *config.EnvConfig,
+	channelScheduler *scheduler.ChannelScheduler,
+	kind scheduler.ChannelKind,
+	apiType string,
+	userID string,
+	model string,
+	contextRequirement *scheduler.ContextRequirement,
+	agentRole string,
+	candidateFilter scheduler.CandidateFilterFunc,
+	trySelectedChannel TrySelectedChannelFunc,
+	onHandled OnMultiChannelHandledFunc,
+	handleAllFailed HandleAllFailedFunc,
+) {
 	if c == nil || envCfg == nil || channelScheduler == nil || trySelectedChannel == nil {
 		return
 	}
@@ -105,6 +137,7 @@ func HandleMultiChannelFailoverWithContextRequirement(
 			ContextRequirement: contextRequirement,
 			HasImageContent:    hasImageContent,
 			AgentRole:          agentRole,
+			CandidateFilter:    candidateFilter,
 		})
 		if err != nil {
 			lastError = err

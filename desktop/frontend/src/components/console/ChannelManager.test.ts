@@ -22,6 +22,7 @@ const channelsByType = ref({
   },
   chat: { channels: [], current: 0 },
   images: { channels: [], current: 0 },
+  vectors: { channels: [], current: 0 },
   responses: { channels: [], current: 0 },
   gemini: { channels: [], current: 0 },
 })
@@ -29,6 +30,7 @@ const dashboardCache = ref({
   messages: { metrics: [], stats: { multiChannelMode: false }, recentActivity: [] },
   chat: { metrics: [], stats: undefined, recentActivity: [] },
   images: { metrics: [], stats: undefined, recentActivity: [] },
+  vectors: { metrics: [], stats: undefined, recentActivity: [] },
   responses: { metrics: [], stats: undefined, recentActivity: [] },
   gemini: { metrics: [], stats: undefined, recentActivity: [] },
 })

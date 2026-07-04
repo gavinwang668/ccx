@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildChannelPayload } from './channelPayload'
+import { buildChannelPayload, embeddingCapabilityRowsToRecord } from './channelPayload'
 
 describe('buildChannelPayload', () => {
   it('应序列化 reasoningMapping 与渠道级 verbosity/fastMode', () => {
@@ -720,5 +720,200 @@ describe('buildChannelPayload', () => {
     expect(result.modelMapping).toBeDefined()
     expect(typeof result.modelMapping!.fable).toBe('string')
     expect(typeof result.modelMapping!.haiku).toBe('string')
+  })
+
+  it('应为 Vectors 渠道序列化 embeddingCapabilities', () => {
+    const result = buildChannelPayload({
+      name: 'vectors-channel',
+      serviceType: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      baseUrls: [],
+      website: '',
+      insecureSkipVerify: false,
+      lowQuality: false,
+      injectDummyThoughtSignature: false,
+      stripThoughtSignature: false,
+      passbackReasoningContent: false,
+      passbackThinkingBlocks: false,
+      description: '',
+      apiKeys: ['sk-1'],
+      modelMapping: { 'embed-public': 'embedding-model-a' },
+      embeddingCapabilityRows: [
+        {
+          id: 1,
+          model: 'embedding-model-a',
+          embeddingSpaceId: 'shared-space',
+          dimensions: 1536,
+          supportedDimensionsText: '1024, 1536, 1024',
+          normalized: 'false',
+        },
+      ],
+      reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
+      textVerbosity: '',
+      fastMode: false,
+      customHeaders: {},
+      proxyUrl: '',
+      routePrefix: '',
+      supportedModels: ['embed-public'],
+      autoBlacklistBalance: true,
+      normalizeMetadataUserId: true,
+      stripEmptyTextBlocks: false,
+      normalizeSystemRoleToTopLevel: false,
+      codexNativeToolPassthrough: false,
+      codexToolCompat: false,
+      stripImageGenerationTool: false,
+      noVision: false,
+      noVisionModels: [],
+      visionFallbackModel: ''
+    }, { channelType: 'vectors' })
+
+    expect(result.embeddingCapabilities).toEqual({
+      'embedding-model-a': {
+        embeddingSpaceId: 'shared-space',
+        dimensions: 1536,
+        supportedDimensions: [1024, 1536],
+        normalized: false,
+      },
+    })
+  })
+
+  it('非 Vectors 渠道不应写出 embeddingCapabilities', () => {
+    const result = buildChannelPayload({
+      name: 'chat-channel',
+      serviceType: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      baseUrls: [],
+      website: '',
+      insecureSkipVerify: false,
+      lowQuality: false,
+      injectDummyThoughtSignature: false,
+      stripThoughtSignature: false,
+      passbackReasoningContent: false,
+      passbackThinkingBlocks: false,
+      description: '',
+      apiKeys: ['sk-1'],
+      modelMapping: {},
+      embeddingCapabilityRows: [
+        {
+          id: 1,
+          model: 'embedding-model-a',
+          embeddingSpaceId: 'shared-space',
+          dimensions: 1536,
+          supportedDimensionsText: '',
+          normalized: 'true',
+        },
+      ],
+      reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
+      textVerbosity: '',
+      fastMode: false,
+      customHeaders: {},
+      proxyUrl: '',
+      routePrefix: '',
+      supportedModels: [],
+      autoBlacklistBalance: true,
+      normalizeMetadataUserId: true,
+      stripEmptyTextBlocks: false,
+      normalizeSystemRoleToTopLevel: false,
+      codexNativeToolPassthrough: false,
+      codexToolCompat: false,
+      stripImageGenerationTool: false,
+      noVision: false,
+      noVisionModels: [],
+      visionFallbackModel: ''
+    }, { channelType: 'chat' })
+
+    expect(result.embeddingCapabilities).toBeUndefined()
+  })
+
+  it('应跳过只有模型名的空白 Embedding 兼容性行', () => {
+    const result = buildChannelPayload({
+      name: 'vectors-channel',
+      serviceType: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      baseUrls: [],
+      website: '',
+      insecureSkipVerify: false,
+      lowQuality: false,
+      injectDummyThoughtSignature: false,
+      stripThoughtSignature: false,
+      passbackReasoningContent: false,
+      passbackThinkingBlocks: false,
+      description: '',
+      apiKeys: ['sk-1'],
+      modelMapping: { 'embed-public': 'embedding-model-a' },
+      embeddingCapabilityRows: [
+        {
+          id: 1,
+          model: 'embedding-model-a',
+          embeddingSpaceId: '',
+          dimensions: null,
+          supportedDimensionsText: '',
+          normalized: '',
+        },
+      ],
+      reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
+      textVerbosity: '',
+      fastMode: false,
+      customHeaders: {},
+      proxyUrl: '',
+      routePrefix: '',
+      supportedModels: ['embed-public'],
+      autoBlacklistBalance: true,
+      normalizeMetadataUserId: true,
+      stripEmptyTextBlocks: false,
+      normalizeSystemRoleToTopLevel: false,
+      codexNativeToolPassthrough: false,
+      codexToolCompat: false,
+      stripImageGenerationTool: false,
+      noVision: false,
+      noVisionModels: [],
+      visionFallbackModel: ''
+    }, { channelType: 'vectors' })
+
+    expect(result.embeddingCapabilities).toEqual({})
+  })
+
+  it('应保留仅填写 normalized=false 的 Embedding 兼容性行', () => {
+    expect(embeddingCapabilityRowsToRecord([
+      {
+        id: 1,
+        model: 'embedding-model-a',
+        embeddingSpaceId: '',
+        dimensions: null,
+        supportedDimensionsText: '',
+        normalized: 'false',
+      },
+    ])).toEqual({
+      'embedding-model-a': {
+        normalized: false,
+      },
+    })
+  })
+
+  it('应拒绝非法 Embedding 兼容性行', () => {
+    expect(embeddingCapabilityRowsToRecord([
+      {
+        id: 1,
+        model: 'embedding-model-a',
+        embeddingSpaceId: '',
+        dimensions: 0,
+        supportedDimensionsText: '',
+        normalized: '',
+      },
+    ])).toBeNull()
+
+    expect(embeddingCapabilityRowsToRecord([
+      {
+        id: 2,
+        model: '',
+        embeddingSpaceId: 'space',
+        dimensions: null,
+        supportedDimensionsText: '',
+        normalized: '',
+      },
+    ])).toBeNull()
   })
 })

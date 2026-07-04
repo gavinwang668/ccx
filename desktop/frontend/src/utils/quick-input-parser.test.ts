@@ -16,6 +16,13 @@ describe('quick input service type detection', () => {
     expect(result.detectedBaseUrl).toBe('https://api.example.com')
   })
 
+  it('detects OpenAI Embeddings endpoints and strips the protocol path', () => {
+    const result = parseQuickInput('https://api.example.com/v1/embeddings sk-key1234567890')
+
+    expect(result.detectedServiceType).toBe('openai')
+    expect(result.detectedBaseUrl).toBe('https://api.example.com')
+  })
+
   it('detects Responses endpoints and strips the protocol path', () => {
     const result = parseQuickInput('https://api.example.com/v1/responses sk-key1234567890')
 

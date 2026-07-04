@@ -80,6 +80,14 @@ describe('ConsoleTab', () => {
     expect(vueErrors).toEqual([])
     expect(errors).toEqual([])
 
+    const vectorsButton = findButton('Vectors')
+    vectorsButton.click()
+    await nextTick()
+
+    expect(activeTab.value).toBe('vectors')
+    expect(updates.at(-1)).toBe('/channels/vectors')
+    expect(root.querySelector('[data-testid="channel-manager"]')?.textContent).toBe('channel:vectors')
+
     app.unmount()
   })
 

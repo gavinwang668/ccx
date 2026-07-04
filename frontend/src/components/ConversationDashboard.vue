@@ -17,6 +17,7 @@
             <v-chip value="messages" variant="outlined" size="small" class="filter-chip kind-messages" filter>MESSAGES</v-chip>
             <v-chip value="chat" variant="outlined" size="small" class="filter-chip kind-chat" filter>CHAT</v-chip>
             <v-chip value="images" variant="outlined" size="small" class="filter-chip kind-images" filter>IMAGES</v-chip>
+            <v-chip value="vectors" variant="outlined" size="small" class="filter-chip kind-vectors" filter>VECTORS</v-chip>
             <v-chip value="responses" variant="outlined" size="small" class="filter-chip kind-responses" filter>RESPONSES</v-chip>
             <v-chip value="gemini" variant="outlined" size="small" class="filter-chip kind-gemini" filter>GEMINI</v-chip>
           </v-chip-group>
@@ -156,6 +157,7 @@ const kindFilterOptions = [
   { title: 'MESSAGES', value: 'messages' },
   { title: 'CHAT', value: 'chat' },
   { title: 'IMAGES', value: 'images' },
+  { title: 'VECTORS', value: 'vectors' },
   { title: 'RESPONSES', value: 'responses' },
   { title: 'GEMINI', value: 'gemini' },
 ]
@@ -275,7 +277,7 @@ watch(expandedCards, expanded => {
 })
 
 async function fetchAllChannels() {
-  const kinds = ['messages', 'chat', 'responses', 'gemini', 'images'] as const
+  const kinds = ['messages', 'chat', 'responses', 'gemini', 'images', 'vectors'] as const
   for (const kind of kinds) {
     try {
       const dashboard = await api.getChannelDashboard(kind)
@@ -460,6 +462,10 @@ fetchAllChannels()
   color: #ec4899 !important;
 }
 
+.kind-vectors {
+  color: #0ea5e9 !important;
+}
+
 .kind-responses {
   color: #14b8a6 !important;
 }
@@ -486,6 +492,11 @@ fetchAllChannels()
 .filter-chip-selected.kind-images {
   background: rgb(236 72 153 / 10%) !important;
   border-color: rgb(236 72 153 / 60%) !important;
+}
+
+.filter-chip-selected.kind-vectors {
+  background: rgb(14 165 233 / 10%) !important;
+  border-color: rgb(14 165 233 / 60%) !important;
 }
 
 .filter-chip-selected.kind-responses {

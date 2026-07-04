@@ -1,9 +1,9 @@
 package common
 
 import (
-	"testing"
-
 	"encoding/json"
+	"strings"
+	"testing"
 )
 
 // TestClassifyByStatusCode 测试基于状态码的分类
@@ -58,6 +58,23 @@ func TestClassifyByStatusCode(t *testing.T) {
 				t.Errorf("classifyByStatusCode(%d) quota = %v, want %v", tt.statusCode, gotQuota, tt.wantQuota)
 			}
 		})
+	}
+}
+
+func TestVectorsErrorBodySummaryForLogOmitsBodyAndMessage(t *testing.T) {
+	body := []byte(`{"error":{"message":"embedding input secret customer text was rejected","type":"invalid_request_error","code":"invalid_request","param":"input"},"input":"secret customer text"}`)
+
+	got := errorBodySummaryForLog("Vectors", 422, body)
+
+	for _, want := range []string{"status=422", "type=invalid_request_error", "code=invalid_request", "param=input"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary = %q, want %q", got, want)
+		}
+	}
+	for _, leaked := range []string{"secret customer text", "embedding input", "rejected", "message"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("summary leaked %q: %s", leaked, got)
+		}
 	}
 }
 

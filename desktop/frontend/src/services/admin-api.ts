@@ -659,7 +659,7 @@ export interface SequenceOverrideInfo {
 
 export interface ConversationInfo {
   id: string
-  kind: 'messages' | 'responses' | 'chat' | 'gemini' | 'images'
+  kind: 'messages' | 'responses' | 'chat' | 'gemini' | 'images' | 'vectors'
   userId: string
   rawUserId?: string
   title?: string

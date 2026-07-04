@@ -2,7 +2,7 @@ import { ref, type ComputedRef } from 'vue'
 import { ApiError, ApiService, type Channel } from '../services/api'
 import { sortModelNamesDesc } from '../utils/modelPriority'
 
-type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 type ServiceType = 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot' | ''
 type Translator = (key: string) => string
 type DisabledKeyInfo = { key: string }
@@ -77,9 +77,10 @@ export function useTargetModelFetch(options: TargetModelFetchOptions) {
   }
 
   const resolveModelsApiType = () => {
-    const effectiveServiceType = options.channelType.value === 'images'
+    const effectiveServiceType = options.channelType.value === 'images' || options.channelType.value === 'vectors'
       ? 'openai'
       : (options.form.serviceType || options.defaultServiceType())
+    if (options.channelType.value === 'vectors') return 'vectors'
     if (options.channelType.value === 'images') return 'images'
     if (effectiveServiceType === 'gemini') return 'gemini'
     if (effectiveServiceType === 'responses') return 'responses'
@@ -132,6 +133,9 @@ export function useTargetModelFetch(options: TargetModelFetchOptions) {
             break
           case 'images':
             response = await options.apiService.getImagesChannelModels(id, request)
+            break
+          case 'vectors':
+            response = await options.apiService.getVectorsChannelModels(id, request)
             break
           case 'gemini':
             response = await options.apiService.getGeminiChannelModels(id, request)

@@ -145,7 +145,7 @@
                 />
               </div>
 
-              <div v-if="props.channelType !== 'images'" class="mt-6">
+              <div v-if="props.channelType !== 'images' && props.channelType !== 'vectors'" class="mt-6">
                 <ModelCapabilitySection
                   v-model:rows="form.modelCapabilityRows"
                   :target-model-options="targetModelOptions"
@@ -153,6 +153,19 @@
                   :fetching-models="fetchingModels"
                   :fetch-models-error="fetchModelsError"
                   :error="modelCapabilitiesError"
+                  @sync-upstream="syncUpstreamModels"
+                  @menu-update="onMenuUpdate"
+                />
+              </div>
+
+              <div v-if="props.channelType === 'vectors'" class="mt-6">
+                <EmbeddingCompatibilitySection
+                  v-model:rows="form.embeddingCapabilityRows"
+                  :target-model-options="targetModelOptions"
+                  :mapped-target-models="mappedTargetModels"
+                  :fetching-models="fetchingModels"
+                  :fetch-models-error="fetchModelsError"
+                  :error="embeddingCapabilitiesError"
                   @sync-upstream="syncUpstreamModels"
                   @menu-update="onMenuUpdate"
                 />
@@ -243,6 +256,7 @@ import BasicInfoSection from './edit-channel/BasicInfoSection.vue'
 import ApiKeyManagementSection from './edit-channel/ApiKeyManagementSection.vue'
 import ModelMappingSection from './edit-channel/ModelMappingSection.vue'
 import ModelCapabilitySection from './edit-channel/ModelCapabilitySection.vue'
+import EmbeddingCompatibilitySection from './edit-channel/EmbeddingCompatibilitySection.vue'
 import SupportedModelsFilter from './edit-channel/SupportedModelsFilter.vue'
 import CustomHeadersSection from './edit-channel/CustomHeadersSection.vue'
 import StreamTimeoutSection from './edit-channel/StreamTimeoutSection.vue'
@@ -297,6 +311,7 @@ const {
   selectedSupportedModelSet,
   supportedModelsError,
   modelCapabilitiesError,
+  embeddingCapabilitiesError,
   startMappingTargetEdit,
   finishMappingTargetEdit,
   headerClasses,

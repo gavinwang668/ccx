@@ -33,22 +33,24 @@ const EMPTY_CACHE: DashboardCache = { metrics: [], stats: undefined, recentActiv
 
 const activeTab = ref<ChannelType>('messages')
 
-// 五种协议的频道数据（独立缓存，切换不闪烁）
+// 六种协议的频道数据（独立缓存，切换不闪烁）
 const channelsByType = ref<Record<ChannelType, ChannelsResponse>>({
   messages: { channels: [], current: -1 },
   chat: { channels: [], current: -1 },
   responses: { channels: [], current: -1 },
   gemini: { channels: [], current: -1 },
   images: { channels: [], current: -1 },
+  vectors: { channels: [], current: -1 },
 })
 
-// 五种协议的 dashboard 缓存
+// 六种协议的 dashboard 缓存
 const dashboardCache = ref<Record<ChannelType, DashboardCache>>({
   messages: { ...EMPTY_CACHE },
   chat: { ...EMPTY_CACHE },
   responses: { ...EMPTY_CACHE },
   gemini: { ...EMPTY_CACHE },
   images: { ...EMPTY_CACHE },
+  vectors: { ...EMPTY_CACHE },
 })
 
 const isPingingAll = ref(false)

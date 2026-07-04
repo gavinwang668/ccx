@@ -197,6 +197,47 @@ Channel config entries (`*Upstream[]` items in `config.json`) can override these
 | `requestTimeoutMs` | `0` | `0` or `1000-300000` | Total timeout for non-streaming upstream requests. `0` or empty inherits the tuning-bench/env global value. |
 | `responseHeaderTimeoutMs` | `0` | `0` or `1000-300000` | Time to wait for upstream HTTP response headers after the connection is established. `0` or empty inherits the tuning-bench/env global value. |
 
+Runtime channel configuration is grouped by channel type:
+
+| Field | Description |
+| --- | --- |
+| `messagesUpstream` | Claude Messages semantic channels |
+| `responsesUpstream` | Codex/OpenAI Responses channels |
+| `chatUpstream` | OpenAI Chat Completions channels |
+| `geminiUpstream` | Gemini native protocol channels |
+| `imagesUpstream` | OpenAI Images channels |
+| `vectorsUpstream` | OpenAI-compatible Embeddings channels; `serviceType` is fixed to `openai` |
+
+Vectors channels do not include built-in default model candidates. Model names should come from your upstream Embeddings service: enter the Base URL and API key in the configuration UI to load `/models`, or type the model manually. Vectors model mapping can also redirect the client-provided `model` to the actual upstream model.
+
+Embedding vector spaces require extra care: vectors from different models, output dimensions, or normalization semantics should not be mixed by default, and vector database collections or indexes should be isolated by model, dimension, and space. Existing configs without `embeddingCapabilities` keep the previous Vectors fallback behavior. Once any current candidate has Embedding compatibility metadata, strict filtering is enabled. In that mode, `supportedModels` still matches the original client-requested model, while `embeddingCapabilities` keys match the actual upstream model after `modelMapping` and support exact and wildcard matching similar to `modelCapabilities`. Fallback only uses candidates with the same `embeddingSpaceId` (or actual model name when omitted), effective dimensions, and `normalized` semantics.
+
+Example:
+
+```json
+{
+  "vectorsUpstream": [
+    {
+      "name": "openai-small-a",
+      "supportedModels": ["text-embedding"],
+      "modelMapping": {
+        "text-embedding": "text-embedding-3-small"
+      },
+      "embeddingCapabilities": {
+        "text-embedding-3-small": {
+          "embeddingSpaceId": "openai-text-embedding-3-small",
+          "dimensions": 1536,
+          "supportedDimensions": [512, 1536],
+          "normalized": true
+        }
+      }
+    }
+  ]
+}
+```
+
+Vectors still do not support capability tests; do not infer Embedding space compatibility from capability-test results.
+
 The runtime config file also supports stream health fields under `circuitBreaker`:
 
 | Field | Default | Range | Description |

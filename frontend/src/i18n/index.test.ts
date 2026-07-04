@@ -49,6 +49,8 @@ describe('JSON locale files', () => {
       'orchestration.searchPlaceholder',
       'addChannel.editTitle',
       'addChannel.createTitle',
+      'addChannel.modelMappingHintVectors',
+      'addChannel.targetModelPlaceholderVectors',
       'chart.traffic',
       'chart.tokens',
       'app.auth.submit',

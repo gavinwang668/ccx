@@ -50,6 +50,7 @@ const channels = computed(() => channelsByType.value[props.type]?.channels || []
 const metrics = computed(() => dashboardCache.value[props.type]?.metrics || [])
 const activity = computed(() => dashboardCache.value[props.type]?.recentActivity || [])
 const stats = computed(() => dashboardCache.value[props.type]?.stats)
+const supportsCapability = computed(() => props.type !== 'images' && props.type !== 'vectors')
 
 const searchQuery = ref('')
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase())
@@ -159,7 +160,8 @@ function apiPathForType(type: ManagedChannelType): string {
     chat: 'chat',
     responses: 'responses',
     gemini: 'gemini',
-    images: 'images'
+    images: 'images',
+    vectors: 'vectors',
   }
   return typeMap[type]
 }
@@ -717,7 +719,7 @@ onBeforeUnmount(() => {
               :metrics="metricsMap.get(channel.index)"
               :activity="activityMap.get(channel.index)"
               :priority="index + 1"
-              :supports-capability="type !== 'images'"
+              :supports-capability="supportsCapability"
               :can-delete="canDeleteChannel(channel)"
               :can-move-top="!isFirstOrderedActiveChannel(channel)"
               :can-move-bottom="!isLastOrderedActiveChannel(channel)"
@@ -766,7 +768,7 @@ onBeforeUnmount(() => {
             :metrics="metricsMap.get(channel.index)"
             :activity="activityMap.get(channel.index)"
             :priority="index + 1"
-            :supports-capability="type !== 'images'"
+            :supports-capability="supportsCapability"
             inactive
             :can-delete="canDeleteChannel(channel)"
             @edit="handleEdit(channel)"

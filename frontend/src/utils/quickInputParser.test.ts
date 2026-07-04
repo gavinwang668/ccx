@@ -304,6 +304,12 @@ describe('综合解析场景', () => {
     expect(result.detectedBaseUrl).toBe('https://api.example.com')
   })
 
+  it('detects OpenAI embeddings endpoints and strips the endpoint path', () => {
+    const result = parseQuickInput('https://api.example.com/v1/embeddings sk-key1234567890')
+    expect(result.detectedServiceType).toBe('openai')
+    expect(result.detectedBaseUrl).toBe('https://api.example.com')
+  })
+
   it('应根据 Responses 协议路径推断上游类型并移除端点路径', () => {
     const result = parseQuickInput('https://api.example.com/v1/responses sk-key1234567890')
     expect(result.detectedServiceType).toBe('responses')

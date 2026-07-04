@@ -121,6 +121,11 @@ func (s *ChannelScheduler) GetImagesMetricsManager() *metrics.MetricsManager {
 	return s.imagesMetricsManager
 }
 
+// GetVectorsMetricsManager 获取 Vectors 指标管理器
+func (s *ChannelScheduler) GetVectorsMetricsManager() *metrics.MetricsManager {
+	return s.vectorsMetricsManager
+}
+
 // GetTraceAffinityManager 获取 Trace 亲和性管理器
 func (s *ChannelScheduler) GetTraceAffinityManager() *session.TraceAffinityManager {
 	return s.traceAffinity
@@ -137,6 +142,8 @@ func (s *ChannelScheduler) GetChannelLogStore(kind ChannelKind) *metrics.Channel
 		return s.chatChannelLogStore
 	case ChannelKindImages:
 		return s.imagesChannelLogStore
+	case ChannelKindVectors:
+		return s.vectorsChannelLogStore
 	default:
 		return s.messagesChannelLogStore
 	}
@@ -283,6 +290,8 @@ func (s *ChannelScheduler) collectUsedMetricsKeys(kind ChannelKind) map[string]b
 		upstreams = cfg.ChatUpstream
 	case ChannelKindImages:
 		upstreams = cfg.ImagesUpstream
+	case ChannelKindVectors:
+		upstreams = cfg.VectorsUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -321,6 +330,8 @@ func (s *ChannelScheduler) isUpstreamInConfig(upstream *config.UpstreamConfig, k
 		upstreams = cfg.ChatUpstream
 	case ChannelKindImages:
 		upstreams = cfg.ImagesUpstream
+	case ChannelKindVectors:
+		upstreams = cfg.VectorsUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -457,6 +468,8 @@ func kindSchedulerLogPrefix(kind ChannelKind) string {
 		return "Scheduler-Chat"
 	case ChannelKindImages:
 		return "Scheduler-Images"
+	case ChannelKindVectors:
+		return "Scheduler-Vectors"
 	default:
 		return "Scheduler"
 	}
@@ -477,6 +490,8 @@ func urlManagerChannelKeyOrdinal(kind ChannelKind) int {
 		return 3
 	case ChannelKindImages:
 		return 4
+	case ChannelKindVectors:
+		return 5
 	default:
 		return 0
 	}

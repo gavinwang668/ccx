@@ -159,6 +159,7 @@ function interfaceTypeClass(type: string) {
     case 'responses': return 'border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300'
     case 'gemini': return 'border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300'
     case 'images': return 'border-pink-500/30 bg-pink-500/10 text-pink-700 dark:text-pink-300'
+    case 'vectors': return 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300'
     default: return 'border-border bg-muted/30 text-muted-foreground'
   }
 }

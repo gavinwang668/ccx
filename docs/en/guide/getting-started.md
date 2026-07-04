@@ -37,7 +37,7 @@ A channel represents a configured upstream API connection, including:
 - **Model List**: Models available through this channel
 - **Priority**: Scheduling weight
 
-### Five Proxy Endpoints
+### Six Proxy Endpoints
 
 | Endpoint | Path | Description |
 |----------|------|-------------|
@@ -46,6 +46,7 @@ A channel represents a configured upstream API connection, including:
 | Codex Responses | `/v1/responses` | OpenAI Responses protocol |
 | Gemini | `/v1beta/models/*` | Gemini native protocol |
 | Images | `/v1/images/*` | OpenAI Images protocol |
+| Vectors | `/v1/embeddings` | OpenAI Embeddings protocol |
 
 ## Admin Console
 

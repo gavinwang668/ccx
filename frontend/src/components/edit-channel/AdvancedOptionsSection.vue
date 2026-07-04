@@ -65,6 +65,7 @@
       <!-- Compatibility 协议规范化 -->
       <v-col cols="12">
         <CompatibilitySwitchGroup
+          v-if="channelType !== 'vectors'"
           :form="form"
           :channel-type="channelType"
           :supports-chat-role-normalization="supportsChatRoleNormalization"

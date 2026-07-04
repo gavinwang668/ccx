@@ -197,6 +197,11 @@ func LogUpstreamResponseBody(c *gin.Context, bodyBytes []byte, envCfg *config.En
 	if !envCfg.EnableResponseLogs || !envCfg.IsDevelopment() {
 		return
 	}
+	if shouldOmitBodyForLog(apiType) {
+		requestLogToConsole(c, "[%s-Response] 响应体: [omitted for vectors]", apiType)
+		requestLogToFile(c, "[%s-Response] 响应体: [omitted for vectors]", apiType)
+		return
+	}
 
 	requestLogToConsole(c, "[%s-Response] 响应体:\n%s", apiType, utils.FormatJSONBytesForLog(bodyBytes, consoleJSONTextLimit))
 	requestLogToFile(c, "[%s-Response] 响应体:\n%s", apiType, utils.FormatJSONBytesRaw(bodyBytes))
@@ -291,6 +296,11 @@ func logRequestDetails(req *http.Request, envCfg *config.EnvConfig, apiType stri
 
 	if req.Body != nil {
 		contentType := req.Header.Get("Content-Type")
+		if shouldOmitBodyForLog(apiType) {
+			requestLogToConsoleFromRequest(req, "[%s-Request-Body] 实际请求体: [omitted for vectors]", apiType)
+			requestLogToFileFromRequest(req, "[%s-Request-Body] 实际请求体: [omitted for vectors]", apiType)
+			return
+		}
 		if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
 			requestLogToConsoleFromRequest(req, "[%s-Request-Body] 实际请求体: [multipart/form-data omitted]", apiType)
 			requestLogToFileFromRequest(req, "[%s-Request-Body] 实际请求体: [multipart/form-data omitted]", apiType)
@@ -316,7 +326,10 @@ func LogOriginalRequest(c *gin.Context, bodyBytes []byte, envCfg *config.EnvConf
 
 	if envCfg.IsDevelopment() {
 		contentType := c.GetHeader("Content-Type")
-		if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+		if shouldOmitBodyForLog(apiType) {
+			requestLogToConsole(c, "[Request-OriginalBody] 原始请求体: [omitted for vectors]")
+			requestLogToFile(c, "[Request-OriginalBody] 原始请求体: [omitted for vectors]")
+		} else if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
 			requestLogToConsole(c, "[Request-OriginalBody] 原始请求体: [multipart/form-data omitted]")
 			requestLogToFile(c, "[Request-OriginalBody] 原始请求体: [multipart/form-data omitted]")
 		} else {
@@ -336,6 +349,10 @@ func LogOriginalRequest(c *gin.Context, bodyBytes []byte, envCfg *config.EnvConf
 		rawHeadersJSON, _ := json.Marshal(maskedHeaders)
 		requestLogToFile(c, "[Request-OriginalHeaders] 原始请求头:\n%s", string(rawHeadersJSON))
 	}
+}
+
+func shouldOmitBodyForLog(apiType string) bool {
+	return strings.EqualFold(apiType, "Vectors")
 }
 
 // AreAllKeysSuspended 检查渠道的所有 Key 是否都处于熔断状态

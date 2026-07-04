@@ -35,6 +35,7 @@ const protocolTabs: { value: ManagedChannelType; label: string }[] = [
   { value: 'messages', label: 'Claude' },
   { value: 'chat', label: 'OpenAI Chat' },
   { value: 'images', label: 'Images' },
+  { value: 'vectors', label: 'Vectors' },
   { value: 'responses', label: 'Codex' },
   { value: 'gemini', label: 'Gemini' },
 ]

@@ -77,6 +77,8 @@ func getUpstreamByKindAndIndex(cfgManager *config.ConfigManager, kind scheduler.
 		upstreams = cfg.ChatUpstream
 	case scheduler.ChannelKindImages:
 		upstreams = cfg.ImagesUpstream
+	case scheduler.ChannelKindVectors:
+		upstreams = cfg.VectorsUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -132,6 +134,8 @@ func sharedChannelMetricsKeys(cfgManager *config.ConfigManager, kind scheduler.C
 		upstreams = cfg.ChatUpstream
 	case scheduler.ChannelKindImages:
 		upstreams = cfg.ImagesUpstream
+	case scheduler.ChannelKindVectors:
+		upstreams = cfg.VectorsUpstream
 	default:
 		upstreams = cfg.Upstream
 	}

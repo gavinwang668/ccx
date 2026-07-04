@@ -7,7 +7,7 @@
 - 修改文档时，优先以以下文件为事实源：`VERSION`、`Makefile`、`backend-go/Makefile`、`frontend/package.json`、`backend-go/main.go`。
 
 ## 项目概览
-- CCX 是一个多上游 AI API 代理与协议转换网关，当前正式支持五类渠道：`messages`、`chat`、`responses`、`gemini`、`images`。
+- CCX 是一个多上游 AI API 代理与协议转换网关，当前正式支持六类渠道：`messages`、`chat`、`responses`、`gemini`、`images`、`vectors`。
 - 根目录 `VERSION` 是唯一发布版本源；后端构建时通过 `backend-go/Makefile` 的 `-ldflags` 注入运行时版本信息。
 
 ## 项目结构与模块
@@ -41,9 +41,10 @@
   - `/v1/images/generations`
   - `/v1/images/edits`
   - `/v1/images/variations`
+  - `/v1/embeddings`
   - `/v1beta/models/*`
 - 管理入口统一位于 `/api/{type}/channels/*`。
-- 能力测试当前只适用于 `messages`、`chat`、`responses`、`gemini`；不要假设 `images` 具备 capability-test。
+- 能力测试当前只适用于 `messages`、`chat`、`responses`、`gemini`；不要假设 `images` 或 `vectors` 具备 capability-test。
 
 ## 测试规范
 - 新增/修改后端逻辑尽量补 `_test.go`，优先表驱动 + `httptest`。

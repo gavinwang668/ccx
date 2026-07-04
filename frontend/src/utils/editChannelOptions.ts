@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 
-type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 type Translator = (key: string) => string
 type FormLike = {
   modelMapping: Record<string, string>
@@ -35,6 +35,8 @@ export function useEditChannelOptions(
         return reorder(allOptions, 'responses')
       case 'images':
         return [{ title: 'OpenAI Images', value: 'openai' }]
+      case 'vectors':
+        return [{ title: 'OpenAI Embeddings', value: 'openai' }]
       case 'gemini':
         return reorder(allOptions, 'gemini')
       default:
@@ -64,6 +66,9 @@ export function useEditChannelOptions(
         { title: 'dall-e-3', value: 'dall-e-3' },
         { title: 'dall-e-2', value: 'dall-e-2' },
       ]
+    }
+    if (channelType.value === 'vectors') {
+      return []
     }
     if (channelType.value === 'gemini') {
       return [
@@ -107,6 +112,9 @@ export function useEditChannelOptions(
   })
 
   const modelMappingHint = computed(() => {
+    if (channelType.value === 'vectors') {
+      return t('addChannel.modelMappingHintVectors')
+    }
     if (channelType.value === 'chat' || channelType.value === 'images') {
       return t('addChannel.modelMappingHintChat')
     }
@@ -120,6 +128,9 @@ export function useEditChannelOptions(
   })
 
   const targetModelPlaceholder = computed(() => {
+    if (channelType.value === 'vectors') {
+      return t('addChannel.targetModelPlaceholderVectors')
+    }
     if (channelType.value === 'chat' || channelType.value === 'images') {
       return t('addChannel.targetModelPlaceholderChat')
     }

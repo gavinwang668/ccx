@@ -40,7 +40,7 @@ export function useChannelEditDialog(props: ChannelEditDialogProps, emit: Channe
 const { t } = useLanguage()
   const { saveChannel, restoreApiKey } = useConsoleChannels()
   const adminApi = useAdminApi()
-  
+
   const isEditMode = computed(() => !!props.channel)
   const isMac = computed(() => typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform))
   const saving = ref(false)
@@ -82,7 +82,7 @@ const { t } = useLanguage()
     restoreApiKey,
     t,
   })
-  
+
   const {
     copilotOAuthLoading,
     copilotPolling,
@@ -98,7 +98,7 @@ const { t } = useLanguage()
   } = useCopilotOAuth(existingApiKeys, t, () => form.proxyUrl)
 
   const keyModelsStatus = ref<Map<string, KeyModelsStatus>>(new Map())
-  
+
   let rowId = 0
   const nextRowId = () => ++rowId
   const dialogRef = ref<HTMLElement | null>(null)
@@ -119,7 +119,7 @@ const { t } = useLanguage()
     updateHeaderRow,
     getHeadersAsObject,
   } = useChannelCustomHeaders({ nextRowId })
-  
+
   const form = reactive({
     name: '',
     description: '',
@@ -176,10 +176,10 @@ const { t } = useLanguage()
     stripCodexClientTools: false,
     stripImageGenerationTool: false,
   })
-  
-  const supportsOpenAIAdvanced = computed(() => supportsAdvancedChannelOptions(form.serviceType))
-  const supportsOpenAIAdvancedOptions = computed(() => supportsAdvancedChannelOptions(form.serviceType))
-  const supportsReasoningMappingOptions = computed(() => supportsReasoningMapping(form.serviceType))
+
+  const supportsOpenAIAdvanced = computed(() => props.channelType !== 'vectors' && supportsAdvancedChannelOptions(form.serviceType))
+  const supportsOpenAIAdvancedOptions = computed(() => props.channelType !== 'vectors' && supportsAdvancedChannelOptions(form.serviceType))
+  const supportsReasoningMappingOptions = computed(() => props.channelType !== 'vectors' && supportsReasoningMapping(form.serviceType))
   const {
     modelMappingRows,
     modelCapabilityRows,
@@ -242,7 +242,7 @@ const { t } = useLanguage()
     newModelMapping,
     t,
   })
-  
+
   const quickDetection = computed(() => parseQuickInput(quickInput.value, form.serviceType || undefined))
   const detectedBaseUrls = computed(() => {
     if (form.serviceType === 'copilot' && quickDetection.value.detectedBaseUrls.length === 0) {
@@ -270,7 +270,7 @@ const { t } = useLanguage()
     quickServiceTypeTouched,
     t,
   })
-  
+
   // 生成随机字符串（用于渠道名称后缀）
   function generateRandomString(length: number): string {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
@@ -280,9 +280,9 @@ const { t } = useLanguage()
     }
     return result
   }
-  
+
   const randomSuffix = ref(generateRandomString(6))
-  
+
   // 自动生成的渠道名称
   const generatedChannelName = computed(() => {
     const firstUrl = detectedBaseUrls.value[0]
@@ -290,12 +290,16 @@ const { t } = useLanguage()
     const prefix = extractChannelNamePrefix(firstUrl)
     return `${prefix}-${randomSuffix.value}`
   })
-  
+
   watch(detectedServiceType, (serviceType) => {
+    if (props.channelType === 'images' || props.channelType === 'vectors') {
+      form.serviceType = 'openai'
+      return
+    }
     if (isEditMode.value || quickServiceTypeTouched.value || !serviceType) return
     form.serviceType = serviceType
   })
-  
+
   function resetForm() {
     clearDuplicateKeyHighlight()
     randomSuffix.value = generateRandomString(6)
@@ -367,14 +371,14 @@ const { t } = useLanguage()
     error.value = ''
     success.value = ''
   }
-  
+
   function defaultServiceTypeForChannel() {
     if (props.channelType === 'gemini') return 'gemini'
     if (props.channelType === 'responses') return 'responses'
     if (props.channelType === 'messages') return 'claude'
     return 'openai'
   }
-  
+
   function populateFromChannel(ch: Channel) {
     form.name = ch.name || ''
     form.description = ch.description || ''
@@ -441,7 +445,7 @@ const { t } = useLanguage()
     form.stripCodexClientTools = ch.stripCodexClientTools ?? ch.codexToolCompat ?? false
     form.stripImageGenerationTool = ch.stripImageGenerationTool ?? false
   }
-  
+
   watch(() => props.channel, (ch) => {
     resetForm()
     if (ch) {
@@ -456,14 +460,14 @@ const { t } = useLanguage()
       }
     }
   }, { immediate: true })
-  
+
   // baseUrlsText 是唯一的 Base URL 输入（每行一个，第一行为主），派生 form.baseUrl / form.baseUrls（对齐 WebUI）
   watch([() => form.baseUrlsText, () => form.serviceType], () => {
     const { baseUrl } = syncBaseUrlsFormState(form.baseUrlsText, form.serviceType)
     form.baseUrl = baseUrl
   }, { immediate: true })
-  
-  // 快速创建的 textarea 是创建模式的数据源；粘贴事件只作为增强，不能作为提交前提。
+
+  // In create mode, textarea quick input is the submit source; paste handling is only an enhancement.
   const submitBaseUrls = computed(() => {
     const formBaseUrls = parseLines(form.baseUrlsText)
     if (isEditMode.value) return formBaseUrls
@@ -476,13 +480,13 @@ const { t } = useLanguage()
     return [...new Set([...apiKeys, ...detectedApiKeys.value])]
   })
 
-  // API Key 是否满足必填：现有 + 新增；创建模式同时包含快速输入解析结果；编辑模式下有可恢复 disabled key 也算
+  // API Key is required from existing/new keys; create mode also includes quick input, and edit mode counts restorable disabled keys.
   const hasConfigurableKeys = computed(() => {
     if (submitApiKeys.value.length > 0) return true
     if (isEditMode.value && visibleDisabledKeys.value.length > 0) return true
     return false
   })
-  
+
   const errors = computed(() => {
     const errs: Record<string, string> = {}
     if (isEditMode.value && !form.name.trim()) errs.name = t('channelEditor.basic.name.required')
@@ -508,14 +512,14 @@ const { t } = useLanguage()
     }
     return errs
   })
-  
+
   const isValid = computed(() => Object.keys(errors.value).length === 0)
-  
+
   function stringifyJson(value?: Record<string, unknown>) {
     if (!value || Object.keys(value).length === 0) return '{}'
     return JSON.stringify(value, null, 2)
   }
-  
+
   function parseJsonObject<T extends Record<string, unknown>>(text: string, label: string): T {
     const trimmed = text.trim()
     if (!trimmed) return {} as T
@@ -525,14 +529,14 @@ const { t } = useLanguage()
     }
     return parsed as T
   }
-  
+
   function parseLines(text: string) {
     return text
       .split('\n')
       .map(s => s.trim())
       .filter(Boolean)
   }
-  
+
   function handleQuickPaste(text: string) {
     const result = parseQuickInput(text, form.serviceType || undefined)
     // 统一写入 baseUrlsText（每行一个，第一行为主），form.baseUrl 由 watch 派生
@@ -545,7 +549,7 @@ const { t } = useLanguage()
     if (!form.serviceType) form.serviceType = defaultServiceTypeForChannel()
     applyQuickCopilotDefaults()
   }
-  
+
   function updateQuickServiceType(value: string) {
     form.serviceType = value as typeof form.serviceType
     quickServiceTypeTouched.value = true
@@ -556,7 +560,7 @@ const { t } = useLanguage()
     if (isEditMode.value || form.serviceType !== 'copilot' || form.baseUrlsText.trim()) return
     form.baseUrlsText = copilotDefaultBaseUrl
   }
-  
+
   function buildSubmitPayload() {
     const payload = isEditMode.value
       ? buildCurrentPayload()
@@ -606,9 +610,9 @@ const { t } = useLanguage()
           visionFallbackModel: form.visionFallbackModel,
           historicalImageTurnLimit: form.historicalImageTurnLimit,
         }, { channelType: props.channelType })
-  
+
     applyVisionFallbackReasoning(payload)
-  
+
     if (isEditMode.value && props.channel?.requestTimeoutMs && !String(form.requestTimeoutMs ?? '').trim()) {
       payload.requestTimeoutMs = 0
     }
@@ -630,19 +634,19 @@ const { t } = useLanguage()
     if (isEditMode.value && props.channel?.rateLimitMaxConcurrent && !payload.rateLimitMaxConcurrent) {
       payload.rateLimitMaxConcurrent = 0
     }
-  
+
     return payload
   }
-  
+
   async function persistCurrentDraft(options: { notifyParent?: boolean; close?: boolean } = {}) {
     syncModelCapabilitiesFromMapping()
     applyQuickCopilotDefaults()
-  
+
     if (!isValid.value) {
       error.value = Object.values(errors.value)[0] || ''
       return false
     }
-  
+
     saving.value = true
     error.value = ''
     success.value = ''
@@ -660,11 +664,11 @@ const { t } = useLanguage()
       saving.value = false
     }
   }
-  
+
   async function handleSubmit() {
     await persistCurrentDraft({ notifyParent: true, close: true })
   }
-  
+
   // Keyboard shortcuts: Esc 取消，Cmd/Ctrl+Enter 保存（编辑/创建一致，避免多行文本内 Enter 误触发）
   const handleGlobalKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -678,22 +682,22 @@ const { t } = useLanguage()
       emit('close')
       return
     }
-  
+
     if (e.key !== 'Enter') return
     if (saving.value) return
-  
+
     // 统一 Cmd/Ctrl+Enter 保存（textarea 内也生效），普通 Enter 保留换行/原生行为
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
       e.preventDefault()
       void handleSubmit()
     }
   }
-  
+
   // 组件挂载即注册快捷键（新建和编辑模式都需要）
   onMounted(() => {
     window.addEventListener('keydown', handleGlobalKeydown)
     window.addEventListener('pointerdown', handlePointerDown)
-  
+
     // 按滚动位置同步左侧导航高亮；长 section 内滚动也需要实时更新
     // 使用多次 nextTick + setTimeout 确保 Teleport + reka-ui 完全渲染
     nextTick(() => {
@@ -704,7 +708,7 @@ const { t } = useLanguage()
       })
     })
   })
-  
+
   onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleGlobalKeydown)
     window.removeEventListener('pointerdown', handlePointerDown)
@@ -714,7 +718,7 @@ const { t } = useLanguage()
     clearCopilotCopyTimer()
     if (diagnoseTimer) clearTimeout(diagnoseTimer)
   })
-  
+
   const {
     showTargetSuggestions,
     activeTargetInputId,
@@ -736,7 +740,7 @@ const { t } = useLanguage()
     sourceModelOptions,
     targetModelDatalist,
   })
-  
+
   // ── Base URL 预期请求预览 ──
   const expectedRequestUrls = computed(() => {
     return buildExpectedRequestUrls(
@@ -746,7 +750,7 @@ const { t } = useLanguage()
       parseLines(form.baseUrlsText),
     )
   })
-  
+
   // 快速添加模式：基于 detectedBaseUrls 计算预期请求预览
   const quickExpectedRequestUrls = computed(() => {
     return buildExpectedRequestUrls(
@@ -756,7 +760,7 @@ const { t } = useLanguage()
       detectedBaseUrls.value,
     )
   })
-  
+
   async function fetchTargetModelsAndShowDropdown() {
     await fetchTargetModels()
     showTargetSuggestions.value = !!activeTargetInputId.value && targetModelDatalist.value.length > 0
@@ -765,38 +769,37 @@ const { t } = useLanguage()
   function handleTargetFocus() {
     loadTargetModelsOnFocus()
   }
-  
+
   function syncUpstreamModels() {
     void fetchTargetModelsAndShowDropdown()
   }
 
-  // 目标模型列表异步到达时，若输入框仍处于焦点态，补刷下拉可见性：
-  // 首次 focus 时数据未返回，showTargetDropdown 按空 datalist 将 showTargetSuggestions
-  // 置为 false，加载完成后不会自动翻转，导致下拉不出现，必须重新 focus 才行。
+  // Refresh dropdown visibility after target models load asynchronously while the input is still focused.
+  // The first focus may see an empty datalist and hide suggestions; flip it back once data arrives.
   watch(targetModelDatalist, (list) => {
     if (activeTargetInputId.value && list.length > 0 && !showTargetSuggestions.value) {
       showTargetSuggestions.value = true
     }
   })
-  
+
   // ── 编辑头部动作：noVision toggle + Test Capability ──
-  
+
   async function handleTestCapability() {
     if (!props.channel) return
-  
+
     // 父组件收到 test-capability 后负责关闭编辑弹窗并刷新；这里不能先 emit saved，避免组件卸载后丢失事件。
     const saved = await persistCurrentDraft()
     if (!saved) return
-  
+
     emit('test-capability', {
       ...props.channel,
       name: form.name || props.channel.name,
       index: props.channel.index,
     })
   }
-  
+
   async function handleDiagnoseCompat() {
-    if (!props.channel || props.channelType === 'images') return
+    if (!props.channel || props.channelType === 'images' || props.channelType === 'vectors') return
     diagnosingCompat.value = true
     if (diagnoseTimer) { clearTimeout(diagnoseTimer); diagnoseTimer = null }
     diagnoseResult.value = null
@@ -830,11 +833,11 @@ const { t } = useLanguage()
       diagnoseTimer = setTimeout(() => { diagnoseResult.value = null }, 5000)
     }
   }
-  
+
   function buildCurrentPayload() {
     const modelMapping = getModelMappingAsObject()
     const reasoningMapping = getReasoningMappingAsObject() as Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
-  
+
     return buildChannelPayload({
       name: form.name,
       serviceType: form.serviceType,
@@ -885,7 +888,7 @@ const { t } = useLanguage()
       historicalImageTurnLimit: form.historicalImageTurnLimit,
     }, { channelType: props.channelType })
   }
-  
+
   return {
     isEditMode,
     isMac,

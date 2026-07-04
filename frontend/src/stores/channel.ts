@@ -25,7 +25,7 @@ export const useChannelStore = defineStore('channel', () => {
   // ===== 状态 =====
 
   // 当前选中的 API 类型
-  type ApiTab = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+  type ApiTab = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
   const activeTab = ref<ApiTab>('messages')
 
   // 路由同步：从路由读取当前类型
@@ -33,7 +33,7 @@ export const useChannelStore = defineStore('channel', () => {
   const currentChannelType = computed(() => {
     const route = router.currentRoute.value
     const type = route.params.type as ApiTab
-    return (type === 'messages' || type === 'chat' || type === 'responses' || type === 'gemini' || type === 'images') ? type : 'messages'
+    return (type === 'messages' || type === 'chat' || type === 'responses' || type === 'gemini' || type === 'images' || type === 'vectors') ? type : 'messages'
   })
 
   // 监听路由变化，同步 activeTab（确保兼容性）
@@ -63,6 +63,11 @@ export const useChannelStore = defineStore('channel', () => {
   })
 
   const imagesChannelsData = ref<ChannelsResponse>({
+    channels: [],
+    current: -1
+  })
+
+  const vectorsChannelsData = ref<ChannelsResponse>({
     channels: [],
     current: -1
   })
@@ -99,6 +104,11 @@ export const useChannelStore = defineStore('channel', () => {
       metrics: [],
       stats: undefined,
       recentActivity: undefined
+    },
+    vectors: {
+      metrics: [],
+      stats: undefined,
+      recentActivity: undefined
     }
   })
 
@@ -127,6 +137,7 @@ export const useChannelStore = defineStore('channel', () => {
       case 'responses': return responsesChannelsData.value
       case 'gemini': return geminiChannelsData.value
       case 'images': return imagesChannelsData.value
+      case 'vectors': return vectorsChannelsData.value
       default: return channelsData.value
     }
   })
@@ -206,6 +217,18 @@ export const useChannelStore = defineStore('channel', () => {
             }
             break
 
+          case 'vectors':
+            vectorsChannelsData.value = {
+              channels: mergeChannelsWithLocalData(dashboard.channels, vectorsChannelsData.value.channels),
+              current: vectorsChannelsData.value.current
+            }
+            dashboardCache.value.vectors = {
+              metrics: dashboard.metrics,
+              stats: dashboard.stats,
+              recentActivity: dashboard.recentActivity
+            }
+            break
+
           case 'messages':
             channelsData.value = {
               channels: mergeChannelsWithLocalData(dashboard.channels, channelsData.value.channels),
@@ -265,11 +288,14 @@ export const useChannelStore = defineStore('channel', () => {
     const isGemini = activeTab.value === 'gemini'
     const isChat = activeTab.value === 'chat'
     const isImages = activeTab.value === 'images'
+    const isVectors = activeTab.value === 'vectors'
 
     if (editingChannelIndex !== null) {
       // 更新现有渠道
       if (isChat) {
         await api.updateChatChannel(editingChannelIndex, channel)
+      } else if (isVectors) {
+        await api.updateVectorsChannel(editingChannelIndex, channel)
       } else if (isImages) {
         await api.updateImagesChannel(editingChannelIndex, channel)
       } else if (isGemini) {
@@ -284,6 +310,8 @@ export const useChannelStore = defineStore('channel', () => {
       // 添加新渠道
       if (isChat) {
         await api.addChatChannel(channel)
+      } else if (isVectors) {
+        await api.addVectorsChannel(channel)
       } else if (isImages) {
         await api.addImagesChannel(channel)
       } else if (isGemini) {
@@ -299,6 +327,8 @@ export const useChannelStore = defineStore('channel', () => {
         await refreshChannels() // 先刷新获取新渠道的 index
         const data = isChat
           ? chatChannelsData.value
+          : isVectors
+            ? vectorsChannelsData.value
           : isImages
             ? imagesChannelsData.value
             : isGemini
@@ -324,6 +354,8 @@ export const useChannelStore = defineStore('channel', () => {
 
             if (isChat) {
               await api.reorderChatChannels(newOrder)
+            } else if (isVectors) {
+              await api.reorderVectorsChannels(newOrder)
             } else if (isImages) {
               await api.reorderImagesChannels(newOrder)
             } else if (isGemini) {
@@ -338,6 +370,8 @@ export const useChannelStore = defineStore('channel', () => {
             if (!placeAtBottom) {
               if (isChat) {
                 await api.setChatChannelPromotion(newChannel.index, 300)
+              } else if (isVectors) {
+                await api.setVectorsChannelPromotion(newChannel.index, 300)
               } else if (isImages) {
                 await api.setImagesChannelPromotion(newChannel.index, 300)
               } else if (isGemini) {
@@ -376,6 +410,8 @@ export const useChannelStore = defineStore('channel', () => {
   async function deleteChannel(channelId: number) {
     if (activeTab.value === 'chat') {
       await api.deleteChatChannel(channelId)
+    } else if (activeTab.value === 'vectors') {
+      await api.deleteVectorsChannel(channelId)
     } else if (activeTab.value === 'images') {
       await api.deleteImagesChannel(channelId)
     } else if (activeTab.value === 'gemini') {
@@ -395,6 +431,8 @@ export const useChannelStore = defineStore('channel', () => {
   async function pingChannel(channelId: number) {
     const result = activeTab.value === 'chat'
       ? await api.pingChatChannel(channelId)
+      : activeTab.value === 'vectors'
+        ? await api.pingVectorsChannel(channelId)
       : activeTab.value === 'images'
         ? await api.pingImagesChannel(channelId)
         : activeTab.value === 'gemini'
@@ -405,6 +443,8 @@ export const useChannelStore = defineStore('channel', () => {
 
     const data = activeTab.value === 'chat'
       ? chatChannelsData.value
+      : activeTab.value === 'vectors'
+        ? vectorsChannelsData.value
       : activeTab.value === 'images'
         ? imagesChannelsData.value
         : activeTab.value === 'gemini'
@@ -430,6 +470,8 @@ export const useChannelStore = defineStore('channel', () => {
     try {
       const results = activeTab.value === 'chat'
         ? await api.pingAllChatChannels()
+        : activeTab.value === 'vectors'
+          ? await api.pingAllVectorsChannels()
         : activeTab.value === 'images'
           ? await api.pingAllImagesChannels()
           : activeTab.value === 'gemini'
@@ -440,6 +482,8 @@ export const useChannelStore = defineStore('channel', () => {
 
       const data = activeTab.value === 'chat'
         ? chatChannelsData.value
+        : activeTab.value === 'vectors'
+          ? vectorsChannelsData.value
         : activeTab.value === 'images'
           ? imagesChannelsData.value
           : activeTab.value === 'gemini'
@@ -506,6 +550,10 @@ export const useChannelStore = defineStore('channel', () => {
       channels: [],
       current: -1
     }
+    vectorsChannelsData.value = {
+      channels: [],
+      current: -1
+    }
     responsesChannelsData.value = {
       channels: [],
       current: -1
@@ -528,6 +576,11 @@ export const useChannelStore = defineStore('channel', () => {
         recentActivity: undefined
       },
       images: {
+        metrics: [],
+        stats: undefined,
+        recentActivity: undefined
+      },
+      vectors: {
         metrics: [],
         stats: undefined,
         recentActivity: undefined
@@ -556,6 +609,7 @@ export const useChannelStore = defineStore('channel', () => {
     channelsData,
     chatChannelsData,
     imagesChannelsData,
+    vectorsChannelsData,
     responsesChannelsData,
     geminiChannelsData,
     isPingingAll,

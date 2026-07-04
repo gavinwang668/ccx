@@ -1,7 +1,7 @@
 import { isValidUrl } from './quickInputParser'
 import { buildExpectedRequestUrl, type ServiceType } from './baseUrlSemantics'
 
-export type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+export type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
 export interface ExpectedRequestUrlItem {
   baseUrl: string
@@ -26,7 +26,9 @@ export function buildExpectedRequestUrls(
   if (urls.length === 0) return []
 
   let endpoint = ''
-  if (channelType === 'images') {
+  if (channelType === 'vectors') {
+    endpoint = '/embeddings'
+  } else if (channelType === 'images') {
     endpoint = '/images/generations'
   } else if (channelType === 'responses') {
     if (serviceType === 'responses' || serviceType === 'copilot') {

@@ -4,7 +4,7 @@ import { claudeMessagesPresets } from '../generated/claudeMessagesPresets'
 import { codexResponsesPresets } from '../generated/codexResponsesPresets'
 import { openaiMessagesPresets } from '../generated/openaiMessagesPresets'
 
-type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 type FormLike = {
   serviceType: 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot' | ''
   fastMode: boolean

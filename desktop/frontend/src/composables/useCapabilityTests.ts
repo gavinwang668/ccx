@@ -26,7 +26,7 @@ const POLL_INTERVAL = 1000
 const BASE_PROTOCOL_ORDER = ['messages', 'responses', 'chat', 'gemini'] as const
 type CapabilityChannelKind = typeof BASE_PROTOCOL_ORDER[number]
 type CopyToTabResult = { ok: true } | { ok: false; message: string }
-const MANAGED_CHANNEL_TYPES = ['messages', 'chat', 'responses', 'gemini', 'images'] as const
+const MANAGED_CHANNEL_TYPES = ['messages', 'chat', 'responses', 'gemini', 'images', 'vectors'] as const
 const PLACEHOLDER_MODELS: Record<string, string[]> = {
   // 修改此处时需要同步后端 backend-go/internal/handlers/capability_probe_models.go
   messages: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001'],
@@ -881,5 +881,6 @@ function getNativeServiceType(protocol: string): Channel['serviceType'] | null {
   if (protocol === 'responses') return 'responses'
   if (protocol === 'gemini') return 'gemini'
   if (protocol === 'images') return 'openai'
+  if (protocol === 'vectors') return 'openai'
   return null
 }

@@ -54,6 +54,7 @@ export function useChannelEditorOptions(options: ChannelEditorOptionsOptions) {
       : options.channelType() === 'gemini' ? 'gemini'
       : 'openai'
     if (options.channelType() === 'images') return [{ label: 'OpenAI Images', value: 'openai' }]
+    if (options.channelType() === 'vectors') return [{ label: 'OpenAI Embeddings', value: 'openai' }]
     const primary = all.find(o => o.value === first)
     const rest = all.filter(o => o.value !== first)
     return primary ? [primary, ...rest] : all
@@ -79,6 +80,9 @@ export function useChannelEditorOptions(options: ChannelEditorOptionsOptions) {
   })
 
   const modelMappingHint = computed(() => {
+    if (options.channelType() === 'vectors') {
+      return options.t('addChannel.modelMappingHintVectors')
+    }
     if (options.channelType() === 'chat' || options.channelType() === 'images') {
       return options.t('addChannel.modelMappingHintChat')
     }
@@ -88,6 +92,9 @@ export function useChannelEditorOptions(options: ChannelEditorOptionsOptions) {
   })
 
   const targetModelPlaceholder = computed(() => {
+    if (options.channelType() === 'vectors') {
+      return options.t('addChannel.targetModelPlaceholderVectors')
+    }
     if (options.channelType() === 'chat' || options.channelType() === 'images') {
       return options.t('addChannel.targetModelPlaceholderChat')
     }

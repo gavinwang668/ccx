@@ -82,7 +82,7 @@ export interface ChannelFormLike {
 
 }
 
-export type ChannelProtocol = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+export type ChannelProtocol = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
 export interface BuildChannelPayloadOptions {
   channelType?: ChannelProtocol

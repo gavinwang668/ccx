@@ -392,7 +392,7 @@
                     </template>
                     <v-list-item-title>{{ t('app.actions.ping') }}</v-list-item-title>
                   </v-list-item>
-                  <v-list-item v-if="channelType !== 'images'" @click="$emit('testCapability', element.index)">
+                  <v-list-item v-if="channelType !== 'images' && channelType !== 'vectors'" @click="$emit('testCapability', element.index)">
                     <template #prepend>
                       <v-icon size="small" color="success">mdi-test-tube</v-icon>
                     </template>
@@ -575,7 +575,7 @@
                   </template>
                   <v-list-item-title>{{ t('orchestration.edit') }}</v-list-item-title>
                 </v-list-item>
-                <v-list-item v-if="channelType !== 'images'" @click="$emit('testCapability', channel.index)">
+                <v-list-item v-if="channelType !== 'images' && channelType !== 'vectors'" @click="$emit('testCapability', channel.index)">
                   <template #prepend>
                     <v-icon size="small" color="success">mdi-test-tube</v-icon>
                   </template>
@@ -635,7 +635,7 @@ import ChannelLogsDialog from './ChannelLogsDialog.vue'
 const props = defineProps<{
   channels: Channel[]
   currentChannelIndex: number
-  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
   // Optional: metrics and stats passed from the parent component (when using the dashboard API)
   dashboardMetrics?: ChannelMetrics[]
   dashboardStats?: SchedulerStatsResponse

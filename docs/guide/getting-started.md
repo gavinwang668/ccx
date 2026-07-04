@@ -37,7 +37,7 @@ export PROXY_ACCESS_KEY=your-proxy-key
 - **模型列表**：该渠道支持的模型
 - **优先级**：调度时的优先级权重
 
-### 五类代理入口
+### 六类代理入口
 
 | 入口 | 路径 | 说明 |
 |------|------|------|
@@ -46,6 +46,7 @@ export PROXY_ACCESS_KEY=your-proxy-key
 | Codex Responses | `/v1/responses` | OpenAI Responses 协议 |
 | Gemini | `/v1beta/models/*` | Gemini 原生协议 |
 | Images | `/v1/images/*` | OpenAI Images 协议 |
+| Vectors | `/v1/embeddings` | OpenAI Embeddings 协议 |
 
 ## 访问管理界面
 

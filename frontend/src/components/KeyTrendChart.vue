@@ -122,7 +122,7 @@ const apexchart = VueApexCharts
 // Props
 const props = defineProps<{
   channelId: number
-  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 }>()
 const { t } = useI18n()
 
@@ -858,6 +858,9 @@ const fetchKeyMetrics = async (duration: Duration, interval?: string): Promise<C
   }
   if (props.channelType === 'images') {
     return api.getImagesChannelKeyMetricsHistory(props.channelId, duration, interval)
+  }
+  if (props.channelType === 'vectors') {
+    return api.getVectorsChannelKeyMetricsHistory(props.channelId, duration, interval)
   }
   if (props.channelType === 'responses') {
     return api.getResponsesChannelKeyMetricsHistory(props.channelId, duration, interval)

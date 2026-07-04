@@ -153,16 +153,20 @@ function updateTextVerbosity(value: string) {
             {{ t('channelEditor.compat.title') }}
           </div>
           <Button
-            v-if="!diagnoseResult"
-            type="button" variant="secondary" size="sm" class="h-6 gap-1 px-2 text-[10px]"
-            :disabled="diagnosing" @click="$emit('diagnose')"
+            v-if="channelType !== 'images' && channelType !== 'vectors' && !diagnoseResult"
+            type="button"
+            variant="secondary"
+            size="sm"
+            class="h-6 gap-1 px-2 text-[10px]"
+            :disabled="diagnosing"
+            @click="$emit('diagnose')"
           >
             <Loader2 v-if="diagnosing" class="h-3 w-3 animate-spin" />
             <Stethoscope v-else class="h-3 w-3" />
             {{ t('channelEditor.compat.diagnose') }}
           </Button>
           <Button
-            v-else-if="diagnoseResult.type === 'error'"
+            v-else-if="channelType !== 'images' && channelType !== 'vectors' && diagnoseResult?.type === 'error'"
             type="button" variant="error" size="sm" class="h-6 gap-1 px-2 text-[10px]"
             @click="$emit('diagnose')"
           >
@@ -170,7 +174,7 @@ function updateTextVerbosity(value: string) {
             {{ t('channelEditor.compat.diagnoseFailedShort') }}
           </Button>
           <Button
-            v-else-if="diagnoseResult.appliedCount > 0"
+            v-else-if="channelType !== 'images' && channelType !== 'vectors' && diagnoseResult && diagnoseResult.appliedCount > 0"
             type="button" variant="success" size="sm" class="h-6 gap-1 px-2 text-[10px]"
             @click="$emit('diagnose')"
           >
@@ -178,7 +182,7 @@ function updateTextVerbosity(value: string) {
             {{ t('channelEditor.compat.diagnoseAppliedShort', { count: String(diagnoseResult.appliedCount) }) }}
           </Button>
           <Button
-            v-else
+            v-else-if="channelType !== 'images' && channelType !== 'vectors' && diagnoseResult"
             type="button" variant="secondary" size="sm" class="h-6 gap-1 px-2 text-[10px]"
             @click="$emit('diagnose')"
           >
@@ -331,7 +335,7 @@ function updateTextVerbosity(value: string) {
             </div>
             <Switch :model-value="form.stripEmptyTextBlocks" @update:model-value="updateField('stripEmptyTextBlocks', $event)" />
           </div>
-          <div v-if="channelType !== 'images'" class="flex items-center justify-between gap-3">
+          <div v-if="channelType !== 'images' && channelType !== 'vectors'" class="flex items-center justify-between gap-3">
             <div class="min-w-0 flex-1 space-y-0.5">
               <Label class="text-xs font-medium">{{ t('channelEditor.compat.historicalImageLimit.label') }}</Label>
               <p class="text-[10px] leading-4 text-muted-foreground">{{ t('channelEditor.compat.historicalImageLimit.hint') }}</p>

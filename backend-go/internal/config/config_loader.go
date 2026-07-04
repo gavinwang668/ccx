@@ -132,6 +132,7 @@ func (cm *ConfigManager) createDefaultConfig() error {
 		ResponsesUpstream:        []UpstreamConfig{},
 		CurrentResponsesUpstream: 0,
 		GeminiUpstream:           []UpstreamConfig{},
+		VectorsUpstream:          []UpstreamConfig{},
 		FuzzyModeEnabled:         true, // 默认启用 Fuzzy 模式
 		ThinkingCache: ThinkingCacheConfig{
 			TTLHours: ThinkingCacheDefaultTTLHours,
@@ -283,6 +284,9 @@ func (cm *ConfigManager) applyCodexToolCompatMigration(rawJSON []byte) bool {
 	if raw, ok := rawMap["imagesUpstream"]; ok {
 		apply(raw, &cm.config.ImagesUpstream, "Images")
 	}
+	if raw, ok := rawMap["vectorsUpstream"]; ok {
+		apply(raw, &cm.config.VectorsUpstream, "Vectors")
+	}
 	return updated
 }
 
@@ -366,6 +370,20 @@ func (cm *ConfigManager) applyServiceTypeDefaults() bool {
 	apply(cm.config.ResponsesUpstream, "responses", "Responses")
 	apply(cm.config.GeminiUpstream, "gemini", "Gemini")
 	apply(cm.config.ChatUpstream, "openai", "Chat")
+	for i := range cm.config.VectorsUpstream {
+		normalized, err := normalizeVectorsServiceType(cm.config.VectorsUpstream[i].ServiceType)
+		if err != nil {
+			cm.config.VectorsUpstream[i].ServiceType = "openai"
+			updated = true
+			log.Printf("[Config-Migration] Vectors 渠道 [%d] %s serviceType=%s 不受支持，已强制改为 openai", i, cm.config.VectorsUpstream[i].Name, normalizeUpstreamServiceType(cm.config.VectorsUpstream[i].ServiceType, "openai"))
+			continue
+		}
+		if cm.config.VectorsUpstream[i].ServiceType != normalized {
+			cm.config.VectorsUpstream[i].ServiceType = normalized
+			updated = true
+			log.Printf("[Config-Migration] Vectors 渠道 [%d] %s serviceType 为空，已回填为 %s", i, cm.config.VectorsUpstream[i].Name, normalized)
+		}
+	}
 	for i := range cm.config.ImagesUpstream {
 		normalized, err := normalizeImagesServiceType(cm.config.ImagesUpstream[i].ServiceType)
 		if err != nil {
@@ -520,6 +538,21 @@ func (cm *ConfigManager) validateChannelKeys() bool {
 			upstream.Status = "suspended"
 			modified = true
 			log.Printf("[Config-Validate] 警告: Images 渠道 [%d] %s 没有配置 API key，已自动暂停", i, upstream.Name)
+		}
+	}
+
+	// 检查 Vectors 渠道
+	for i := range cm.config.VectorsUpstream {
+		upstream := &cm.config.VectorsUpstream[i]
+		status := upstream.Status
+		if status == "" {
+			status = "active"
+		}
+
+		if status == "active" && len(upstream.APIKeys) == 0 {
+			upstream.Status = "suspended"
+			modified = true
+			log.Printf("[Config-Validate] 警告: Vectors 渠道 [%d] %s 没有配置 API key，已自动暂停", i, upstream.Name)
 		}
 	}
 

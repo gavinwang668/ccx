@@ -76,6 +76,8 @@ func channelUpstreamsByKind(cfg config.Config, kind scheduler.ChannelKind) []con
 		return cfg.ChatUpstream
 	case scheduler.ChannelKindImages:
 		return cfg.ImagesUpstream
+	case scheduler.ChannelKindVectors:
+		return cfg.VectorsUpstream
 	default:
 		return cfg.Upstream
 	}
@@ -270,9 +272,15 @@ func GetSchedulerStats(sch *scheduler.ChannelScheduler) gin.HandlerFunc {
 		case "chat":
 			kind = scheduler.ChannelKindChat
 			metricsManager = sch.GetChatMetricsManager()
+		case "gemini":
+			kind = scheduler.ChannelKindGemini
+			metricsManager = sch.GetGeminiMetricsManager()
 		case "images":
 			kind = scheduler.ChannelKindImages
 			metricsManager = sch.GetImagesMetricsManager()
+		case "vectors":
+			kind = scheduler.ChannelKindVectors
+			metricsManager = sch.GetVectorsMetricsManager()
 		default:
 			kind = scheduler.ChannelKindMessages
 			metricsManager = sch.GetMessagesMetricsManager()
@@ -785,7 +793,7 @@ func truncateKeyMask(keyMask string, maxLen int) string {
 }
 
 // GetChannelDashboard 获取渠道仪表盘数据（合并 channels + metrics + stats）
-// GET /api/channels/dashboard?type=messages|responses|chat|gemini
+// GET /api/channels/dashboard?type=messages|responses|chat|gemini|images|vectors
 // 将原本需要 3 个请求的数据合并为 1 个请求，减少网络开销
 func GetChannelDashboard(cfgManager *config.ConfigManager, sch *scheduler.ChannelScheduler) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -813,6 +821,10 @@ func GetChannelDashboard(cfgManager *config.ConfigManager, sch *scheduler.Channe
 			upstreams = cfg.ImagesUpstream
 			metricsManager = sch.GetImagesMetricsManager()
 			kind = scheduler.ChannelKindImages
+		case "vectors":
+			upstreams = cfg.VectorsUpstream
+			metricsManager = sch.GetVectorsMetricsManager()
+			kind = scheduler.ChannelKindVectors
 		case "gemini":
 			upstreams = cfg.GeminiUpstream
 			metricsManager = sch.GetGeminiMetricsManager()
@@ -933,6 +945,21 @@ func GetImagesChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, c
 	return getChannelKeyMetricsHistoryWithKind(metricsManager, cfgManager, scheduler.ChannelKindImages, false, 366*24*time.Hour)
 }
 
+// GetVectorsChannelMetrics 获取 Vectors 渠道指标
+func GetVectorsChannelMetrics(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return getChannelMetricsWithKind(metricsManager, cfgManager, scheduler.ChannelKindVectors, true)
+}
+
+// GetVectorsChannelMetricsHistory 获取 Vectors 渠道指标历史数据
+func GetVectorsChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return getChannelMetricsHistoryWithKind(metricsManager, cfgManager, scheduler.ChannelKindVectors, false)
+}
+
+// GetVectorsChannelKeyMetricsHistory 获取 Vectors 渠道下各 Key 的历史数据
+func GetVectorsChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return getChannelKeyMetricsHistoryWithKind(metricsManager, cfgManager, scheduler.ChannelKindVectors, false, 366*24*time.Hour)
+}
+
 // GetChatChannelMetrics 获取 Chat 渠道指标
 func GetChatChannelMetrics(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
 	return getChannelMetricsWithKind(metricsManager, cfgManager, scheduler.ChannelKindChat, true)
@@ -967,6 +994,8 @@ func ResumeChannelWithKind(sch *scheduler.ChannelScheduler, cfgManager *config.C
 			apiType = "Chat"
 		case scheduler.ChannelKindImages:
 			apiType = "Images"
+		case scheduler.ChannelKindVectors:
+			apiType = "Vectors"
 		}
 
 		result, err := transitions.RestoreAllAndReset(

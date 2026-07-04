@@ -1,18 +1,18 @@
-# Claude / OpenAI Chat / OpenAI Images / Codex Responses / Gemini API Proxy - CCX
+# Claude / OpenAI Chat / OpenAI Images / OpenAI Embeddings / Codex Responses / Gemini API Proxy - CCX
 
 English | [简体中文](README.zh-CN.md)
 
 [![GitHub release](https://img.shields.io/github/v/release/BenedictKing/ccx)](https://github.com/BenedictKing/ccx/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-CCX is a high-performance AI API proxy and protocol translation gateway for Claude, OpenAI Chat, OpenAI Images, Codex Responses, and Gemini. It provides a unified entrypoint, built-in web administration, channel orchestration, failover, multi-key management, and model routing.
+CCX is a high-performance AI API proxy and protocol translation gateway for Claude, OpenAI Chat, OpenAI Images, OpenAI Embeddings, Codex Responses, and Gemini. It provides a unified entrypoint, built-in web administration, channel orchestration, failover, multi-key management, and model routing.
 
 ## Features
 
 - Integrated backend + frontend architecture with single-port deployment
 - Dual-key authentication with `PROXY_ACCESS_KEY` and optional `ADMIN_ACCESS_KEY`
 - Web admin console for channel management, testing, logs, and monitoring
-- Support for Claude Messages, OpenAI Chat Completions, OpenAI Images, Codex Responses, and Gemini APIs
+- Support for Claude Messages, OpenAI Chat Completions, OpenAI Images, OpenAI Embeddings, Codex Responses, and Gemini APIs
 - Smart scheduling with priorities, promotion windows, health checks, failover, and circuit recovery
 - Context routing filters candidate channels by actual model context window and max output capability
 - Per-channel API key rotation, proxy support, custom headers, model allowlists, and route prefixes
@@ -68,6 +68,7 @@ Client -> backend :3000 ->
   |- /v1/chat/completions         -> OpenAI Chat proxy
   |- /v1/responses                -> Codex Responses proxy
   |- /v1/images/{...}             -> OpenAI Images proxy
+  |- /v1/embeddings               -> OpenAI Embeddings proxy
   |- /v1/models                   -> Models API
   `- /v1beta/models/*             -> Gemini proxy
 ```
@@ -184,6 +185,7 @@ LOG_LEVEL=info
 - OpenAI Chat: `POST /v1/chat/completions`
 - Codex Responses: `POST /v1/responses`
 - OpenAI Images: `POST /v1/images/generations`, `POST /v1/images/edits`, `POST /v1/images/variations`
+- OpenAI Embeddings: `POST /v1/embeddings`
 - Gemini: `POST /v1beta/models/{model}:generateContent`
 - Models API: `GET /v1/models`
 

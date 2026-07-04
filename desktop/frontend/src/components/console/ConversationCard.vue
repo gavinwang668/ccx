@@ -99,6 +99,7 @@ const kindStyle = computed(() => {
     case 'responses': return { color: '#14b8a6', chip: 'border-teal-500/60 text-teal-500 bg-teal-500/10' }
     case 'gemini': return { color: '#f97316', chip: 'border-orange-500/60 text-orange-500 bg-orange-500/10' }
     case 'images': return { color: '#ec4899', chip: 'border-pink-500/60 text-pink-500 bg-pink-500/10' }
+    case 'vectors': return { color: '#0ea5e9', chip: 'border-sky-500/60 text-sky-500 bg-sky-500/10' }
     default: return { color: 'var(--color-foreground)', chip: 'border-border text-muted-foreground bg-muted/20' }
   }
 })

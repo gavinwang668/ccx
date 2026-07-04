@@ -35,6 +35,7 @@ const { t } = useLanguage()
     <!-- 编辑模式：显示操作按钮 -->
     <div v-if="isEditMode" class="flex shrink-0 items-center gap-1.5">
       <Button
+        v-if="channelType !== 'images' && channelType !== 'vectors'"
         variant="ghost"
         size="icon-sm"
         class="h-8 w-8 rounded-full text-muted-foreground transition-all hover:bg-primary/10 hover:text-primary"
@@ -45,7 +46,7 @@ const { t } = useLanguage()
         <Eye v-else class="h-3.5 w-3.5" />
       </Button>
       <Button
-        v-if="channelType !== 'images'"
+        v-if="channelType !== 'images' && channelType !== 'vectors'"
         variant="outline"
         size="sm"
         class="h-8 rounded-full border border-border/80 bg-background/50 px-3.5 shadow-sm hover:bg-accent"

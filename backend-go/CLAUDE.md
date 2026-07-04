@@ -36,6 +36,7 @@ make deps
 - `POST /v1/images/generations`
 - `POST /v1/images/edits`
 - `POST /v1/images/variations`
+- `POST /v1/embeddings`
 
 ### 管理入口
 - `/api/messages/channels/*`
@@ -43,20 +44,22 @@ make deps
 - `/api/responses/channels/*`
 - `/api/gemini/channels/*`
 - `/api/images/channels/*`
+- `/api/vectors/channels/*`
 
 ### 能力测试
 能力测试接口仅适用于 `messages`、`chat`、`responses`、`gemini`。
-Images 当前没有 capability-test / snapshot 路由。
+Images 与 Vectors 当前没有 capability-test / snapshot 路由。
 
 ## 关键实现点
 
 ### 渠道类型
-当前正式支持五类渠道：
+当前正式支持六类渠道：
 - `messages`
 - `chat`
 - `responses`
 - `gemini`
 - `images`
+- `vectors`
 
 ### Provider 接口
 所有上游服务实现 `internal/providers/Provider` 接口：

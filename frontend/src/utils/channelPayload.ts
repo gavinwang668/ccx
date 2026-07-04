@@ -1,4 +1,4 @@
-import type { Channel, UpstreamModelCapability } from '../services/api'
+import type { Channel, EmbeddingCapability, UpstreamModelCapability } from '../services/api'
 import { normalizeAdvancedChannelOptions } from './channelAdvancedOptions'
 import { deduplicateEquivalentBaseUrls } from './baseUrlSemantics'
 import { builtinUpstreamModelCapabilities } from '../generated/modelRegistry'
@@ -26,6 +26,15 @@ export interface ModelCapabilityRow {
   matchedPattern?: string
 }
 
+export interface EmbeddingCapabilityRow {
+  id: number
+  model: string
+  embeddingSpaceId: string
+  dimensions: string | number | null
+  supportedDimensionsText: string
+  normalized: '' | 'true' | 'false'
+}
+
 type SelectableString = string | { title?: string; value?: unknown } | null | undefined
 
 export interface ChannelFormLike {
@@ -47,6 +56,7 @@ export interface ChannelFormLike {
   modelMapping: Record<string, SelectableString>
   modelCapabilitiesText?: string
   modelCapabilityRows?: ModelCapabilityRow[]
+  embeddingCapabilityRows?: EmbeddingCapabilityRow[]
   defaultContextWindowTokens?: string | number | null
   defaultMaxOutputTokens?: string | number | null
   allowUnknownContext?: boolean
@@ -86,7 +96,7 @@ export interface ChannelFormLike {
 
 }
 
-export type ChannelProtocol = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+export type ChannelProtocol = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
 export interface BuildChannelPayloadOptions {
   channelType?: ChannelProtocol
@@ -351,6 +361,91 @@ export function modelCapabilityRowsToRecord(rows: ModelCapabilityRow[] = []): Re
   return result
 }
 
+export function createEmbeddingCapabilityRow(
+  id: number,
+  model = '',
+  capability?: EmbeddingCapability,
+): EmbeddingCapabilityRow {
+  return {
+    id,
+    model,
+    embeddingSpaceId: capability?.embeddingSpaceId || '',
+    dimensions: capability?.dimensions ?? null,
+    supportedDimensionsText: capability?.supportedDimensions?.join(', ') || '',
+    normalized: capability?.normalized === undefined ? '' : capability.normalized ? 'true' : 'false',
+  }
+}
+
+export function embeddingCapabilitiesToRows(record: Record<string, EmbeddingCapability> | undefined, nextId: () => number): EmbeddingCapabilityRow[] {
+  return Object.entries(record || {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([model, capability]) => createEmbeddingCapabilityRow(nextId(), model, capability))
+}
+
+function parsePositiveIntegerList(text: string): number[] | null {
+  const trimmed = text.trim()
+  if (!trimmed) return []
+  const parts = trimmed
+    .split(/[\s,，;；|]+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+  const values: number[] = []
+  const seen = new Set<number>()
+  for (const part of parts) {
+    const value = Number(part)
+    if (!Number.isInteger(value) || value <= 0) return null
+    if (!seen.has(value)) {
+      seen.add(value)
+      values.push(value)
+    }
+  }
+  return values
+}
+
+export function embeddingCapabilityRowsToRecord(rows: EmbeddingCapabilityRow[] = []): Record<string, EmbeddingCapability> | null {
+  const result: Record<string, EmbeddingCapability> = {}
+  for (const row of rows) {
+    const model = normalizeSelectableString(row.model).trim()
+    const embeddingSpaceId = row.embeddingSpaceId.trim()
+    const dimensionsText = String(row.dimensions ?? '').trim()
+    const supportedDimensionsText = row.supportedDimensionsText.trim()
+    const hasAnyValue = !!(embeddingSpaceId || dimensionsText || supportedDimensionsText || row.normalized)
+
+    if (!model) {
+      if (hasAnyValue) return null
+      continue
+    }
+    if (!hasAnyValue) {
+      continue
+    }
+
+    const capability: EmbeddingCapability = {}
+    if (embeddingSpaceId) {
+      capability.embeddingSpaceId = embeddingSpaceId
+    }
+    if (dimensionsText) {
+      const dimensions = Number(dimensionsText)
+      if (!Number.isInteger(dimensions) || dimensions <= 0) return null
+      capability.dimensions = dimensions
+    }
+    const supportedDimensions = parsePositiveIntegerList(supportedDimensionsText)
+    if (supportedDimensions === null) return null
+    if (supportedDimensions.length) {
+      capability.supportedDimensions = supportedDimensions
+    }
+    if (row.normalized === 'true') {
+      capability.normalized = true
+    } else if (row.normalized === 'false') {
+      capability.normalized = false
+    } else if (row.normalized !== '') {
+      return null
+    }
+
+    result[model] = capability
+  }
+  return result
+}
+
 export function normalizeSelectableString(value: SelectableString): string {
   if (!value) return ''
   if (typeof value === 'string') {
@@ -412,6 +507,9 @@ export function buildChannelPayload(
   const modelCapabilities = form.modelCapabilityRows
     ? modelCapabilityRowsToRecord(form.modelCapabilityRows)
     : parseModelCapabilitiesText(form.modelCapabilitiesText)
+  const embeddingCapabilities = form.embeddingCapabilityRows
+    ? embeddingCapabilityRowsToRecord(form.embeddingCapabilityRows)
+    : {}
 
   const normalizeMetadataUserId = options.channelType === undefined
     ? form.normalizeMetadataUserId
@@ -456,6 +554,10 @@ export function buildChannelPayload(
     noVision: form.noVision,
     noVisionModels: form.noVisionModels,
     visionFallbackModel: normalizeSelectableString(form.visionFallbackModel),
+  }
+
+  if (options.channelType === 'vectors') {
+    channelData.embeddingCapabilities = embeddingCapabilities || {}
   }
 
   // 历史图片轮次限制：始终发送（含 0），使编辑场景能把渠道级限制清回不裁剪。

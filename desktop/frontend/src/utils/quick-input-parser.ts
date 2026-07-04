@@ -195,7 +195,7 @@ const extractTokens = (input: string): string[] => {
 
 /**
  * 根据 URL 路径检测服务类型，并返回清理后的 baseUrl
- * /messages → claude, /chat/completions → openai, /responses → responses
+ * /messages → claude, /chat/completions or /embeddings → openai, /responses → responses
  */
 const detectServiceTypeAndCleanUrl = (
   url: string
@@ -208,6 +208,8 @@ const detectServiceTypeAndCleanUrl = (
     const endpointRules: Array<{ pattern: RegExp; serviceType: 'openai' | 'gemini' | 'claude' | 'responses' }> = [
       { pattern: /\/v\d+[a-z]*\/messages(?:\/|$)/, serviceType: 'claude' },
       { pattern: /\/messages(?:\/|$)/, serviceType: 'claude' },
+      { pattern: /\/v\d+[a-z]*\/embeddings(?:\/|$)/, serviceType: 'openai' },
+      { pattern: /\/embeddings(?:\/|$)/, serviceType: 'openai' },
       { pattern: /\/v\d+[a-z]*\/chat\/completions(?:\/|$)/, serviceType: 'openai' },
       { pattern: /\/chat\/completions(?:\/|$)/, serviceType: 'openai' },
       { pattern: /\/v\d+[a-z]*\/responses(?:\/|$)/, serviceType: 'responses' },

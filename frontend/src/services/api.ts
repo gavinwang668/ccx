@@ -400,24 +400,14 @@ export class ApiService {
   }
 
   // 获取调度器统计信息
-  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat' | 'images'): Promise<SchedulerStatsResponse> {
-    // Gemini 与 Images 暂无独立调度器统计页，返回默认值
-    if (type === 'gemini' || type === 'images') {
-      return {
-        multiChannelMode: false,
-        activeChannelCount: 0,
-        traceAffinityCount: 0,
-        traceAffinityTTL: '0s',
-        failureThreshold: 0,
-        windowSize: 0
-      }
-    }
-    const query = type === 'responses' ? '?type=responses' : type === 'chat' ? '?type=chat' : ''
+  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat' | 'images' | 'vectors'): Promise<SchedulerStatsResponse> {
+    // All managed channel groups share the scheduler stats endpoint via ?type=.
+    const query = type && type !== 'messages' ? `?type=${type}` : ''
     return this.request(`/messages/channels/scheduler/stats${query}`)
   }
 
   // 获取渠道仪表盘数据（合并 channels + metrics + stats）
-  async getChannelDashboard(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images' = 'messages'): Promise<ChannelDashboardResponse> {
+  async getChannelDashboard(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images' | 'vectors' = 'messages'): Promise<ChannelDashboardResponse> {
     const query = type !== 'messages' ? `?type=${type}` : ''
     return this.request(`/messages/channels/dashboard${query}`)
   }
@@ -537,13 +527,13 @@ export class ApiService {
   }
   // ============== 模型统计 API ==============
 
-  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images', duration: string = '24h'): Promise<ModelStatsHistoryResponse> {
+  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images' | 'vectors', duration: string = '24h'): Promise<ModelStatsHistoryResponse> {
     return this.request(`/${type}/models/stats/history?duration=${duration}`)
   }
 
   // ============== 渠道日志 API ==============
 
-  async getChannelLogs(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images', channelId: number): Promise<ChannelLogsResponse> {
+  async getChannelLogs(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images' | 'vectors', channelId: number): Promise<ChannelLogsResponse> {
     return this.request(`/${type}/channels/${channelId}/logs`)
   }
 
@@ -804,6 +794,135 @@ export class ApiService {
 
   async updateImagesChannelModelMapping(id: number, sourcePattern: string, targetModel: string, reasoning: string): Promise<void> {
     await this.request(`/images/channels/${id}/mappings`, {
+      method: 'PUT',
+      body: JSON.stringify({ source_pattern: sourcePattern, target_model: targetModel, reasoning })
+    })
+  }
+
+  // ============== Vectors 渠道管理 API ==============
+
+  async getVectorsChannels(): Promise<ChannelsResponse> {
+    return this.request('/vectors/channels')
+  }
+
+  async addVectorsChannel(channel: Omit<Channel, 'index' | 'latency' | 'status'>): Promise<void> {
+    await this.request('/vectors/channels', {
+      method: 'POST',
+      body: JSON.stringify(channel)
+    })
+  }
+
+  async updateVectorsChannel(id: number, channel: Partial<Channel>): Promise<void> {
+    await this.request(`/vectors/channels/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(channel)
+    })
+  }
+
+  async deleteVectorsChannel(id: number): Promise<void> {
+    await this.request(`/vectors/channels/${id}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async addVectorsApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/vectors/channels/${channelId}/keys`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
+    })
+  }
+
+  async removeVectorsApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/vectors/channels/${channelId}/keys/${encodeURIComponent(apiKey)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async restoreVectorsApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/vectors/channels/${channelId}/keys/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
+    })
+  }
+
+  async moveVectorsApiKeyToTop(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/vectors/channels/${channelId}/keys/${encodeURIComponent(apiKey)}/top`, {
+      method: 'POST'
+    })
+  }
+
+  async moveVectorsApiKeyToBottom(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/vectors/channels/${channelId}/keys/${encodeURIComponent(apiKey)}/bottom`, {
+      method: 'POST'
+    })
+  }
+
+  async reorderVectorsChannels(order: number[]): Promise<void> {
+    await this.request('/vectors/channels/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ order })
+    })
+  }
+
+  async setVectorsChannelStatus(channelId: number, status: ChannelStatus): Promise<void> {
+    await this.request(`/vectors/channels/${channelId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  async resumeVectorsChannel(channelId: number): Promise<ResumeChannelResponse> {
+    return this.request(`/vectors/channels/${channelId}/resume`, {
+      method: 'POST'
+    })
+  }
+
+  async getVectorsChannelMetrics(): Promise<ChannelMetrics[]> {
+    return this.request('/vectors/channels/metrics')
+  }
+
+  async setVectorsChannelPromotion(channelId: number, durationSeconds: number): Promise<void> {
+    await this.request(`/vectors/channels/${channelId}/promotion`, {
+      method: 'POST',
+      body: JSON.stringify({ duration: durationSeconds })
+    })
+  }
+
+  async getVectorsChannelMetricsHistory(duration: string = '24h', interval?: string): Promise<MetricsHistoryResponse[]> {
+    return this.request(`/vectors/channels/metrics/history?${this.historyQuery(duration, interval)}`)
+  }
+
+  async getVectorsChannelKeyMetricsHistory(channelId: number, duration: string = '6h', interval?: string): Promise<ChannelKeyMetricsHistoryResponse> {
+    return this.request(`/vectors/channels/${channelId}/keys/metrics/history?${this.historyQuery(duration, interval)}`)
+  }
+
+  async getVectorsGlobalStats(duration: string = '24h', interval?: string): Promise<GlobalStatsHistoryResponse> {
+    return this.request(`/vectors/global/stats/history?${this.historyQuery(duration, interval)}`)
+  }
+
+  async pingVectorsChannel(id: number): Promise<PingResult> {
+    return this.request(`/vectors/ping/${id}`)
+  }
+
+  async pingAllVectorsChannels(): Promise<Array<{ id: number; name: string; latency: number; status: string }>> {
+    const resp = await this.request('/vectors/ping')
+    return (resp.channels || []).map((ch: { index: number; name: string; latency: number; success: boolean }) => ({
+      id: ch.index,
+      name: ch.name,
+      latency: ch.latency,
+      status: ch.success ? 'healthy' : 'error'
+    }))
+  }
+
+  async getVectorsChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
+    return this.request(`/vectors/channels/${id}/models`, {
+      method: 'POST',
+      body: JSON.stringify(request)
+    })
+  }
+
+  async updateVectorsChannelModelMapping(id: number, sourcePattern: string, targetModel: string, reasoning: string): Promise<void> {
+    await this.request(`/vectors/channels/${id}/mappings`, {
       method: 'PUT',
       body: JSON.stringify({ source_pattern: sourcePattern, target_model: targetModel, reasoning })
     })

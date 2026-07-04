@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## 项目概述
 
-CCX 是一个支持 Claude、OpenAI Chat、OpenAI Images、Codex Responses 和 Gemini 的多上游 AI API 代理与协议转换网关，提供统一代理入口和 Web 管理界面。
+CCX 是一个支持 Claude、OpenAI Chat、OpenAI Images、OpenAI Embeddings、Codex Responses 和 Gemini 的多上游 AI API 代理与协议转换网关，提供统一代理入口和 Web 管理界面。
 
 **技术栈**: Go 1.25 + Gin（后端）+ Vue 3 + Vuetify 3 + TypeScript（前端）+ Docker  
 **版本管理**: 根目录 `VERSION` 是唯一版本源，构建时通过 `backend-go/Makefile` 的 `-ldflags` 注入运行时版本信息。
@@ -46,16 +46,18 @@ Client -> backend :3000 ->
   |- /v1/chat/completions         -> OpenAI Chat proxy
   |- /v1/responses                -> Codex Responses proxy
   |- /v1/images/{...}             -> OpenAI Images proxy
+  |- /v1/embeddings               -> OpenAI Embeddings proxy
   |- /v1/models                   -> Models API
   `- /v1beta/models/*             -> Gemini proxy
 ```
 
-五类正式渠道：
+六类正式渠道：
 - `messages`
 - `chat`
 - `responses`
 - `gemini`
 - `images`
+- `vectors`
 
 ## 核心设计模式
 
@@ -78,6 +80,7 @@ Client -> backend :3000 ->
 - `POST /v1/images/generations`
 - `POST /v1/images/edits`
 - `POST /v1/images/variations`
+- `POST /v1/embeddings`
 - `GET /health`
 
 ### 管理入口
@@ -86,6 +89,7 @@ Client -> backend :3000 ->
 - `/api/responses/channels/*`
 - `/api/gemini/channels/*`
 - `/api/images/channels/*`
+- `/api/vectors/channels/*`
 
 说明：实际路由以 `backend-go/main.go` 为准，文档只保留概览层信息。
 

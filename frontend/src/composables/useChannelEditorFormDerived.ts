@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { buildExpectedRequestUrls } from '../utils/expectedRequestUrls'
 
-type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 type ServiceType = 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot' | ''
 type RefLike<T> = { value: T }
 type FormLike = {

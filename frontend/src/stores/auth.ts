@@ -11,6 +11,8 @@ interface AuthState {
   authKeyInput: string
 }
 
+const authStorage = typeof window !== 'undefined' ? window.localStorage : undefined
+
 /**
  * 认证状态管理 Store
  *
@@ -47,21 +49,21 @@ export const useAuthStore = defineStore('auth', {
       this.apiKey = key
       // 同时保存到旧的 localStorage key 以保持兼容性
       if (key) {
-        localStorage.setItem('proxyAccessKey', key)
+        authStorage?.setItem('proxyAccessKey', key)
       } else {
-        localStorage.removeItem('proxyAccessKey')
+        authStorage?.removeItem('proxyAccessKey')
       }
     },
 
     clearAuth() {
       this.apiKey = null
       // 清除旧的 localStorage key
-      localStorage.removeItem('proxyAccessKey')
+      authStorage?.removeItem('proxyAccessKey')
     },
 
     initializeAuth() {
       // 优先从旧的 localStorage key 读取（兼容性）
-      const oldKey = localStorage.getItem('proxyAccessKey')
+      const oldKey = authStorage?.getItem('proxyAccessKey')
       if (oldKey) {
         this.apiKey = oldKey
       }
@@ -106,7 +108,7 @@ export const useAuthStore = defineStore('auth', {
   // 持久化配置
   persist: {
     key: 'ccx-auth',
-    storage: localStorage,
+    storage: authStorage,
     // 仅持久化必要字段，排除瞬态 UI 状态和敏感输入
     pick: ['apiKey', 'authAttempts', 'authLockoutTime'],
   },

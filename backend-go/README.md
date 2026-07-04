@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 覆盖五类代理能力：Messages、Chat Completions、Responses、Gemini、Images
+- 覆盖六类代理能力：Messages、Chat Completions、Responses、Gemini、Images、Vectors
 - 支持多渠道调度、故障转移、熔断与恢复
 - 支持多 API Key 轮换、代理、自定义请求头、模型过滤与路由前缀
 - 支持 Responses 会话跟踪与多轮上下文延续
@@ -18,6 +18,7 @@
 - OpenAI / Codex Responses
 - Gemini 原生协议
 - OpenAI Images（generations / edits / variations）
+- OpenAI Embeddings
 
 ## 快速开始
 
@@ -101,6 +102,7 @@ ccx --config ~/.config/ccx/config.json --statedir ~/.local/state/ccx --logdir ~/
 - `chatUpstream`
 - `geminiUpstream`
 - `imagesUpstream`
+- `vectorsUpstream`
 
 ## 代理入口概览
 
@@ -120,6 +122,7 @@ ccx --config ~/.config/ccx/config.json --statedir ~/.local/state/ccx --logdir ~/
 | `/v1/images/generations` | POST | OpenAI Images 生成 |
 | `/v1/images/edits` | POST | OpenAI Images 编辑 |
 | `/v1/images/variations` | POST | OpenAI Images 变体 |
+| `/v1/embeddings` | POST | OpenAI Embeddings 向量 |
 
 ## 管理 API 概览
 
@@ -127,7 +130,7 @@ ccx --config ~/.config/ccx/config.json --statedir ~/.local/state/ccx --logdir ~/
 
 ### 通用渠道管理模式
 
-对于 `type ∈ messages | responses | chat | gemini | images`，存在以下通用模式：
+对于 `type ∈ messages | responses | chat | gemini | images | vectors`，存在以下通用模式：
 
 | 模式 | 方法 | 说明 |
 | --- | --- | --- |
@@ -167,7 +170,7 @@ ccx --config ~/.config/ccx/config.json --statedir ~/.local/state/ccx --logdir ~/
 | `/api/{type}/channels/:id/capability-test/:jobId` | GET / DELETE | 查询或取消测试任务 |
 | `/api/{type}/channels/:id/capability-test/:jobId/retry` | POST | 重试单模型测试 |
 
-Images 当前没有对应的 capability-test / snapshot 路由。
+Images 与 Vectors 当前没有对应的 capability-test / snapshot 路由。
 
 ## 管理与调度能力
 
@@ -176,6 +179,8 @@ Images 当前没有对应的 capability-test / snapshot 路由。
 - 通过 `/api/{type}/channels/:id/models` 由后端代理查询上游模型列表
 - `supportedModels` 支持空列表、精确匹配与通配符规则
 - 调度时会自动跳过不支持当前模型的渠道
+- Vectors 的 `supportedModels` 匹配客户端请求的原始模型名；Embedding 兼容性在 `modelMapping` 后按实际上游模型判断
+- Vectors 如需安全 fallback，应为兼容的实际 Embedding 模型配置相同 `embeddingSpaceId`、维度和 `normalized` 语义；未配置 `embeddingCapabilities` 的旧配置保持原有行为
 
 ### Promotion / Resume
 

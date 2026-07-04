@@ -44,6 +44,12 @@ func (r *ContextRequirement) needsOutputValidation() bool {
 	return r != nil && r.ExplicitOutputMax && r.OutputTokens > 0
 }
 
+type CandidateFilterFunc func(
+	channels []ChannelInfo,
+	upstreamFor func(ChannelInfo) *config.UpstreamConfig,
+	candidateAvailable func(ChannelInfo, *config.UpstreamConfig) bool,
+) ([]ChannelInfo, error)
+
 // SelectionOptions 描述一次渠道选择所需的上下文。
 type SelectionOptions struct {
 	UserID             string
@@ -55,6 +61,7 @@ type SelectionOptions struct {
 	ContextRequirement *ContextRequirement
 	HasImageContent    bool
 	AgentRole          string // "main" | "subagent" — 角色感知 override 查找与亲和隔离
+	CandidateFilter    CandidateFilterFunc
 }
 
 func (s *ChannelScheduler) selectionResult(kind ChannelKind, upstream *config.UpstreamConfig, channelIndex int, reason string) *SelectionResult {
@@ -134,13 +141,15 @@ func kindAPIType(kind ChannelKind) string {
 		return "Chat"
 	case ChannelKindImages:
 		return "Images"
+	case ChannelKindVectors:
+		return "Vectors"
 	default:
 		return "Messages"
 	}
 }
 
 func (s *ChannelScheduler) scheduledRecoveryKinds() []ChannelKind {
-	return []ChannelKind{ChannelKindMessages, ChannelKindResponses, ChannelKindGemini, ChannelKindChat, ChannelKindImages}
+	return []ChannelKind{ChannelKindMessages, ChannelKindResponses, ChannelKindGemini, ChannelKindChat, ChannelKindImages, ChannelKindVectors}
 }
 
 func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now time.Time) ([]ScheduledRecoveryResult, error) {
@@ -155,6 +164,8 @@ func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now tim
 		upstreams = cfg.ChatUpstream
 	case ChannelKindImages:
 		upstreams = cfg.ImagesUpstream
+	case ChannelKindVectors:
+		upstreams = cfg.VectorsUpstream
 	default:
 		upstreams = cfg.Upstream
 	}

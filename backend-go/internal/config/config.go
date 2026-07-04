@@ -17,26 +17,27 @@ import (
 
 // UpstreamConfig 上游配置
 type UpstreamConfig struct {
-	BaseURL             string                             `json:"baseUrl"`
-	BaseURLs            []string                           `json:"baseUrls,omitempty"` // 多 BaseURL 支持（failover 模式）
-	APIKeys             []string                           `json:"apiKeys"`
-	APIKeyConfigs       []APIKeyConfig                     `json:"apiKeyConfigs,omitempty"`     // API Key 附加配置（限速、权重、配额组等），通过 Key 关联 APIKeys
-	HistoricalAPIKeys   []string                           `json:"historicalApiKeys,omitempty"` // 历史 API Key（用于统计聚合，换 Key 后保留旧 Key 的统计数据）
-	DisabledAPIKeys     []DisabledKeyInfo                  `json:"disabledApiKeys,omitempty"`   // 被拉黑的 API Key（持久化，需手动恢复）
-	ServiceType         string                             `json:"serviceType"`                 // gemini, openai, claude
-	AuthHeader          string                             `json:"authHeader,omitempty"`        // 认证头覆盖：auto(空)/bearer/x-api-key
-	Name                string                             `json:"name,omitempty"`
-	Description         string                             `json:"description,omitempty"`
-	Website             string                             `json:"website,omitempty"`
-	InsecureSkipVerify  bool                               `json:"insecureSkipVerify,omitempty"`
-	ModelMapping        map[string]string                  `json:"modelMapping,omitempty"`
-	ModelCapabilities   map[string]UpstreamModelCapability `json:"modelCapabilities,omitempty"`   // 实际模型能力覆盖，key 支持模型通配符
-	DefaultCapability   UpstreamModelCapability            `json:"defaultCapability,omitempty"`   // 渠道默认实际模型能力
-	AllowUnknownContext bool                               `json:"allowUnknownContext,omitempty"` // 大上下文请求是否允许落到未知能力渠道
-	ReasoningMapping    map[string]string                  `json:"reasoningMapping,omitempty"`
-	ReasoningParamStyle string                             `json:"reasoningParamStyle,omitempty"`
-	TextVerbosity       string                             `json:"textVerbosity,omitempty"`
-	FastMode            bool                               `json:"fastMode,omitempty"`
+	BaseURL               string                             `json:"baseUrl"`
+	BaseURLs              []string                           `json:"baseUrls,omitempty"` // 多 BaseURL 支持（failover 模式）
+	APIKeys               []string                           `json:"apiKeys"`
+	APIKeyConfigs         []APIKeyConfig                     `json:"apiKeyConfigs,omitempty"`     // API Key 附加配置（限速、权重、配额组等），通过 Key 关联 APIKeys
+	HistoricalAPIKeys     []string                           `json:"historicalApiKeys,omitempty"` // 历史 API Key（用于统计聚合，换 Key 后保留旧 Key 的统计数据）
+	DisabledAPIKeys       []DisabledKeyInfo                  `json:"disabledApiKeys,omitempty"`   // 被拉黑的 API Key（持久化，需手动恢复）
+	ServiceType           string                             `json:"serviceType"`                 // gemini, openai, claude
+	AuthHeader            string                             `json:"authHeader,omitempty"`        // 认证头覆盖：auto(空)/bearer/x-api-key
+	Name                  string                             `json:"name,omitempty"`
+	Description           string                             `json:"description,omitempty"`
+	Website               string                             `json:"website,omitempty"`
+	InsecureSkipVerify    bool                               `json:"insecureSkipVerify,omitempty"`
+	ModelMapping          map[string]string                  `json:"modelMapping,omitempty"`
+	ModelCapabilities     map[string]UpstreamModelCapability `json:"modelCapabilities,omitempty"` // 实际模型能力覆盖，key 支持模型通配符
+	EmbeddingCapabilities map[string]EmbeddingCapability     `json:"embeddingCapabilities,omitempty"`
+	DefaultCapability     UpstreamModelCapability            `json:"defaultCapability,omitempty"`   // 渠道默认实际模型能力
+	AllowUnknownContext   bool                               `json:"allowUnknownContext,omitempty"` // 大上下文请求是否允许落到未知能力渠道
+	ReasoningMapping      map[string]string                  `json:"reasoningMapping,omitempty"`
+	ReasoningParamStyle   string                             `json:"reasoningParamStyle,omitempty"`
+	TextVerbosity         string                             `json:"textVerbosity,omitempty"`
+	FastMode              bool                               `json:"fastMode,omitempty"`
 	// OpenAI Chat 上游配置：启用后将非标准 Chat role 改写为 user（默认 false）
 	NormalizeNonstandardChatRoles bool `json:"normalizeNonstandardChatRoles,omitempty"`
 	// Codex 工具兼容开关（默认 false）。
@@ -164,6 +165,13 @@ type UpstreamModelCapability struct {
 	Capabilities            map[string]bool `json:"capabilities,omitempty"`
 	Pricing                 *ModelPricing   `json:"pricing,omitempty"`
 	Sources                 []string        `json:"sources,omitempty"`
+}
+
+type EmbeddingCapability struct {
+	EmbeddingSpaceID    string `json:"embeddingSpaceId,omitempty"`
+	Dimensions          int    `json:"dimensions,omitempty"`
+	SupportedDimensions []int  `json:"supportedDimensions,omitempty"`
+	Normalized          *bool  `json:"normalized,omitempty"`
 }
 
 // ModelPricing 描述模型公开计费信息，单位与币种由 unit/currency 标明。
@@ -406,6 +414,7 @@ type UpstreamUpdate struct {
 	InsecureSkipVerify            *bool                              `json:"insecureSkipVerify"`
 	ModelMapping                  map[string]string                  `json:"modelMapping"`
 	ModelCapabilities             map[string]UpstreamModelCapability `json:"modelCapabilities"`
+	EmbeddingCapabilities         map[string]EmbeddingCapability     `json:"embeddingCapabilities"`
 	DefaultCapability             *UpstreamModelCapability           `json:"defaultCapability"`
 	AllowUnknownContext           *bool                              `json:"allowUnknownContext"`
 	ReasoningMapping              map[string]string                  `json:"reasoningMapping"`
@@ -496,6 +505,9 @@ type Config struct {
 
 	// Images 接口专用配置（OpenAI /v1/images/generations 兼容）
 	ImagesUpstream []UpstreamConfig `json:"imagesUpstream,omitempty"`
+
+	// Vectors 接口专用配置（OpenAI /v1/embeddings 兼容）
+	VectorsUpstream []UpstreamConfig `json:"vectorsUpstream,omitempty"`
 
 	// 上下文路由配置与全局能力覆盖。
 	ContextRouting            ContextRoutingConfig               `json:"contextRouting,omitempty"`
@@ -593,6 +605,14 @@ func (cm *ConfigManager) GetConfig() Config {
 		cloned.ImagesUpstream = make([]UpstreamConfig, len(cm.config.ImagesUpstream))
 		for i := range cm.config.ImagesUpstream {
 			cloned.ImagesUpstream[i] = *cm.config.ImagesUpstream[i].Clone()
+		}
+	}
+
+	// 深拷贝 VectorsUpstream slice
+	if len(cm.config.VectorsUpstream) > 0 {
+		cloned.VectorsUpstream = make([]UpstreamConfig, len(cm.config.VectorsUpstream))
+		for i := range cm.config.VectorsUpstream {
+			cloned.VectorsUpstream[i] = *cm.config.VectorsUpstream[i].Clone()
 		}
 	}
 
@@ -1247,6 +1267,8 @@ func (cm *ConfigManager) getUpstreamSliceLocked(apiType string) *[]UpstreamConfi
 		return &cm.config.ChatUpstream
 	case "Images":
 		return &cm.config.ImagesUpstream
+	case "Vectors":
+		return &cm.config.VectorsUpstream
 	default:
 		return nil
 	}

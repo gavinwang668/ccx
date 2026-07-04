@@ -5,11 +5,15 @@ import { ApiService } from '../services/api'
 import { supportsAdvancedChannelOptions, supportsReasoningMapping } from '../utils/channelAdvancedOptions'
 import {
   buildChannelPayload,
+  createEmbeddingCapabilityRow,
   createModelCapabilityRow,
+  embeddingCapabilitiesToRows,
+  embeddingCapabilityRowsToRecord,
   modelCapabilitiesToRows,
   modelCapabilityRowsToRecord,
   normalizeSelectableString,
   resolveBuiltinUpstreamModelCapability,
+  type EmbeddingCapabilityRow,
   type ModelCapabilityRow,
 } from '../utils/channelPayload'
 import {
@@ -36,7 +40,7 @@ import { createHandleTestCapability } from '../utils/editChannelPayload'
 export interface EditChannelModalProps {
   show: boolean
   channel?: Channel | null
-  channelType?: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+  channelType?: 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 }
 
 export type EditChannelModalEmits = {
@@ -53,26 +57,27 @@ type ResolvedEditChannelModalProps = Readonly<EditChannelModalProps & { channelT
 export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: EditChannelModalEmit) {
 const { t } = useI18n()
   const apiService = new ApiService()
-  
+
   // 主题
   const theme = useTheme()
-  
+
   // 表单引用
   const formRef = ref()
-  
+
   const defaultServiceTypeValueFallback = (): 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot' => {
     if (props.channelType === 'chat') return 'openai'
+    if (props.channelType === 'vectors') return 'openai'
     if (props.channelType === 'gemini') return 'gemini'
     if (props.channelType === 'responses') return 'responses'
     return 'claude'
   }
 
   const defaultNormalizeMetadataUserId = () => props.channelType === 'messages'
-  
+
   // 详细表单预期请求 URL 预览（防止输入时抖动）
   const formBaseUrlPreview = ref('')
   let formBaseUrlPreviewTimer: number | null = null
-  
+
   const {
     activeSection,
     sections,
@@ -84,16 +89,16 @@ const { t } = useI18n()
 
   const { isAnySelectMenuOpen, suppressDialogEscapeUntil, onMenuUpdate } = useDialogMenuWorkaround()
 
-  const supportsOpenAIAdvancedOptions = computed(() => supportsAdvancedChannelOptions(form.serviceType))
-  const supportsReasoningMappingOptions = computed(() => supportsReasoningMapping(form.serviceType))
+  const supportsOpenAIAdvancedOptions = computed(() => props.channelType !== 'vectors' && supportsAdvancedChannelOptions(form.serviceType))
+  const supportsReasoningMappingOptions = computed(() => props.channelType !== 'vectors' && supportsReasoningMapping(form.serviceType))
   const supportsChatRoleNormalization = computed(() => {
     return props.channelType === 'chat' || (props.channelType === 'responses' && form.serviceType === 'openai')
   })
-  
+
   // 模型优先级排序规则（索引越小优先级越高）
   // 表单数据：balanced 预设值作为渠道级默认回退值
   const defaultStreamTimeouts = { ...streamTimeoutPresets.balanced }
-  
+
   const form = reactive({
     name: '',
     serviceType: '' as 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot' | '',
@@ -115,6 +120,7 @@ const { t } = useI18n()
     modelMapping: {} as Record<string, string>,
     modelCapabilitiesText: '',
     modelCapabilityRows: [] as ModelCapabilityRow[],
+    embeddingCapabilityRows: [] as EmbeddingCapabilityRow[],
     defaultContextWindowTokens: null as string | number | null,
     defaultMaxOutputTokens: null as string | number | null,
     allowUnknownContext: false,
@@ -164,23 +170,23 @@ const { t } = useI18n()
     reasoningParamStyleOptions,
     textVerbosityOptions,
   } = useEditChannelOptions(channelTypeRef, form, t)
-  
+
   // 多 BaseURL 文本输入（独立变量，保留用户输入的换行）
   const baseUrlsText = ref('')
-  
+
   // 监听 baseUrlsText 变化，同步到 form（去重等效 URL）
   watch(baseUrlsText, val => {
     const { baseUrl, baseUrls } = syncBaseUrlsFormState(val, form.serviceType)
     form.baseUrl = baseUrl
     form.baseUrls = baseUrls
   })
-  
+
   watch(() => form.serviceType, () => {
     const { baseUrl, baseUrls } = syncBaseUrlsFormState(baseUrlsText.value, form.serviceType)
     form.baseUrl = baseUrl
     form.baseUrls = baseUrls
   })
-  
+
   // 模型映射行数据结构（改用数组存储，支持直接编辑）
   interface ModelMappingRow {
     id: number
@@ -189,12 +195,14 @@ const { t } = useI18n()
     reasoning: '' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     noVision: boolean
   }
-  
+
   let rowIdCounter = 0
   const modelMappingRows = ref<ModelMappingRow[]>([])
   let capabilityRowIdCounter = 0
   const nextCapabilityRowId = () => ++capabilityRowIdCounter
-  
+  let embeddingCapabilityRowIdCounter = 0
+  const nextEmbeddingCapabilityRowId = () => ++embeddingCapabilityRowIdCounter
+
   const incompleteMappedTargetSuffix = /[._:/-]$/
   const isCompleteMappedTargetModel = (model: string) => !!model && !incompleteMappedTargetSuffix.test(model)
   const hasNoVisionRows = computed(() => modelMappingRows.value.some(row => row.noVision && row.target.trim()))
@@ -204,7 +212,7 @@ const { t } = useI18n()
       ...modelMappingRows.value.map(row => normalizeSelectableString(row.target).trim()),
       normalizeSelectableString(form.visionFallbackModel).trim(),
     ]
-  
+
     return models.filter(model => {
       const key = model.toLowerCase()
       if (!isCompleteMappedTargetModel(model) || seen.has(key)) return false
@@ -214,7 +222,7 @@ const { t } = useI18n()
   })
   const isMappingTargetEditing = ref(false)
   const hasPendingModelCapabilitySync = ref(false)
-  
+
   function resetTransientUiState() {
     sourceMappingError.value = ''
     resetRestoredKeys()
@@ -224,10 +232,10 @@ const { t } = useI18n()
     errors.website = ''
     formBaseUrlPreview.value = ''
   }
-  
+
   // 源模型名验证错误
   const sourceMappingError = ref('')
-  
+
   // 表单验证错误
   const errors = reactive({
     name: '',
@@ -235,7 +243,7 @@ const { t } = useI18n()
     baseUrl: '',
     website: ''
   })
-  
+
   // 验证规则
   const rules = {
     required: (value: string) => !!value || t('addChannel.fieldRequired'),
@@ -283,14 +291,14 @@ const { t } = useI18n()
       return (Number.isInteger(timeout) && timeout >= 1000 && timeout <= 300000) || t('addChannel.responseHeaderTimeoutMsInvalid')
     }
   }
-  
+
   // 计算属性
   const dialogMode = ref<'create' | 'edit'>('create')
   const isEditing = computed(() => dialogMode.value === 'edit')
   const isMac = computed(() => typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform))
   const hasDisabledKeysAvailable = computed(() => visibleDisabledKeys.value.length > 0)
   const hasConfigurableKeys = computed(() => form.apiKeys.length > 0 || (isEditing.value && hasDisabledKeysAvailable.value))
-  
+
   const { selectedStreamTimeoutStrategy, applyStreamTimeoutStrategy } = useStreamTimeoutStrategy(form)
 
   const {
@@ -306,8 +314,14 @@ const { t } = useI18n()
       ? t('addChannel.modelCapabilitiesRowsInvalid')
       : ''
   })
-  
+  const embeddingCapabilitiesError = computed(() => {
+    return props.channelType === 'vectors' && embeddingCapabilityRowsToRecord(form.embeddingCapabilityRows) === null
+      ? t('addChannel.embeddingCapabilitiesRowsInvalid')
+      : ''
+  })
+
   const syncModelCapabilitiesFromMapping = () => {
+    if (props.channelType === 'vectors') return
     const existingModels = new Set(
       form.modelCapabilityRows
         .map(row => normalizeSelectableString(row.model).trim().toLowerCase())
@@ -329,38 +343,63 @@ const { t } = useI18n()
     if (!rowsToAdd.length) return
     form.modelCapabilityRows = [...form.modelCapabilityRows, ...rowsToAdd]
   }
-  
+
+  const syncEmbeddingCapabilitiesFromMapping = () => {
+    if (props.channelType !== 'vectors') return
+    const existingModels = new Set(
+      form.embeddingCapabilityRows
+        .map(row => normalizeSelectableString(row.model).trim().toLowerCase())
+        .filter(Boolean)
+    )
+    const rowsToAdd = mappedTargetModels.value
+      .filter(isCompleteMappedTargetModel)
+      .filter(model => !existingModels.has(model.toLowerCase()))
+      .map(model => createEmbeddingCapabilityRow(nextEmbeddingCapabilityRowId(), model))
+    if (!rowsToAdd.length) return
+    form.embeddingCapabilityRows = [...form.embeddingCapabilityRows, ...rowsToAdd]
+  }
+
   const syncModelCapabilitiesFromMappingWhenIdle = () => {
     if (isMappingTargetEditing.value) {
       hasPendingModelCapabilitySync.value = true
       return
     }
     hasPendingModelCapabilitySync.value = false
-    syncModelCapabilitiesFromMapping()
+    if (props.channelType === 'vectors') {
+      syncEmbeddingCapabilitiesFromMapping()
+    } else {
+      syncModelCapabilitiesFromMapping()
+    }
   }
-  
+
   const startMappingTargetEdit = () => {
     isMappingTargetEditing.value = true
   }
-  
+
   const finishMappingTargetEdit = () => {
     if (!isMappingTargetEditing.value) return
     isMappingTargetEditing.value = false
     if (!hasPendingModelCapabilitySync.value) return
     hasPendingModelCapabilitySync.value = false
-    nextTick(syncModelCapabilitiesFromMapping)
+    nextTick(() => {
+      if (props.channelType === 'vectors') {
+        syncEmbeddingCapabilitiesFromMapping()
+      } else {
+        syncModelCapabilitiesFromMapping()
+      }
+    })
   }
-  
+
   const { headerClasses, avatarColor, headerIconStyle, subtitleClasses } = useChannelEditorHeaderState(theme)
 
   const isFormValid = computed(() => {
     const hasValidBaseUrl = form.serviceType === 'copilot' || (!!form.baseUrl.trim() && isValidUrl(form.baseUrl))
     const hasValidApiKeys = form.serviceType === 'copilot' || hasConfigurableKeys.value
     return (
-      !!form.name.trim() && !!form.serviceType && hasValidBaseUrl && hasValidApiKeys && !modelCapabilitiesError.value
+      !!form.name.trim() && !!form.serviceType && hasValidBaseUrl && hasValidApiKeys && !modelCapabilitiesError.value && !embeddingCapabilitiesError.value
     )
   })
-  
+
   const buildSubmitPayload = () => {
     const payload = buildChannelPayload(form, { channelType: props.channelType })
     applyVisionFallbackReasoning(payload)
@@ -399,13 +438,13 @@ const { t } = useI18n()
     }
     return payload
   }
-  
+
   const applyVisionFallbackReasoning = (payload: Partial<Channel>) => {
     const fallbackModel = normalizeSelectableString(form.visionFallbackModel).trim()
     if (!supportsReasoningMappingOptions.value || !fallbackModel) {
       return
     }
-  
+
     const reasoningMapping = { ...(payload.reasoningMapping || {}) }
     if (form.visionFallbackReasoningEffort) {
       reasoningMapping[fallbackModel] = form.visionFallbackReasoningEffort
@@ -414,12 +453,12 @@ const { t } = useI18n()
     }
     payload.reasoningMapping = reasoningMapping
   }
-  
+
   // 表单操作
   const resetForm = () => {
     resetTransientUiState()
     form.name = ''
-    form.serviceType = props.channelType === 'images' ? 'openai' : ''
+    form.serviceType = props.channelType === 'images' || props.channelType === 'vectors' ? 'openai' : ''
     form.authHeader = 'auto'
     form.baseUrl = ''
     form.baseUrls = []
@@ -438,14 +477,15 @@ const { t } = useI18n()
     form.modelMapping = {}
     form.modelCapabilitiesText = ''
     form.modelCapabilityRows = []
+    form.embeddingCapabilityRows = []
     form.defaultContextWindowTokens = null
     form.defaultMaxOutputTokens = null
     form.allowUnknownContext = false
     form.reasoningMapping = {}
-  
+
     // 清空模型映射行
     modelMappingRows.value = []
-  
+
     form.reasoningParamStyle = 'reasoning'
     form.textVerbosity = ''
     form.fastMode = false
@@ -480,22 +520,22 @@ const { t } = useI18n()
     form.visionFallbackModel = ''
     form.visionFallbackReasoningEffort = ''
     form.historicalImageTurnLimit = 0
-  
+
     // 重置 baseUrlsText
     baseUrlsText.value = ''
-  
+
     // 清空模型缓存和状态
     resetTargetModelOptions()
     fetchingModels.value = false
     fetchModelsError.value = ''
     keyModelsStatus.value.clear()
-  
+
     }
-  
+
   const loadChannelData = (channel: Channel) => {
     resetTransientUiState()
     form.name = channel.name
-    form.serviceType = props.channelType === 'images' ? 'openai' : channel.serviceType
+    form.serviceType = props.channelType === 'images' || props.channelType === 'vectors' ? 'openai' : channel.serviceType
     form.authHeader = channel.authHeader || 'auto'
     form.baseUrl = channel.baseUrl
     form.baseUrls = channel.baseUrls || []
@@ -509,13 +549,13 @@ const { t } = useI18n()
     form.stripEmptyTextBlocks = !!channel.stripEmptyTextBlocks
     form.normalizeSystemRoleToTopLevel = !!channel.normalizeSystemRoleToTopLevel
     form.description = channel.description || ''
-  
+
     // 同步 baseUrlsText（优先使用 baseUrls，否则使用 baseUrl），保留用户显式配置的原始 URL 形式
     const rawUrls = channel.baseUrls && channel.baseUrls.length > 0
       ? channel.baseUrls
       : (channel.baseUrl ? [channel.baseUrl] : [])
     baseUrlsText.value = rawUrls.join('\n')
-  
+
     // 直接存储原始密钥，不需要映射关系
     form.apiKeys = [...channel.apiKeys]
     form.apiKeyConfigs = channel.apiKeyConfigs
@@ -524,20 +564,21 @@ const { t } = useI18n()
           models: cfg.models ? [...cfg.models] : undefined,
         }))
       : undefined
-  
+
     form.modelMapping = { ...(channel.modelMapping || {}) }
     form.modelCapabilitiesText = Object.keys(channel.modelCapabilities || {}).length > 0
       ? JSON.stringify(normalizeModelCapabilities(channel.modelCapabilities), null, 2)
       : ''
     form.modelCapabilityRows = modelCapabilitiesToRows(channel.modelCapabilities || {}, nextCapabilityRowId)
+    form.embeddingCapabilityRows = embeddingCapabilitiesToRows(channel.embeddingCapabilities || {}, nextEmbeddingCapabilityRowId)
     form.defaultContextWindowTokens = channel.defaultCapability?.contextWindowTokens || null
     form.defaultMaxOutputTokens = channel.defaultCapability?.maxOutputTokens || null
     form.allowUnknownContext = !!channel.allowUnknownContext
     form.reasoningMapping = { ...(channel.reasoningMapping || {}) }
-  
+
     // 加载模型映射行
     loadModelMappingRows(channel)
-  
+
     form.reasoningParamStyle = channel.reasoningParamStyle || 'reasoning'
     form.textVerbosity = channel.textVerbosity || ''
     form.fastMode = !!channel.fastMode
@@ -573,16 +614,16 @@ const { t } = useI18n()
     form.visionFallbackModel = channel.visionFallbackModel || ''
     form.visionFallbackReasoningEffort = (channel.reasoningMapping?.[form.visionFallbackModel] || '') as 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | ''
     form.historicalImageTurnLimit = channel.historicalImageTurnLimit ?? 0
-  
+
     // 立即同步 baseUrl 到预览变量，避免等待 debounce
     formBaseUrlPreview.value = channel.baseUrl
-  
+
     // 清空模型缓存和状态（切换渠道时重置）
     resetTargetModelOptions()
     fetchingModels.value = false
     fetchModelsError.value = ''
     keyModelsStatus.value.clear()
-  
+
     // 如果有模型映射配置，主动预加载模型列表
     if (channel.modelMapping && Object.keys(channel.modelMapping).length > 0) {
       nextTick(() => {
@@ -590,7 +631,7 @@ const { t } = useI18n()
       })
     }
   }
-  
+
   const {
     restoringKey,
     disabledKeys,
@@ -626,7 +667,7 @@ const { t } = useI18n()
     t,
     visibleDisabledKeys,
   })
-  
+
   const {
     baseUrlHasError,
     expectedRequestUrls,
@@ -640,7 +681,7 @@ const { t } = useI18n()
     form.reasoningMapping = {}
     form.noVisionModels = []
     const noVisionModels = new Set<string>()
-  
+
     modelMappingRows.value.forEach(row => {
       if (row.source && row.target) {
         form.modelMapping[row.source] = row.target
@@ -652,16 +693,16 @@ const { t } = useI18n()
         }
       }
     })
-  
+
     form.noVisionModels = [...noVisionModels]
   }
-  
+
   // 从渠道数据初始化 modelMappingRows
   const loadModelMappingRows = (channel: Channel) => {
     const mapping = channel.modelMapping || {}
     const reasoning = channel.reasoningMapping || {}
     const noVisionSet = new Set(channel.noVisionModels || [])
-  
+
     modelMappingRows.value = Object.entries(mapping).map(([source, target]) => ({
       id: ++rowIdCounter,
       source,
@@ -670,10 +711,10 @@ const { t } = useI18n()
       noVision: noVisionSet.has(target)
     }))
   }
-  
+
   const syncModelMappingRowsFromForm = () => {
     const noVisionSet = new Set(form.noVisionModels || [])
-  
+
     modelMappingRows.value = Object.entries(form.modelMapping || {}).map(([source, target]) => ({
       id: ++rowIdCounter,
       source,
@@ -695,39 +736,44 @@ const { t } = useI18n()
     supportsOpenAIAdvancedOptions,
     syncModelMappingRowsFromForm,
   })
-  
+
   // 辅助函数：更新表单字段
   const updateForm = (partial: Record<string, any>) => {
     Object.assign(form, partial)
   }
-  
+
   // 辅助函数：同步上游模型
   const syncUpstreamModels = () => {
     fetchTargetModels()
   }
-  
+
   const handleSubmit = async () => {
     if (!formRef.value) return
-  
-    syncModelCapabilitiesFromMapping()
-  
+
+    if (props.channelType === 'vectors') {
+      syncEmbeddingCapabilitiesFromMapping()
+    } else {
+      syncModelCapabilitiesFromMapping()
+    }
+
     const { valid } = await formRef.value.validate()
     if (!valid) return
     if (modelCapabilitiesError.value) return
-  
+    if (embeddingCapabilitiesError.value) return
+
     // 将模型映射行同步到 form 对象
     syncModelMappingToForm()
-  
+
     const channelData = buildSubmitPayload()
-  
+
     emit('save', channelData)
   }
-  
+
   const handleCancel = () => {
     emit('update:show', false)
     resetForm()
   }
-  
+
   const handleTestCapability = createHandleTestCapability({
     buildSubmitPayload,
     channel: computed(() => props.channel),
@@ -745,7 +791,7 @@ const { t } = useI18n()
 
   const handleDiagnoseCompat = async () => {
     if (props.channel?.index === undefined || props.channel?.index === null) return
-    if (props.channelType === 'images') return
+    if (props.channelType === 'images' || props.channelType === 'vectors') return
 
     diagnosingCompat.value = true
     if (diagnoseTimer) { clearTimeout(diagnoseTimer); diagnoseTimer = null }
@@ -781,7 +827,7 @@ const { t } = useI18n()
       diagnoseTimer = setTimeout(() => { diagnoseResult.value = null }, 5000)
     }
   }
-  
+
   // 监听props变化
   watch(
     () => props.show,
@@ -791,7 +837,7 @@ const { t } = useI18n()
         resetRestoredKeys()
         if (diagnoseTimer) { clearTimeout(diagnoseTimer); diagnoseTimer = null }
         diagnoseResult.value = null
-  
+
         if (dialogMode.value === 'edit' && props.channel) {
           // 编辑模式：使用完整表单
           loadChannelData(props.channel)
@@ -799,7 +845,7 @@ const { t } = useI18n()
           // 添加模式：固定使用快速添加
           resetForm()
         }
-  
+
         // dialog 渲染完成后绑定滚动监听，同步左侧导航高亮
         nextTick(() => attachScrollListener())
       } else {
@@ -807,7 +853,7 @@ const { t } = useI18n()
       }
     }
   )
-  
+
   watch(
     () => props.channel,
     (newChannel, oldChannel) => {
@@ -816,20 +862,20 @@ const { t } = useI18n()
         newChannel,
         oldChannel,
       })
-  
+
       if (action === 'load-edit-channel' && newChannel) {
         dialogMode.value = 'edit'
         loadChannelData(newChannel)
         return
       }
-  
+
       if (action === 'reset-new-form') {
         dialogMode.value = 'create'
         resetForm()
       }
     }
   )
-  
+
   watch(
     () => form.baseUrl,
     value => {
@@ -842,14 +888,14 @@ const { t } = useI18n()
     },
     { immediate: true }
   )
-  
+
   watch(
     mappedTargetModels,
     () => {
       syncModelCapabilitiesFromMappingWhenIdle()
     }
   )
-  
+
   watch(
     () => JSON.stringify({
       baseUrl: form.baseUrl,
@@ -868,12 +914,12 @@ const { t } = useI18n()
       fetchModelsError.value = ''
     }
   )
-  
+
   // ESC键监听 & Cmd/Ctrl+Enter 确认
   const handleKeydown = (event: Event) => {
     const keyboardEvent = event as KeyboardEvent
     if (!props.show) return
-  
+
     if (keyboardEvent.key === 'Escape') {
       if (isAnySelectMenuOpen.value || Date.now() < suppressDialogEscapeUntil.value) {
         keyboardEvent.preventDefault()
@@ -884,18 +930,18 @@ const { t } = useI18n()
       handleCancel()
       return
     }
-  
+
     // Cmd/Ctrl+Enter 确认提交
     if (keyboardEvent.key === 'Enter' && (keyboardEvent.metaKey || keyboardEvent.ctrlKey) && !keyboardEvent.shiftKey) {
       keyboardEvent.preventDefault()
       handleSubmit()
     }
   }
-  
+
   onMounted(() => {
     document.addEventListener('keydown', handleKeydown)
   })
-  
+
   onUnmounted(() => {
     document.removeEventListener('keydown', handleKeydown)
     detachScrollListener()
@@ -947,6 +993,7 @@ const { t } = useI18n()
     selectedSupportedModelSet,
     supportedModelsError,
     modelCapabilitiesError,
+    embeddingCapabilitiesError,
     startMappingTargetEdit,
     finishMappingTargetEdit,
     headerClasses,

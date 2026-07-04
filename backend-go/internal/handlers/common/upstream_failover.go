@@ -388,7 +388,11 @@ func TryUpstreamWithAllKeys(
 				if blResult.ShouldBlacklist {
 					isBalanceError := blResult.Reason == "insufficient_balance"
 					if !isBalanceError || upstream.IsAutoBlacklistBalanceEnabled() {
-						if err := cfgManager.BlacklistKey(apiType, channelIndex, apiKey, blResult.Reason, blResult.Message); err != nil {
+						blacklistMessage := blResult.Message
+						if strings.EqualFold(apiType, "Vectors") {
+							blacklistMessage = errorBodySummaryForLog(apiType, resp.StatusCode, respBodyBytes)
+						}
+						if err := cfgManager.BlacklistKey(apiType, channelIndex, apiKey, blResult.Reason, blacklistMessage); err != nil {
 							RequestLogf(c, "[%s-Blacklist] 拉黑 Key 失败: %v", apiType, err)
 						}
 					}
@@ -407,7 +411,7 @@ func TryUpstreamWithAllKeys(
 					if markURLFailure != nil {
 						markURLFailure(currentBaseURL)
 					}
-					errorSummary := truncateErrorSummary(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(string(respBodyBytes)), "\n", " "), "\r", " "))
+					errorSummary := errorBodySummaryForLog(apiType, resp.StatusCode, respBodyBytes)
 					if errorSummary != "" {
 						RequestLogf(c, "[%s-Key] 上游错误详情摘要: channel=[%d] %s, key=%s, summary=%s", apiType, channelIndex, upstream.Name, utils.MaskAPIKey(apiKey), errorSummary)
 					}
@@ -419,7 +423,11 @@ func TryUpstreamWithAllKeys(
 					}
 
 					// 记录渠道日志
-					CompleteLog(channelLogStore, metricsKey, logRequestID, resp.StatusCode, false, string(respBodyBytes), attempt > 0 || urlIdx > 0)
+					channelErrorInfo := string(respBodyBytes)
+					if strings.EqualFold(apiType, "Vectors") {
+						channelErrorInfo = errorBodySummaryForLog(apiType, resp.StatusCode, respBodyBytes)
+					}
+					CompleteLog(channelLogStore, metricsKey, logRequestID, resp.StatusCode, false, channelErrorInfo, attempt > 0 || urlIdx > 0)
 
 					if isQuotaRelated {
 						deprioritizeCandidates[apiKey] = true
@@ -442,10 +450,19 @@ func TryUpstreamWithAllKeys(
 
 				// 非 failover 错误，记录失败指标后返回（请求已处理）
 				clientStatusCode := normalizeUpstreamErrorStatus(resp.StatusCode, respBodyBytes)
+				channelErrorInfo := string(respBodyBytes)
+				if strings.EqualFold(apiType, "Vectors") {
+					errorSummary := errorBodySummaryForLog(apiType, resp.StatusCode, respBodyBytes)
+					channelErrorInfo = errorSummary
+					if errorSummary != "" {
+						RequestLogf(c, "[Vectors-UpstreamError] channel=[%d] %s status=%d original_model=%q mapped_model=%q summary=%s",
+							channelIndex, upstream.Name, resp.StatusCode, model, redirectedModel, errorSummary)
+					}
+				}
 				metricsManager.RecordRequestFinalizeFailureWithClass(currentBaseURL, apiKey, metricsServiceType, requestID, metrics.FailureClassNonRetryable)
 				channelScheduler.RecordRequestEnd(currentBaseURL, apiKey, metricsServiceType, kind)
 				// 记录渠道日志
-				CompleteLog(channelLogStore, metricsKey, logRequestID, clientStatusCode, false, string(respBodyBytes), attempt > 0 || urlIdx > 0)
+				CompleteLog(channelLogStore, metricsKey, logRequestID, clientStatusCode, false, channelErrorInfo, attempt > 0 || urlIdx > 0)
 				c.Data(clientStatusCode, "application/json", respBodyBytes)
 				return true, "", 0, nil, nil, nil
 			}

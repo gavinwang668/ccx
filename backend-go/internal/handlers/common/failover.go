@@ -54,7 +54,7 @@ func shouldRetryWithNextKeyFuzzy(statusCode int, bodyBytes []byte, apiType strin
 	// 内容审核类错误（sensitive_words_detected 等）任何状态码都不应 failover
 	// 换渠道/换 Key 不会改变请求内容本身
 	if len(bodyBytes) > 0 && isContentModerationError(bodyBytes) {
-		LogWithTag(logTag, "[%s-Failover-Fuzzy] 检测到内容审核错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, truncateErrorSummary(string(bodyBytes)))
+		LogWithTag(logTag, "[%s-Failover-Fuzzy] 检测到内容审核错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
 		return false, false
 	}
 
@@ -62,7 +62,7 @@ func shouldRetryWithNextKeyFuzzy(statusCode int, bodyBytes []byte, apiType strin
 	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
 	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 {
 		if isNonRetryableError(bodyBytes, apiType) {
-			LogWithTag(logTag, "[%s-Failover-Fuzzy] 检测到不可重试错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, truncateErrorSummary(string(bodyBytes)))
+			LogWithTag(logTag, "[%s-Failover-Fuzzy] 检测到不可重试错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
 			return false, false
 		}
 	}
@@ -92,14 +92,14 @@ func shouldRetryWithNextKeyNormal(statusCode int, bodyBytes []byte, apiType stri
 	// 内容审核类错误（sensitive_words_detected 等）任何状态码都不应 failover
 	// 换渠道/换 Key 不会改变请求内容本身
 	if len(bodyBytes) > 0 && isContentModerationError(bodyBytes) {
-		LogWithTag(logTag, "[%s-Failover-Debug] 检测到内容审核错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, truncateErrorSummary(string(bodyBytes)))
+		LogWithTag(logTag, "[%s-Failover-Debug] 检测到内容审核错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
 		return false, false
 	}
 
 	// 检查是否为参数校验类不可重试错误（invalid_request 等）
 	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
 	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 && isNonRetryableError(bodyBytes, apiType) {
-		LogWithTag(logTag, "[%s-Failover-Debug] 检测到不可重试错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, truncateErrorSummary(string(bodyBytes)))
+		LogWithTag(logTag, "[%s-Failover-Debug] 检测到不可重试错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
 		return false, false
 	}
 
@@ -115,7 +115,7 @@ func shouldRetryWithNextKeyNormal(statusCode int, bodyBytes []byte, apiType stri
 		}
 		// 否则，仍检查消息体是否包含 quota 相关关键词
 		// 这样 403 + "预扣费额度" 消息 → isQuotaRelated=true
-		LogWithTag(logTag, "[%s-Failover-Debug] 调用 classifyByErrorMessage, body=%s", apiType, string(bodyBytes))
+		LogWithTag(logTag, "[%s-Failover-Debug] 调用 classifyByErrorMessage, body=%s", apiType, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
 		_, msgQuota := classifyByErrorMessageWithLogTag(bodyBytes, apiType, logTag)
 		LogWithTag(logTag, "[%s-Failover-Debug] classifyByErrorMessage 返回: msgQuota=%v", apiType, msgQuota)
 		if msgQuota {
@@ -1432,4 +1432,135 @@ func truncateErrorSummary(msg string) string {
 		return string(runes[:maxLen]) + "...(truncated)"
 	}
 	return msg
+}
+
+func errorBodySummaryForLog(apiType string, statusCode int, bodyBytes []byte) string {
+	if strings.EqualFold(apiType, "Vectors") {
+		return vectorsErrorSummaryForLog(statusCode, bodyBytes)
+	}
+	msg := strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(string(bodyBytes)), "\n", " "), "\r", " ")
+	return truncateErrorSummary(msg)
+}
+
+func vectorsErrorSummaryForLog(statusCode int, bodyBytes []byte) string {
+	parts := []string{fmt.Sprintf("status=%d", statusCode)}
+	errType, _ := extractErrorInfo(bodyBytes)
+	errType = sanitizeVectorsErrorToken(errType)
+	errCode := sanitizeVectorsErrorToken(extractErrorCode(bodyBytes))
+	if errType != "" {
+		parts = append(parts, "type="+errType)
+	}
+	if errCode != "" && errCode != errType {
+		parts = append(parts, "code="+errCode)
+	}
+	if param := sanitizeVectorsErrorParam(extractErrorParam(bodyBytes)); param != "" {
+		parts = append(parts, "param="+param)
+	}
+	if len(parts) == 1 {
+		parts = append(parts, "body=omitted")
+	}
+	return strings.Join(parts, " ")
+}
+
+func sanitizeVectorsErrorToken(value string) string {
+	value = strings.ToLower(sanitizeVectorsDiagnosticField(value, 64))
+	if value == "" {
+		return ""
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			continue
+		}
+		return ""
+	}
+	if _, ok := allowedVectorsErrorTokens[value]; !ok {
+		return ""
+	}
+	return value
+}
+
+func sanitizeVectorsErrorParam(value string) string {
+	value = strings.ToLower(sanitizeVectorsDiagnosticField(value, 80))
+	if _, ok := allowedVectorsErrorParams[value]; !ok {
+		return ""
+	}
+	return value
+}
+
+func sanitizeVectorsDiagnosticField(value string, maxRunes int) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	value = strings.Join(strings.Fields(b.String()), " ")
+	runes := []rune(value)
+	if len(runes) > maxRunes {
+		value = string(runes[:maxRunes])
+	}
+	return value
+}
+
+var allowedVectorsErrorTokens = map[string]struct{}{
+	"api_error":               {},
+	"authentication_error":    {},
+	"bad_request":             {},
+	"billing_error":           {},
+	"context_length_exceeded": {},
+	"forbidden":               {},
+	"insufficient_quota":      {},
+	"internal_error":          {},
+	"invalid_api_key":         {},
+	"invalid_json":            {},
+	"invalid_request":         {},
+	"invalid_request_error":   {},
+	"missing_parameter":       {},
+	"model_not_found":         {},
+	"not_found":               {},
+	"not_found_error":         {},
+	"overloaded":              {},
+	"permission_error":        {},
+	"quota_exceeded":          {},
+	"rate_limit_error":        {},
+	"rate_limit_exceeded":     {},
+	"server_error":            {},
+	"service_unavailable":     {},
+	"temporarily_unavailable": {},
+	"timeout":                 {},
+	"too_many_requests":       {},
+	"unauthorized":            {},
+	"unprocessable_entity":    {},
+	"unsupported_model":       {},
+	"validation_error":        {},
+}
+
+var allowedVectorsErrorParams = map[string]struct{}{
+	"dimensions":      {},
+	"encoding_format": {},
+	"input":           {},
+	"model":           {},
+	"user":            {},
+}
+
+func extractErrorParam(bodyBytes []byte) string {
+	var resp map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
+		return ""
+	}
+	if errObj, ok := resp["error"].(map[string]interface{}); ok {
+		if param, ok := errObj["param"].(string); ok {
+			return strings.TrimSpace(param)
+		}
+	}
+	if param, ok := resp["param"].(string); ok {
+		return strings.TrimSpace(param)
+	}
+	return ""
 }

@@ -202,6 +202,47 @@ mkcert \
 | `requestTimeoutMs` | `0` | `0` 或 `1000-300000` | 非流式上游请求总超时；`0` 或留空继承调校台/环境变量的全局值。 |
 | `responseHeaderTimeoutMs` | `0` | `0` 或 `1000-300000` | 连接建立后等待上游 HTTP 响应头的时间；`0` 或留空继承调校台/环境变量的全局值。 |
 
+运行时配置按渠道类型分组维护：
+
+| 字段 | 说明 |
+| --- | --- |
+| `messagesUpstream` | Claude Messages 语义渠道 |
+| `responsesUpstream` | Codex/OpenAI Responses 渠道 |
+| `chatUpstream` | OpenAI Chat Completions 渠道 |
+| `geminiUpstream` | Gemini 原生协议渠道 |
+| `imagesUpstream` | OpenAI Images 渠道 |
+| `vectorsUpstream` | OpenAI 兼容 Embeddings 渠道，`serviceType` 固定为 `openai` |
+
+Vectors 渠道不内置默认模型候选。模型名以你的上游 Embeddings 服务为准：可以在配置界面填写 Base URL 和 API Key 后从 `/models` 拉取，也可以手动输入，并可通过 Vectors 渠道的模型映射把客户端请求中的 `model` 改写到实际上游模型。
+
+Embedding 向量空间需要额外谨慎：不同模型、不同输出维度或不同归一化语义的向量默认不应混用，向量库 collection / index 也建议按模型、维度和空间隔离。旧配置没有 `embeddingCapabilities` 时，Vectors 会保持原有 fallback 行为；只要当前候选中存在 Embedding 兼容元数据，就会启用严格过滤。此时 `supportedModels` 仍匹配客户端请求的原始模型名，`embeddingCapabilities` 的 key 则匹配 `modelMapping` 后的实际上游模型名，并支持与 `modelCapabilities` 类似的精确和通配符匹配。只有 `embeddingSpaceId`（未配置时使用实际模型名）、有效维度和 `normalized` 语义一致的候选才会参与 fallback。
+
+示例：
+
+```json
+{
+  "vectorsUpstream": [
+    {
+      "name": "openai-small-a",
+      "supportedModels": ["text-embedding"],
+      "modelMapping": {
+        "text-embedding": "text-embedding-3-small"
+      },
+      "embeddingCapabilities": {
+        "text-embedding-3-small": {
+          "embeddingSpaceId": "openai-text-embedding-3-small",
+          "dimensions": 1536,
+          "supportedDimensions": [512, 1536],
+          "normalized": true
+        }
+      }
+    }
+  ]
+}
+```
+
+Vectors 仍不支持 capability-test；不要通过能力测试推断 Embedding 空间兼容性。
+
 运行时配置文件中的 `circuitBreaker` 还支持流式健康检测字段：
 
 | 字段 | 默认值 | 范围 | 说明 |

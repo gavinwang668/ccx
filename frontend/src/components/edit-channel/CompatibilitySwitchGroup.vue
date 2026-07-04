@@ -6,7 +6,7 @@
         {{ t('channelEditor.compat.title') }}
       </div>
       <v-btn
-        v-if="!diagnoseResult"
+        v-if="channelType !== 'images' && channelType !== 'vectors' && !diagnoseResult"
         size="x-small"
         variant="tonal"
         :loading="diagnosing"
@@ -14,7 +14,7 @@
         @click="$emit('diagnose')"
       >{{ t('channelEditor.compat.diagnose') }}</v-btn>
       <v-btn
-        v-else-if="diagnoseResult.type === 'error'"
+        v-else-if="channelType !== 'images' && channelType !== 'vectors' && diagnoseResult?.type === 'error'"
         size="x-small"
         variant="tonal"
         color="error"
@@ -22,7 +22,7 @@
         @click="$emit('diagnose')"
       >{{ t('channelEditor.compat.diagnoseFailedShort') }}</v-btn>
       <v-btn
-        v-else-if="diagnoseResult.appliedCount > 0"
+        v-else-if="channelType !== 'images' && channelType !== 'vectors' && diagnoseResult && diagnoseResult.appliedCount > 0"
         size="x-small"
         variant="tonal"
         color="success"
@@ -30,7 +30,7 @@
         @click="$emit('diagnose')"
       >{{ t('channelEditor.compat.diagnoseAppliedShort', { count: diagnoseResult.appliedCount }) }}</v-btn>
       <v-btn
-        v-else
+        v-else-if="channelType !== 'images' && channelType !== 'vectors' && diagnoseResult"
         size="x-small"
         variant="tonal"
         prepend-icon="mdi-check"
@@ -266,7 +266,7 @@
       </div>
 
       <!-- Historical Image Turn Limit -->
-      <div v-if="channelType !== 'images'" class="d-flex align-center justify-space-between">
+      <div v-if="channelType !== 'images' && channelType !== 'vectors'" class="d-flex align-center justify-space-between">
         <div class="d-flex align-center ga-2">
           <v-icon color="primary">mdi-image-multiple</v-icon>
           <div>

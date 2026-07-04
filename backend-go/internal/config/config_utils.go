@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -92,23 +93,39 @@ func applyDefaultBaseURL(upstream *UpstreamConfig) {
 // ConfigError 配置错误
 type ConfigError struct {
 	Message string
+	Cause   error
 }
 
 func (e *ConfigError) Error() string {
 	return e.Message
 }
 
+func (e *ConfigError) Unwrap() error {
+	return e.Cause
+}
+
+var (
+	ErrUnsupportedServiceType = errors.New("unsupported service type")
+	ErrDuplicateChannelName   = errors.New("duplicate channel name")
+)
+
 // ============== 模型重定向 ==============
 
 // RedirectModel 模型重定向
 func RedirectModel(model string, upstream *UpstreamConfig) string {
-	if upstream.ModelMapping == nil || len(upstream.ModelMapping) == 0 {
-		return model
+	redirected, _ := RedirectModelWithMatch(model, upstream)
+	return redirected
+}
+
+// RedirectModelWithMatch 返回模型重定向结果，并标记是否命中 ModelMapping。
+func RedirectModelWithMatch(model string, upstream *UpstreamConfig) (string, bool) {
+	if upstream == nil || upstream.ModelMapping == nil || len(upstream.ModelMapping) == 0 {
+		return model, false
 	}
 
 	// 直接匹配（精确匹配优先）
 	if mapped, ok := upstream.ModelMapping[model]; ok {
-		return mapped
+		return mapped, true
 	}
 
 	// 模糊匹配：按源模型长度从长到短排序，确保最长匹配优先
@@ -126,11 +143,11 @@ func RedirectModel(model string, upstream *UpstreamConfig) string {
 
 	for _, m := range mappings {
 		if strings.Contains(model, m.source) {
-			return m.target
+			return m.target, true
 		}
 	}
 
-	return model
+	return model, false
 }
 
 // ResolveReasoningEffort 根据原始模型名解析 reasoning effort
@@ -358,6 +375,12 @@ func (u *UpstreamConfig) Clone() *UpstreamConfig {
 			cloned.ModelCapabilities[k] = cloneUpstreamModelCapability(v)
 		}
 	}
+	if u.EmbeddingCapabilities != nil {
+		cloned.EmbeddingCapabilities = make(map[string]EmbeddingCapability, len(u.EmbeddingCapabilities))
+		for k, v := range u.EmbeddingCapabilities {
+			cloned.EmbeddingCapabilities[k] = cloneEmbeddingCapability(v)
+		}
+	}
 	cloned.DefaultCapability = cloneUpstreamModelCapability(u.DefaultCapability)
 	if u.CustomHeaders != nil {
 		cloned.CustomHeaders = make(map[string]string, len(u.CustomHeaders))
@@ -418,6 +441,9 @@ func applyModelCapabilityUpdates(upstream *UpstreamConfig, updates UpstreamUpdat
 	if updates.ModelCapabilities != nil {
 		upstream.ModelCapabilities = updates.ModelCapabilities
 	}
+	if updates.EmbeddingCapabilities != nil {
+		upstream.EmbeddingCapabilities = updates.EmbeddingCapabilities
+	}
 	if updates.DefaultCapability != nil {
 		upstream.DefaultCapability = *updates.DefaultCapability
 	}
@@ -431,13 +457,24 @@ func applyModelCapabilityUpdates(upstream *UpstreamConfig, updates UpstreamUpdat
 //   - updates.APIKeyConfigs == nil 但 updates.APIKeys != nil：仅按新 APIKeys 重新归一化原有 configs
 //   - 两者都为 nil：不动 APIKeyConfigs
 //
-// 五类渠道 Update 函数共用，避免新增字段时遗漏其中某一处。
+// 六类渠道 Update 函数共用，避免新增字段时遗漏其中某一处。
 func applyAPIKeyConfigUpdate(upstream *UpstreamConfig, updates UpstreamUpdate) {
 	if updates.APIKeyConfigs != nil {
 		upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, updates.APIKeyConfigs)
 	} else if updates.APIKeys != nil {
 		upstream.APIKeyConfigs = normalizeAPIKeyConfigs(upstream.APIKeys, upstream.APIKeyConfigs)
 	}
+}
+
+func cloneEmbeddingCapability(capability EmbeddingCapability) EmbeddingCapability {
+	if capability.SupportedDimensions != nil {
+		capability.SupportedDimensions = append([]int(nil), capability.SupportedDimensions...)
+	}
+	if capability.Normalized != nil {
+		normalized := *capability.Normalized
+		capability.Normalized = &normalized
+	}
+	return capability
 }
 
 func cloneAPIKeyConfig(cfg APIKeyConfig) APIKeyConfig {

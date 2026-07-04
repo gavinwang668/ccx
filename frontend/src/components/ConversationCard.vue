@@ -398,6 +398,7 @@ const kindCssColor = computed(() => {
     responses: 'var(--ccx-kind-responses)',
     gemini: 'var(--ccx-kind-gemini)',
     images: 'var(--ccx-kind-images)',
+    vectors: 'var(--ccx-kind-vectors)',
   }
   return map[props.conversation.kind] ?? 'rgb(var(--v-theme-on-surface))'
 })
@@ -874,6 +875,7 @@ function shortId(value: string): string {
 .kind-chip--responses { color: var(--ccx-kind-responses); }
 .kind-chip--gemini { color: var(--ccx-kind-gemini); }
 .kind-chip--images { color: var(--ccx-kind-images); }
+.kind-chip--vectors { color: var(--ccx-kind-vectors); }
 
 /* Display label (title/userId) */
 .display-label {

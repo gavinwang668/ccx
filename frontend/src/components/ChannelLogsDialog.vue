@@ -178,7 +178,7 @@ const props = defineProps<{
   modelValue: boolean
   channelIndex: number
   channelName: string
-  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 }>()
 
 const emit = defineEmits<{
@@ -362,6 +362,7 @@ const interfaceTypeColor = (type: string): string => {
     case 'responses': return 'secondary'
     case 'gemini': return 'info'
     case 'images': return 'success'
+    case 'vectors': return 'primary'
     default: return 'default'
   }
 }

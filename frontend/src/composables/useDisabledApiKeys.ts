@@ -1,7 +1,7 @@
 import { computed, ref, type ComputedRef } from 'vue'
 import { ApiService, type Channel } from '../services/api'
 
-type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
+type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 type FormLike = {
   apiKeys: string[]
 }
@@ -40,6 +40,9 @@ export function useDisabledApiKeys(options: DisabledApiKeyOptions) {
           break
         case 'images':
           await options.apiService.restoreImagesApiKey(channelId, apiKey)
+          break
+        case 'vectors':
+          await options.apiService.restoreVectorsApiKey(channelId, apiKey)
           break
         case 'gemini':
           await options.apiService.restoreGeminiApiKey(channelId, apiKey)

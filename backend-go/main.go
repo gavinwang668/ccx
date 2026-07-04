@@ -24,6 +24,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/handlers/images"
 	"github.com/BenedictKing/ccx/internal/handlers/messages"
 	"github.com/BenedictKing/ccx/internal/handlers/responses"
+	"github.com/BenedictKing/ccx/internal/handlers/vectors"
 	"github.com/BenedictKing/ccx/internal/logger"
 	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/middleware"
@@ -320,8 +321,8 @@ func main() {
 		log.Printf("[Metrics-Init] 指标持久化已禁用，使用纯内存模式")
 	}
 
-	// 初始化多渠道调度器（Messages、Responses、Gemini、Chat 和 Images 使用独立的指标管理器）
-	var messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager *metrics.MetricsManager
+	// 初始化多渠道调度器（Messages、Responses、Gemini、Chat、Images 和 Vectors 使用独立的指标管理器）
+	var messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager, vectorsMetricsManager *metrics.MetricsManager
 	if metricsStore != nil {
 		if err := metricsStore.MigrateMetricsKeysToIdentity(cfgManager.GetConfig()); err != nil {
 			log.Fatalf("[Metrics-Migration] metrics key 迁移失败: %v", err)
@@ -336,12 +337,15 @@ func main() {
 			envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold, metricsStore, "chat")
 		imagesMetricsManager = metrics.NewMetricsManagerWithPersistence(
 			envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold, metricsStore, "images")
+		vectorsMetricsManager = metrics.NewMetricsManagerWithPersistence(
+			envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold, metricsStore, "vectors")
 	} else {
 		messagesMetricsManager = metrics.NewMetricsManagerWithConfig(envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold)
 		responsesMetricsManager = metrics.NewMetricsManagerWithConfig(envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold)
 		geminiMetricsManager = metrics.NewMetricsManagerWithConfig(envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold)
 		chatMetricsManager = metrics.NewMetricsManagerWithConfig(envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold)
 		imagesMetricsManager = metrics.NewMetricsManagerWithConfig(envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold)
+		vectorsMetricsManager = metrics.NewMetricsManagerWithConfig(envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold)
 	}
 	traceAffinityManager := session.NewTraceAffinityManager()
 
@@ -388,6 +392,7 @@ func main() {
 		geminiMetricsManager.UpdateCircuitBreakerConfig(params)
 		chatMetricsManager.UpdateCircuitBreakerConfig(params)
 		imagesMetricsManager.UpdateCircuitBreakerConfig(params)
+		vectorsMetricsManager.UpdateCircuitBreakerConfig(params)
 	}
 	applyCircuitBreakerConfig(cfgManager.GetConfig())
 	cfgManager.RegisterOnConfigChange(applyCircuitBreakerConfig)
@@ -404,6 +409,7 @@ func main() {
 			{"Responses", cfg.ResponsesUpstream},
 			{"Gemini", cfg.GeminiUpstream},
 			{"Images", cfg.ImagesUpstream},
+			{"Vectors", cfg.VectorsUpstream},
 		}
 		for _, ct := range channelTypes {
 			for idx, upstream := range ct.upstreams {
@@ -425,7 +431,7 @@ func main() {
 	urlManager := warmup.NewURLManager(30*time.Second, 3) // 30秒冷却期，连续3次失败后移到末尾
 	log.Printf("[URLManager-Init] URL管理器已初始化 (冷却期: 30秒, 最大连续失败: 3)")
 
-	channelScheduler := scheduler.NewChannelScheduler(cfgManager, messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager, traceAffinityManager, urlManager)
+	channelScheduler := scheduler.NewChannelScheduler(cfgManager, messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager, traceAffinityManager, urlManager, vectorsMetricsManager)
 	channelScheduler.SetRateLimitManager(rateLimitManager)
 	log.Printf("[Scheduler-Init] 多渠道调度器已初始化 (失败率阈值: %.0f%%, 滑动窗口: %d, 连续失败阈值: %d)",
 		messagesMetricsManager.GetFailureThreshold()*100, messagesMetricsManager.GetWindowSize(), messagesMetricsManager.GetConsecutiveRetryableFailuresThreshold())
@@ -626,7 +632,7 @@ func main() {
 		apiGroup.GET("/messages/channels/:id/keys/metrics/history", handlers.GetChannelKeyMetricsHistory(messagesMetricsManager, cfgManager, false))
 		apiGroup.GET("/messages/channels/scheduler/stats", handlers.GetSchedulerStats(channelScheduler))
 		apiGroup.GET("/messages/global/stats/history", handlers.GetGlobalStatsHistory(messagesMetricsManager))
-		apiGroup.GET("/messages/channels/dashboard", handlers.GetChannelDashboard(cfgManager, channelScheduler)) // 统一 dashboard 端点，支持 ?type=messages|responses|chat|gemini
+		apiGroup.GET("/messages/channels/dashboard", handlers.GetChannelDashboard(cfgManager, channelScheduler)) // 统一 dashboard 端点，支持 ?type=messages|responses|chat|gemini|images|vectors
 		apiGroup.GET("/messages/ping/:id", messages.PingChannel(cfgManager))
 		apiGroup.GET("/messages/ping", messages.PingAllChannels(cfgManager))
 		apiGroup.POST("/messages/channels/:id/models", messages.GetChannelModels(cfgManager))
@@ -766,6 +772,33 @@ func main() {
 		apiGroup.GET("/images/models/stats/history", handlers.GetModelStatsHistory(imagesMetricsManager))
 		apiGroup.GET("/images/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindImages), cfgManager, scheduler.ChannelKindImages))
 
+		// Vectors 渠道管理
+		apiGroup.GET("/vectors/channels", vectors.GetUpstreams(cfgManager))
+		apiGroup.POST("/vectors/channels", vectors.AddUpstream(cfgManager))
+		apiGroup.PUT("/vectors/channels/:id", vectors.UpdateUpstream(cfgManager, channelScheduler))
+		apiGroup.DELETE("/vectors/channels/:id", vectors.DeleteUpstream(cfgManager, channelScheduler))
+		apiGroup.POST("/vectors/channels/:id/keys", vectors.AddApiKey(cfgManager))
+		apiGroup.DELETE("/vectors/channels/:id/keys/:apiKey", vectors.DeleteApiKey(cfgManager))
+		apiGroup.POST("/vectors/channels/:id/keys/:apiKey/top", vectors.MoveApiKeyToTop(cfgManager))
+		apiGroup.POST("/vectors/channels/:id/keys/:apiKey/bottom", vectors.MoveApiKeyToBottom(cfgManager))
+		apiGroup.POST("/vectors/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Vectors"))
+		apiGroup.PUT("/vectors/channels/:id/mappings", vectors.UpdateModelMapping(cfgManager))
+
+		// Vectors 多渠道调度 API
+		apiGroup.POST("/vectors/channels/reorder", vectors.ReorderChannels(cfgManager))
+		apiGroup.PATCH("/vectors/channels/:id/status", vectors.SetChannelStatus(cfgManager))
+		apiGroup.POST("/vectors/channels/:id/resume", handlers.ResumeChannelWithKind(channelScheduler, cfgManager, scheduler.ChannelKindVectors))
+		apiGroup.POST("/vectors/channels/:id/promotion", vectors.SetChannelPromotion(cfgManager))
+		apiGroup.GET("/vectors/channels/metrics", handlers.GetVectorsChannelMetrics(vectorsMetricsManager, cfgManager))
+		apiGroup.GET("/vectors/channels/metrics/history", handlers.GetVectorsChannelMetricsHistory(vectorsMetricsManager, cfgManager))
+		apiGroup.GET("/vectors/channels/:id/keys/metrics/history", handlers.GetVectorsChannelKeyMetricsHistory(vectorsMetricsManager, cfgManager))
+		apiGroup.GET("/vectors/global/stats/history", handlers.GetGlobalStatsHistory(vectorsMetricsManager))
+		apiGroup.GET("/vectors/ping/:id", vectors.PingChannel(cfgManager))
+		apiGroup.GET("/vectors/ping", vectors.PingAllChannels(cfgManager))
+		apiGroup.POST("/vectors/channels/:id/models", vectors.GetChannelModels(cfgManager))
+		apiGroup.GET("/vectors/models/stats/history", handlers.GetModelStatsHistory(vectorsMetricsManager))
+		apiGroup.GET("/vectors/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindVectors), cfgManager, scheduler.ChannelKindVectors))
+
 		// Fuzzy 模式设置
 		apiGroup.GET("/settings/fuzzy-mode", handlers.GetFuzzyMode(cfgManager))
 		apiGroup.PUT("/settings/fuzzy-mode", handlers.SetFuzzyMode(cfgManager))
@@ -841,6 +874,11 @@ func main() {
 	r.POST("/v1/images/variations", imagesHandler)
 	r.POST("/:routePrefix/v1/images/variations", imagesHandler)
 
+	// 代理端点 - Embeddings API (OpenAI Embeddings 兼容)
+	vectorsHandler := vectors.Handler(envCfg, cfgManager, channelScheduler)
+	r.POST("/v1/embeddings", vectorsHandler)
+	r.POST("/:routePrefix/v1/embeddings", vectorsHandler)
+
 	// 静态文件服务 (嵌入的前端)
 	if envCfg.EnableWebUI {
 		handlers.ServeFrontend(r, frontendFS, envCfg)
@@ -907,6 +945,7 @@ func main() {
 	fmt.Printf("[Server-Info] Images Generations: POST /v1/images/generations\n")
 	fmt.Printf("[Server-Info] Images Edits: POST /v1/images/edits\n")
 	fmt.Printf("[Server-Info] Images Variations: POST /v1/images/variations\n")
+	fmt.Printf("[Server-Info] Embeddings: POST /v1/embeddings\n")
 	fmt.Printf("[Server-Info] 健康检查: GET /health\n")
 	fmt.Printf("\n")
 	fmt.Printf("[Server-Info] 环境: %s\n", envCfg.Env)

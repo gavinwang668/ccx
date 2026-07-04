@@ -63,6 +63,9 @@ export function useChannelTargetModels(options: ChannelTargetModelsOptions) {
     if (options.channelType() === 'images') {
       return ['gpt-image-2', 'gpt-image-1', 'dall-e-3', 'dall-e-2']
     }
+    if (options.channelType() === 'vectors') {
+      return []
+    }
     if (options.channelType() === 'gemini') {
       return ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2']
     }
@@ -153,11 +156,13 @@ export function useChannelTargetModels(options: ChannelTargetModelsOptions) {
     fetchingModels.value = true
     fetchedModelsError.value = ''
     try {
-      const effectiveServiceType = options.channelType() === 'images'
+      const effectiveServiceType = options.channelType() === 'images' || options.channelType() === 'vectors'
         ? 'openai'
         : (options.form.serviceType || options.defaultServiceTypeForChannel())
       let modelsApiType: ManagedChannelType
-      if (options.channelType() === 'images') {
+      if (options.channelType() === 'vectors') {
+        modelsApiType = 'vectors'
+      } else if (options.channelType() === 'images') {
         modelsApiType = 'images'
       } else if (effectiveServiceType === 'copilot') {
         modelsApiType = 'responses'

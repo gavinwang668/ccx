@@ -1,18 +1,18 @@
-# Claude / OpenAI Chat / OpenAI Images / Codex Responses / Gemini API Proxy - CCX
+# Claude / OpenAI Chat / OpenAI Images / OpenAI Embeddings / Codex Responses / Gemini API Proxy - CCX
 
 [English](README.md) | 简体中文
 
 [![GitHub release](https://img.shields.io/github/v/release/BenedictKing/ccx)](https://github.com/BenedictKing/ccx/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-CCX 是一个高性能的 AI API 代理与协议转换网关，支持 Claude、OpenAI Chat、OpenAI Images、Codex Responses 与 Gemini。它提供统一入口、内置 Web 管理界面、渠道编排、故障转移、多密钥管理和模型路由能力。
+CCX 是一个高性能的 AI API 代理与协议转换网关，支持 Claude、OpenAI Chat、OpenAI Images、OpenAI Embeddings、Codex Responses 与 Gemini。它提供统一入口、内置 Web 管理界面、渠道编排、故障转移、多密钥管理和模型路由能力。
 
 ## 功能特性
 
 - 后端与前端一体化架构，单端口部署
 - 双密钥认证：`PROXY_ACCESS_KEY` 与可选 `ADMIN_ACCESS_KEY`
 - 内置 Web 管理面板，支持渠道管理、测试、日志和监控
-- 同时支持 Claude Messages、OpenAI Chat Completions、OpenAI Images、Codex Responses、Gemini
+- 同时支持 Claude Messages、OpenAI Chat Completions、OpenAI Images、OpenAI Embeddings、Codex Responses、Gemini
 - 智能调度：优先级、促销期、健康检查、故障转移与熔断恢复
 - 上下文路由：根据实际模型上下文窗口和最大输出能力过滤候选渠道
 - 每个渠道支持多 API Key 轮换、代理、自定义请求头、模型白名单和路由前缀
@@ -68,6 +68,7 @@ CCX 对外提供一个统一后端入口：
   |- /v1/chat/completions         -> OpenAI Chat 代理
   |- /v1/responses                -> Codex Responses 代理
   |- /v1/images/{...}             -> OpenAI Images 代理
+  |- /v1/embeddings               -> OpenAI Embeddings 代理
   |- /v1/models                   -> Models API
   `- /v1beta/models/*             -> Gemini 代理
 ```
@@ -184,6 +185,7 @@ LOG_LEVEL=info
 - OpenAI Chat：`POST /v1/chat/completions`
 - Codex Responses：`POST /v1/responses`
 - OpenAI Images：`POST /v1/images/generations`、`POST /v1/images/edits`、`POST /v1/images/variations`
+- OpenAI Embeddings：`POST /v1/embeddings`
 - Gemini：`POST /v1beta/models/{model}:generateContent`
 - 模型列表：`GET /v1/models`
 

@@ -8,6 +8,17 @@ import (
 	"testing"
 )
 
+func resetLoggersForTest() {
+	log.SetOutput(io.Discard)
+	if rawFileLog != nil {
+		if closer, ok := rawFileLog.Writer().(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
+	rawFileLog = nil
+	consoleLog = nil
+}
+
 func TestSetupLogDirNoneConsoleTrue(t *testing.T) {
 	cfg := &Config{
 		LogDir:  "none",
@@ -18,6 +29,7 @@ func TestSetupLogDirNoneConsoleTrue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup() error = %v", err)
 	}
+	t.Cleanup(resetLoggersForTest)
 
 	// 不应创建目录
 	if _, err := os.Stat("none"); !os.IsNotExist(err) {
@@ -56,6 +68,7 @@ func TestSetupLogDirNoneConsoleFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup() error = %v", err)
 	}
+	t.Cleanup(resetLoggersForTest)
 
 	// 不应创建目录
 	if _, err := os.Stat("none"); !os.IsNotExist(err) {
@@ -94,6 +107,7 @@ func TestSetupLogDirNullConsoleTrue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup() error = %v", err)
 	}
+	t.Cleanup(resetLoggersForTest)
 
 	// 不应创建目录
 	if _, err := os.Stat("null"); !os.IsNotExist(err) {
@@ -122,6 +136,7 @@ func TestSetupNormalLogDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup() error = %v", err)
 	}
+	t.Cleanup(resetLoggersForTest)
 
 	// 应创建日志文件
 	logPath := filepath.Join(tmpDir, "test.log")
