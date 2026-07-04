@@ -8,6 +8,7 @@
 
 ### 修复
 
+- **向量化渠道兼容性配置边界问题** - vectors: 修复桌面端 Embedding 兼容性面板未指定 normalized 时崩溃、Vectors 渠道重名更新、非法 embeddingCapabilities 保存与非法 input 本地校验缺口
 - **拦截 Claude Code 模型切换探针避免空响应误判** - messages: 拦截 Claude Code 模型切换探针避免空响应误判
 - **修复 copilot 渠道 /v1/models 代理返回 404** - models: 修复 copilot 渠道 /v1/models 代理返回 404
 - **修正 gitignore 规则并添加 git 代理自动检测** - store-update: 修正 gitignore 规则并添加 git 代理自动检测

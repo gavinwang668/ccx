@@ -123,7 +123,7 @@ func validEmbeddingsInput(input interface{}) bool {
 	case []interface{}:
 		return len(v) > 0
 	default:
-		return true
+		return false
 	}
 }
 

@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestResolveEmbeddingCapability(t *testing.T) {
 	normalizedTrue := true
@@ -145,5 +148,66 @@ func TestResolveEmbeddingCapabilityUsesMappedActualModelPattern(t *testing.T) {
 	}
 	if resolved.Capability.Normalized == nil || !*resolved.Capability.Normalized {
 		t.Fatalf("expected normalized=true, got %+v", resolved.Capability.Normalized)
+	}
+}
+
+func TestValidateEmbeddingCapabilities(t *testing.T) {
+	tests := []struct {
+		name         string
+		capabilities map[string]EmbeddingCapability
+		wantErr      bool
+	}{
+		{
+			name: "nil capabilities",
+		},
+		{
+			name: "valid dimensions",
+			capabilities: map[string]EmbeddingCapability{
+				"text-embedding-3-small": {Dimensions: 1536, SupportedDimensions: []int{512, 1536}},
+			},
+		},
+		{
+			name: "empty pattern",
+			capabilities: map[string]EmbeddingCapability{
+				" ": {Dimensions: 1536},
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative dimensions",
+			capabilities: map[string]EmbeddingCapability{
+				"text-embedding-3-small": {Dimensions: -1},
+			},
+			wantErr: true,
+		},
+		{
+			name: "zero supported dimensions",
+			capabilities: map[string]EmbeddingCapability{
+				"text-embedding-3-small": {Dimensions: 1536, SupportedDimensions: []int{0, 1536}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "negative supported dimensions",
+			capabilities: map[string]EmbeddingCapability{
+				"text-embedding-3-small": {Dimensions: 1536, SupportedDimensions: []int{-1, 1536}},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateEmbeddingCapabilities(tt.capabilities)
+			if tt.wantErr {
+				if !errors.Is(err, ErrInvalidEmbeddingCapability) {
+					t.Fatalf("ValidateEmbeddingCapabilities() error = %v, want ErrInvalidEmbeddingCapability", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ValidateEmbeddingCapabilities() error = %v", err)
+			}
+		})
 	}
 }

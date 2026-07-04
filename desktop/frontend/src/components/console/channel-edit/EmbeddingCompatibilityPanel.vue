@@ -42,11 +42,21 @@ const normalizedTargetModels = computed(() => {
 const modelListEmptyHint = computed(() => props.fetchModelsError || t('addChannel.modelListEmptyHint'))
 const newModelName = computed(() => normalizeSelectableString(newModel.value).trim())
 
+const normalizedUnsetValue = '__ccx_embedding_normalized_unset__'
 const normalizedOptions = computed(() => [
-  { label: t('addChannel.embeddingNormalizedUnknown'), value: '' },
+  { label: t('addChannel.embeddingNormalizedUnknown'), value: normalizedUnsetValue },
   { label: t('addChannel.embeddingNormalizedTrue'), value: 'true' },
   { label: t('addChannel.embeddingNormalizedFalse'), value: 'false' },
 ])
+
+function normalizedSelectValue(value: EmbeddingCapabilityRow['normalized']) {
+  return value || normalizedUnsetValue
+}
+
+function normalizeSelectedValue(value: unknown): EmbeddingCapabilityRow['normalized'] {
+  const selected = String(value)
+  return selected === normalizedUnsetValue ? '' : selected as EmbeddingCapabilityRow['normalized']
+}
 
 function updateRows(rows: EmbeddingCapabilityRow[]) {
   emit('update:rows', rows)
@@ -199,8 +209,8 @@ function selectNewModel(model: string) {
             <div class="space-y-1">
               <Label class="text-[10px] font-semibold uppercase text-muted-foreground/70">{{ t('addChannel.embeddingNormalizedLabel') }}</Label>
               <Select
-                :model-value="row.normalized"
-                @update:model-value="(val) => updateRow(index, { normalized: String(val) as EmbeddingCapabilityRow['normalized'] })"
+                :model-value="normalizedSelectValue(row.normalized)"
+                @update:model-value="(val) => updateRow(index, { normalized: normalizeSelectedValue(val) })"
               >
                 <SelectTrigger class="h-8 w-full text-xs">
                   <SelectValue />

@@ -8,8 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -160,6 +160,9 @@ func TestParseEmbeddingsRequestValidation(t *testing.T) {
 	}{
 		{name: "valid string", body: `{"model":"text-embedding-3-small","input":"hello"}`, ok: true},
 		{name: "valid array", body: `{"model":"text-embedding-3-small","input":["hello"]}`, ok: true},
+		{name: "invalid number input", body: `{"model":"text-embedding-3-small","input":42}`, ok: false},
+		{name: "invalid bool input", body: `{"model":"text-embedding-3-small","input":true}`, ok: false},
+		{name: "invalid object input", body: `{"model":"text-embedding-3-small","input":{}}`, ok: false},
 		{name: "missing model", body: `{"input":"hello"}`, ok: false},
 		{name: "missing input", body: `{"model":"text-embedding-3-small"}`, ok: false},
 		{name: "empty string input", body: `{"model":"text-embedding-3-small","input":""}`, ok: false},
@@ -1156,6 +1159,71 @@ func TestVectorsConfigErrorsAreTyped(t *testing.T) {
 	}
 }
 
+func TestVectorsConfigRejectsInvalidEmbeddingCapabilities(t *testing.T) {
+	cfgManager := newVectorsTestConfigManager(t)
+	defer cfgManager.Close()
+
+	invalid := map[string]config.EmbeddingCapability{
+		"text-embedding-3-small": {Dimensions: -1},
+	}
+	if err := cfgManager.AddVectorsUpstream(config.UpstreamConfig{
+		Name:                  "invalid-add",
+		ServiceType:           "openai",
+		BaseURL:               "https://example.com",
+		APIKeys:               []string{"sk-invalid"},
+		EmbeddingCapabilities: invalid,
+	}); !errors.Is(err, config.ErrInvalidEmbeddingCapability) {
+		t.Fatalf("AddVectorsUpstream() error = %v, want ErrInvalidEmbeddingCapability", err)
+	}
+
+	if err := cfgManager.AddVectorsUpstream(config.UpstreamConfig{
+		Name:        "valid-vectors",
+		ServiceType: "openai",
+		BaseURL:     "https://example.com",
+		APIKeys:     []string{"sk-valid"},
+	}); err != nil {
+		t.Fatalf("AddVectorsUpstream() error = %v", err)
+	}
+
+	_, err := cfgManager.UpdateVectorsUpstream(0, config.UpstreamUpdate{EmbeddingCapabilities: invalid})
+	if !errors.Is(err, config.ErrInvalidEmbeddingCapability) {
+		t.Fatalf("UpdateVectorsUpstream() error = %v, want ErrInvalidEmbeddingCapability", err)
+	}
+}
+
+func TestUpdateUpstreamReturnsConflictForDuplicateName(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfgManager := newVectorsTestConfigManager(t)
+	defer cfgManager.Close()
+	sch := newVectorsTestScheduler(cfgManager, nil)
+
+	for _, name := range []string{"first-vectors", "second-vectors"} {
+		if err := cfgManager.AddVectorsUpstream(config.UpstreamConfig{
+			Name:        name,
+			ServiceType: "openai",
+			BaseURL:     "https://example.com",
+			APIKeys:     []string{"sk-" + strings.ReplaceAll(name, "-", "")},
+		}); err != nil {
+			t.Fatalf("AddVectorsUpstream(%s) error = %v", name, err)
+		}
+	}
+
+	r := gin.New()
+	r.PUT("/api/vectors/channels/:id", UpdateUpstream(cfgManager, sch))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/vectors/channels/0", strings.NewReader(`{"name":"first-vectors"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d, body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "已存在") {
+		t.Fatalf("unexpected body: %s", w.Body.String())
+	}
+}
+
 func TestGetChannelModelsSSRFLogDoesNotLeakRequestSecrets(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfgManager := newVectorsTestConfigManager(t)
@@ -1367,58 +1435,58 @@ func TestEmbeddingNormalizedStateThreeValues(t *testing.T) {
 
 func TestEmbeddingCompatibilityKeyForRejectsInvalidSupportedDimensions(t *testing.T) {
 	tests := []struct {
-		name        string
-		capability  config.EmbeddingCapability
-		reqDims     int
-		wantValid   bool
+		name       string
+		capability config.EmbeddingCapability
+		reqDims    int
+		wantValid  bool
 	}{
 		{
-			name:      "negative default dimensions",
+			name:       "negative default dimensions",
 			capability: config.EmbeddingCapability{Dimensions: -1},
-			reqDims:   0,
-			wantValid: false,
+			reqDims:    0,
+			wantValid:  false,
 		},
 		{
-			name:      "zero in supported dimensions",
+			name:       "zero in supported dimensions",
 			capability: config.EmbeddingCapability{Dimensions: 1536, SupportedDimensions: []int{512, 0, 1536}},
-			reqDims:   0,
-			wantValid: false,
+			reqDims:    0,
+			wantValid:  false,
 		},
 		{
-			name:      "negative in supported dimensions",
+			name:       "negative in supported dimensions",
 			capability: config.EmbeddingCapability{Dimensions: 1536, SupportedDimensions: []int{-1, 1536}},
-			reqDims:   0,
-			wantValid: false,
+			reqDims:    0,
+			wantValid:  false,
 		},
 		{
-			name:      "unsupported request dimensions",
+			name:       "unsupported request dimensions",
 			capability: config.EmbeddingCapability{Dimensions: 1536, SupportedDimensions: []int{1024, 1536}},
-			reqDims:   512,
-			wantValid: false,
+			reqDims:    512,
+			wantValid:  false,
 		},
 		{
-			name:      "valid default dimensions",
+			name:       "valid default dimensions",
 			capability: config.EmbeddingCapability{Dimensions: 1536, SupportedDimensions: []int{1024, 1536}},
-			reqDims:   0,
-			wantValid: true,
+			reqDims:    0,
+			wantValid:  true,
 		},
 		{
-			name:      "valid request dimensions in supported list",
+			name:       "valid request dimensions in supported list",
 			capability: config.EmbeddingCapability{Dimensions: 1536, SupportedDimensions: []int{512, 1024, 1536}},
-			reqDims:   512,
-			wantValid: true,
+			reqDims:    512,
+			wantValid:  true,
 		},
 		{
-			name:      "valid request dimensions matches default",
+			name:       "valid request dimensions matches default",
 			capability: config.EmbeddingCapability{Dimensions: 1536, SupportedDimensions: []int{1024, 1536}},
-			reqDims:   1536,
-			wantValid: true,
+			reqDims:    1536,
+			wantValid:  true,
 		},
 		{
-			name:      "missing space id falls back to actual model",
+			name:       "missing space id falls back to actual model",
 			capability: config.EmbeddingCapability{Dimensions: 1536},
-			reqDims:   0,
-			wantValid: true,
+			reqDims:    0,
+			wantValid:  true,
 		},
 	}
 	for _, tt := range tests {
@@ -1707,8 +1775,8 @@ func makeEmbeddingCompatibilityBenchmarkInputs(
 			EmbeddingCapabilities: map[string]config.EmbeddingCapability{
 				actualModel: {
 					EmbeddingSpaceID: spaceID,
-					Dimensions:      1536,
-					Normalized:      boolPtr(true),
+					Dimensions:       1536,
+					Normalized:       boolPtr(true),
 				},
 			},
 		}

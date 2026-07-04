@@ -105,8 +105,9 @@ func (e *ConfigError) Unwrap() error {
 }
 
 var (
-	ErrUnsupportedServiceType = errors.New("unsupported service type")
-	ErrDuplicateChannelName   = errors.New("duplicate channel name")
+	ErrUnsupportedServiceType     = errors.New("unsupported service type")
+	ErrDuplicateChannelName       = errors.New("duplicate channel name")
+	ErrInvalidEmbeddingCapability = errors.New("invalid embedding capability")
 )
 
 // ============== 模型重定向 ==============

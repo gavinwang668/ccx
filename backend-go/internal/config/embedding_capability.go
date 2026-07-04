@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type ResolvedEmbeddingCapability struct {
 	Capability     EmbeddingCapability
@@ -28,4 +31,31 @@ func ResolveEmbeddingCapability(requestModel string, upstream *UpstreamConfig) R
 	}
 
 	return ResolvedEmbeddingCapability{RequestModel: requestModel, ActualModel: actualModel}
+}
+
+func ValidateEmbeddingCapabilities(capabilities map[string]EmbeddingCapability) error {
+	for pattern, capability := range capabilities {
+		trimmedPattern := strings.TrimSpace(pattern)
+		if trimmedPattern == "" {
+			return &ConfigError{
+				Message: "embeddingCapabilities 包含空模型匹配规则",
+				Cause:   ErrInvalidEmbeddingCapability,
+			}
+		}
+		if capability.Dimensions < 0 {
+			return &ConfigError{
+				Message: fmt.Sprintf("embeddingCapabilities[%q].dimensions 不能为负数", trimmedPattern),
+				Cause:   ErrInvalidEmbeddingCapability,
+			}
+		}
+		for _, dimension := range capability.SupportedDimensions {
+			if dimension <= 0 {
+				return &ConfigError{
+					Message: fmt.Sprintf("embeddingCapabilities[%q].supportedDimensions 仅支持正整数", trimmedPattern),
+					Cause:   ErrInvalidEmbeddingCapability,
+				}
+			}
+		}
+	}
+	return nil
 }

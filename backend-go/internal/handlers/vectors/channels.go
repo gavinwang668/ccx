@@ -46,7 +46,7 @@ func AddUpstream(cfgManager *config.ConfigManager) gin.HandlerFunc {
 		}
 		if err := cfgManager.AddVectorsUpstream(upstream); err != nil {
 			status := http.StatusInternalServerError
-			if errors.Is(err, config.ErrUnsupportedServiceType) {
+			if errors.Is(err, config.ErrUnsupportedServiceType) || errors.Is(err, config.ErrInvalidEmbeddingCapability) {
 				status = http.StatusBadRequest
 			} else if errors.Is(err, config.ErrDuplicateChannelName) {
 				status = http.StatusConflict
@@ -83,7 +83,9 @@ func UpdateUpstream(cfgManager *config.ConfigManager, sch *scheduler.ChannelSche
 		shouldResetMetrics, err := cfgManager.UpdateVectorsUpstream(id, updates)
 		if err != nil {
 			status := http.StatusInternalServerError
-			if errors.Is(err, config.ErrUnsupportedServiceType) || strings.Contains(err.Error(), "无效") {
+			if errors.Is(err, config.ErrDuplicateChannelName) {
+				status = http.StatusConflict
+			} else if errors.Is(err, config.ErrUnsupportedServiceType) || errors.Is(err, config.ErrInvalidEmbeddingCapability) || strings.Contains(err.Error(), "无效") {
 				status = http.StatusBadRequest
 			}
 			c.JSON(status, gin.H{"error": err.Error()})

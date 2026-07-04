@@ -113,6 +113,9 @@ func (cm *ConfigManager) AddVectorsUpstream(upstream UpstreamConfig) error {
 	if err := validateStreamTimeouts(upstream.StreamFirstContentTimeoutMs, upstream.StreamInactivityTimeoutMs, upstream.StreamToolCallIdleTimeoutMs); err != nil {
 		return err
 	}
+	if err := ValidateEmbeddingCapabilities(upstream.EmbeddingCapabilities); err != nil {
+		return err
+	}
 
 	// 去重 API Keys 和 Base URLs
 	upstream.APIKeys = deduplicateStrings(upstream.APIKeys)
@@ -138,6 +141,20 @@ func (cm *ConfigManager) UpdateVectorsUpstream(index int, updates UpstreamUpdate
 
 	if index < 0 || index >= len(cm.config.VectorsUpstream) {
 		return false, fmt.Errorf("无效的 Vectors 上游索引: %d", index)
+	}
+
+	if updates.Name != nil {
+		for i, existing := range cm.config.VectorsUpstream {
+			if i != index && existing.Name == *updates.Name {
+				return false, &ConfigError{
+					Message: fmt.Sprintf("渠道名称 '%s' 已存在", *updates.Name),
+					Cause:   ErrDuplicateChannelName,
+				}
+			}
+		}
+	}
+	if err := ValidateEmbeddingCapabilities(updates.EmbeddingCapabilities); err != nil {
+		return false, err
 	}
 
 	// 保存修改前的配置快照用于变更检测
