@@ -101,6 +101,16 @@
                   {{ channelDiscoveryError }}
                 </v-alert>
 
+                <v-alert
+                  v-if="discoveringChannelConfig && !channelDiscoveryResult"
+                  class="mt-3"
+                  type="info"
+                  variant="tonal"
+                  density="compact"
+                >
+                  {{ t('channelDiscovery.running') }}
+                </v-alert>
+
                 <div v-if="channelDiscoveryResult" class="mt-3 d-flex flex-column ga-3">
                   <div class="d-flex align-center ga-2 flex-wrap">
                     <v-chip size="small" color="primary" variant="tonal">
@@ -168,6 +178,30 @@
 
                   <div v-if="channelDiscoveryResult.models.warnings?.length" class="text-caption text-warning">
                     {{ channelDiscoveryResult.models.warnings.join(' / ') }}
+                  </div>
+
+                  <div v-if="channelDiscoveryCapabilityEntries.length" class="d-flex flex-column ga-1">
+                    <div class="text-caption font-weight-medium">{{ t('channelDiscovery.capabilities') }}</div>
+                    <div class="d-flex align-center ga-1 flex-wrap">
+                      <v-tooltip
+                        v-for="capability in channelDiscoveryCapabilityEntries"
+                        :key="capability.key"
+                        :text="capability.detail"
+                        location="top"
+                        :open-delay="150"
+                      >
+                        <template #activator="{ props: tooltipProps }">
+                          <v-chip
+                            v-bind="tooltipProps"
+                            size="small"
+                            :color="capability.color"
+                            variant="tonal"
+                          >
+                            {{ capability.label }}={{ capability.text }}
+                          </v-chip>
+                        </template>
+                      </v-tooltip>
+                    </div>
                   </div>
 
                   <div class="d-flex justify-end">
@@ -455,6 +489,7 @@ const {
   channelDiscoveryCompatEntries,
   channelDiscoveryReasoningEntries,
   channelDiscoverySuccessfulProtocols,
+  channelDiscoveryCapabilityEntries,
   handleDiscoverChannelConfig,
   applyChannelDiscoveryRecommendation,
   applyPreset,

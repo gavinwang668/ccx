@@ -841,6 +841,7 @@
   "channelDiscovery.title": "Temukan konfigurasi yang bisa dipakai",
   "channelDiscovery.hint": "Uji model, protokol, redirect, dan switch kompatibilitas dengan Base URL dan API key saat ini.",
   "channelDiscovery.button": "Temukan konfigurasi",
+  "channelDiscovery.running": "Discovery konfigurasi masih berjalan. Menutup dialog tetap menyimpan status tugas saat ini.",
   "channelDiscovery.failed": "Gagal menemukan konfigurasi",
   "channelDiscovery.missingBaseUrl": "Isi Base URL terlebih dahulu.",
   "channelDiscovery.missingApiKey": "Isi API key terlebih dahulu.",
@@ -851,6 +852,13 @@
   "channelDiscovery.reasoning": "Rekomendasi effort reasoning",
   "channelDiscovery.reasoningNote": "Effort reasoning adalah rekomendasi default berbasis peran model. Discovery tidak menguji semua level effort.",
   "channelDiscovery.compat": "Switch kompatibilitas",
+  "channelDiscovery.capabilities": "Pemeriksaan kemampuan",
+  "channelDiscovery.capabilityToolCalls": "Tool call",
+  "channelDiscovery.capabilityThinkingPassback": "Passback thinking",
+  "channelDiscovery.capabilitySupported": "didukung",
+  "channelDiscovery.capabilityUnsupported": "tidak didukung",
+  "channelDiscovery.capabilityRequired": "diperlukan",
+  "channelDiscovery.capabilityNotRequired": "tidak diperlukan",
   "channelDiscovery.apply": "Terapkan rekomendasi",
   "channelDiscovery.applied": "Rekomendasi discovery diterapkan. Periksa lalu simpan."
 }

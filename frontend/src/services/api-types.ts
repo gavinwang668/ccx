@@ -712,6 +712,21 @@ export interface DiscoveryProtocolResult {
   error?: string
 }
 
+export interface DiscoveryCapabilityProbeResult {
+  tested: boolean
+  supported: boolean
+  required?: boolean
+  statusCode?: number
+  evidence?: string
+  error?: string
+  recommendation?: Partial<Record<string, boolean>>
+}
+
+export interface DiscoveryCapabilitiesResult {
+  toolCalls: DiscoveryCapabilityProbeResult
+  thinkingPassback: DiscoveryCapabilityProbeResult
+}
+
 export interface DiscoveryEvidence {
   type: string
   key?: string
@@ -737,6 +752,7 @@ export interface ChannelDiscoveryRecommendation {
 export interface ChannelDiscoveryResponse {
   models: DiscoveryModelsResult
   protocols: DiscoveryProtocolResult[]
+  capabilities: DiscoveryCapabilitiesResult
   recommendation: ChannelDiscoveryRecommendation
   evidence?: DiscoveryEvidence[]
 }

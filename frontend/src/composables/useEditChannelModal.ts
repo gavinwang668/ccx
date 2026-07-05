@@ -1,6 +1,6 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useTheme } from 'vuetify'
-import type { Channel, ChannelDiscoveryResponse, ChannelDiscoveryTargetClient } from '../services/api'
+import type { Channel, ChannelDiscoveryRequest, ChannelDiscoveryResponse, ChannelDiscoveryTargetClient } from '../services/api'
 import { ApiService } from '../services/api'
 import { supportsAdvancedChannelOptions, supportsReasoningMapping } from '../utils/channelAdvancedOptions'
 import {
@@ -54,8 +54,37 @@ export type EditChannelModalEmits = {
 type EditChannelModalEmit = <K extends keyof EditChannelModalEmits>(event: K, ...args: EditChannelModalEmits[K]) => void
 type ResolvedEditChannelModalProps = Readonly<EditChannelModalProps & { channelType: NonNullable<EditChannelModalProps['channelType']> }>
 
+type ChannelDiscoverySessionStatus = 'running' | 'success' | 'error'
+
+interface ChannelDiscoverySession {
+  ownerKey: string
+  requestKey: string
+  status: ChannelDiscoverySessionStatus
+  result: ChannelDiscoveryResponse | null
+  error: string
+  promise?: Promise<ChannelDiscoveryResponse>
+}
+
+const channelDiscoverySessions = new Map<string, ChannelDiscoverySession>()
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableStringify(item)).join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record)
+      .sort()
+      .filter(key => record[key] !== undefined)
+      .map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+      .join(',')}}`
+  }
+  const serialized = JSON.stringify(value)
+  return serialized === undefined ? 'null' : serialized
+}
+
 export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: EditChannelModalEmit) {
-const { t } = useI18n()
+  const { t } = useI18n()
   const apiService = new ApiService()
 
   // 主题
@@ -336,6 +365,35 @@ const { t } = useI18n()
   const channelDiscoverySuccessfulProtocols = computed(() => {
     return channelDiscoveryResult.value?.protocols.filter(protocol => protocol.success) ?? []
   })
+  const channelDiscoveryCapabilityEntries = computed(() => {
+    const capabilities = channelDiscoveryResult.value?.capabilities
+    if (!capabilities) return []
+
+    const entries: Array<{ key: string; label: string; text: string; color: string; detail: string }> = []
+    if (capabilities.toolCalls?.tested) {
+      entries.push({
+        key: 'toolCalls',
+        label: t('channelDiscovery.capabilityToolCalls'),
+        text: capabilities.toolCalls.supported
+          ? t('channelDiscovery.capabilitySupported')
+          : t('channelDiscovery.capabilityUnsupported'),
+        color: capabilities.toolCalls.supported ? 'success' : 'warning',
+        detail: capabilities.toolCalls.evidence || capabilities.toolCalls.error || '',
+      })
+    }
+    if (capabilities.thinkingPassback?.tested) {
+      entries.push({
+        key: 'thinkingPassback',
+        label: t('channelDiscovery.capabilityThinkingPassback'),
+        text: capabilities.thinkingPassback.required
+          ? t('channelDiscovery.capabilityRequired')
+          : t('channelDiscovery.capabilityNotRequired'),
+        color: capabilities.thinkingPassback.required ? 'secondary' : 'success',
+        detail: capabilities.thinkingPassback.evidence || capabilities.thinkingPassback.error || '',
+      })
+    }
+    return entries
+  })
 
   const discoveryTargetClients = (): ChannelDiscoveryTargetClient[] => {
     if (props.channelType === 'responses') return ['codex']
@@ -352,6 +410,85 @@ const { t } = useI18n()
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
+  }
+
+  const draftModelMapping = () => {
+    const mapping: Record<string, string> = {}
+    modelMappingRows.value.forEach(row => {
+      if (row.source && row.target) {
+        mapping[row.source] = row.target
+      }
+    })
+    return mapping
+  }
+
+  const draftReasoningMapping = () => {
+    const reasoning: Record<string, string> = {}
+    modelMappingRows.value.forEach(row => {
+      if (row.source && row.target && row.reasoning) {
+        reasoning[row.source] = row.reasoning
+      }
+    })
+    return reasoning
+  }
+
+  const buildChannelDiscoveryRequest = (): ChannelDiscoveryRequest | null => {
+    if (!supportsChannelDiscovery.value) return null
+    const baseUrls = draftBaseUrls()
+    const apiKey = firstDraftApiKey()
+    if (baseUrls.length === 0 || !apiKey || !form.serviceType) return null
+
+    return {
+      channelKind: props.channelType as 'messages' | 'chat' | 'responses' | 'gemini',
+      serviceType: form.serviceType,
+      baseUrls,
+      apiKey,
+      authHeader: form.authHeader,
+      customHeaders: { ...form.customHeaders },
+      proxyUrl: form.proxyUrl,
+      insecureSkipVerify: form.insecureSkipVerify,
+      modelMapping: draftModelMapping(),
+      reasoningMapping: draftReasoningMapping(),
+      targetClients: discoveryTargetClients(),
+    }
+  }
+
+  const channelDiscoveryOwnerKey = () => `${props.channelType}:${props.channel?.index ?? 'new'}`
+  const channelDiscoveryRequestKey = (request: ChannelDiscoveryRequest) => stableStringify(request)
+
+  const isCurrentDiscoverySession = (session: ChannelDiscoverySession) => {
+    const request = buildChannelDiscoveryRequest()
+    return !!request
+      && session.ownerKey === channelDiscoveryOwnerKey()
+      && session.requestKey === channelDiscoveryRequestKey(request)
+  }
+
+  const syncChannelDiscoverySessionToState = (session: ChannelDiscoverySession) => {
+    if (!isCurrentDiscoverySession(session)) return
+    discoveringChannelConfig.value = session.status === 'running'
+    channelDiscoveryResult.value = session.result
+    channelDiscoveryError.value = session.error
+  }
+
+  const clearChannelDiscoveryState = () => {
+    discoveringChannelConfig.value = false
+    channelDiscoveryResult.value = null
+    channelDiscoveryError.value = ''
+  }
+
+  const restoreChannelDiscoverySession = () => {
+    const request = buildChannelDiscoveryRequest()
+    const session = request ? channelDiscoverySessions.get(channelDiscoveryOwnerKey()) : undefined
+    if (!request || !session || session.requestKey !== channelDiscoveryRequestKey(request)) {
+      clearChannelDiscoveryState()
+      return
+    }
+    syncChannelDiscoverySessionToState(session)
+    if (session.status === 'running' && session.promise) {
+      void session.promise
+        .then(() => syncChannelDiscoverySessionToState(session))
+        .catch(() => syncChannelDiscoverySessionToState(session))
+    }
   }
 
   const handleDiscoverChannelConfig = async () => {
@@ -372,27 +509,47 @@ const { t } = useI18n()
     }
 
     syncModelMappingToForm()
-    discoveringChannelConfig.value = true
-    channelDiscoveryError.value = ''
-    channelDiscoveryResult.value = null
-    try {
-      channelDiscoveryResult.value = await apiService.discoverChannelConfig({
-        channelKind: props.channelType as 'messages' | 'chat' | 'responses' | 'gemini',
-        serviceType: form.serviceType,
-        baseUrls,
-        apiKey,
-        authHeader: form.authHeader,
-        customHeaders: form.customHeaders,
-        proxyUrl: form.proxyUrl,
-        insecureSkipVerify: form.insecureSkipVerify,
-        modelMapping: form.modelMapping,
-        reasoningMapping: form.reasoningMapping,
-        targetClients: discoveryTargetClients(),
+    const request = buildChannelDiscoveryRequest()
+    if (!request) return
+
+    const ownerKey = channelDiscoveryOwnerKey()
+    const requestKey = channelDiscoveryRequestKey(request)
+    const existing = channelDiscoverySessions.get(ownerKey)
+    if (existing?.status === 'running' && existing.requestKey === requestKey) {
+      syncChannelDiscoverySessionToState(existing)
+      return
+    }
+
+    const session: ChannelDiscoverySession = {
+      ownerKey,
+      requestKey,
+      status: 'running',
+      result: null,
+      error: '',
+    }
+    session.promise = apiService.discoverChannelConfig(request)
+      .then(result => {
+        session.status = 'success'
+        session.result = result
+        session.error = ''
+        return result
       })
-    } catch (e) {
-      channelDiscoveryError.value = e instanceof Error ? e.message : t('channelDiscovery.failed')
-    } finally {
-      discoveringChannelConfig.value = false
+      .catch(e => {
+        session.status = 'error'
+        session.result = null
+        session.error = e instanceof Error ? e.message : t('channelDiscovery.failed')
+        throw e
+      })
+      .finally(() => {
+        syncChannelDiscoverySessionToState(session)
+      })
+
+    channelDiscoverySessions.set(ownerKey, session)
+    syncChannelDiscoverySessionToState(session)
+    try {
+      await session.promise
+    } catch {
+      // 错误已写入 session，保持弹窗内联展示。
     }
   }
 
@@ -965,6 +1122,7 @@ const { t } = useI18n()
           // 添加模式：固定使用快速添加
           resetForm()
         }
+        restoreChannelDiscoverySession()
 
         // dialog 渲染完成后绑定滚动监听，同步左侧导航高亮
         nextTick(() => attachScrollListener())
@@ -986,12 +1144,23 @@ const { t } = useI18n()
       if (action === 'load-edit-channel' && newChannel) {
         dialogMode.value = 'edit'
         loadChannelData(newChannel)
+        restoreChannelDiscoverySession()
         return
       }
 
       if (action === 'reset-new-form') {
         dialogMode.value = 'create'
         resetForm()
+        restoreChannelDiscoverySession()
+      }
+    }
+  )
+
+  watch(
+    () => props.show ? stableStringify(buildChannelDiscoveryRequest()) : '',
+    () => {
+      if (props.show) {
+        restoreChannelDiscoverySession()
       }
     }
   )
@@ -1141,6 +1310,7 @@ const { t } = useI18n()
     channelDiscoveryCompatEntries,
     channelDiscoveryReasoningEntries,
     channelDiscoverySuccessfulProtocols,
+    channelDiscoveryCapabilityEntries,
     handleDiscoverChannelConfig,
     applyChannelDiscoveryRecommendation,
     applyPreset,

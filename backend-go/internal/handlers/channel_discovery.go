@@ -80,6 +80,21 @@ type DiscoveryProtocolResult struct {
 	Error         string   `json:"error,omitempty"`
 }
 
+type DiscoveryCapabilityProbeResult struct {
+	Tested         bool            `json:"tested"`
+	Supported      bool            `json:"supported"`
+	Required       bool            `json:"required,omitempty"`
+	StatusCode     int             `json:"statusCode,omitempty"`
+	Evidence       string          `json:"evidence,omitempty"`
+	Error          string          `json:"error,omitempty"`
+	Recommendation map[string]bool `json:"recommendation,omitempty"`
+}
+
+type DiscoveryCapabilitiesResult struct {
+	ToolCalls        DiscoveryCapabilityProbeResult `json:"toolCalls"`
+	ThinkingPassback DiscoveryCapabilityProbeResult `json:"thinkingPassback"`
+}
+
 type DiscoveryEvidence struct {
 	Type    string `json:"type"`
 	Key     string `json:"key,omitempty"`
@@ -105,10 +120,11 @@ type DiscoveryAlternative struct {
 }
 
 type ChannelDiscoveryResponse struct {
-	Models         DiscoveryModelsResult     `json:"models"`
-	Protocols      []DiscoveryProtocolResult `json:"protocols"`
-	Recommendation DiscoveryRecommendation   `json:"recommendation"`
-	Evidence       []DiscoveryEvidence       `json:"evidence,omitempty"`
+	Models         DiscoveryModelsResult       `json:"models"`
+	Protocols      []DiscoveryProtocolResult   `json:"protocols"`
+	Capabilities   DiscoveryCapabilitiesResult `json:"capabilities"`
+	Recommendation DiscoveryRecommendation     `json:"recommendation"`
+	Evidence       []DiscoveryEvidence         `json:"evidence,omitempty"`
 }
 
 func ChannelDiscovery(cfgManager *config.ConfigManager) gin.HandlerFunc {
@@ -150,6 +166,7 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 		recommendation := buildDiscoveryMappingRecommendation(recommendedKind, models.Selected, successByProtocol, req.TargetClients)
 		recommendation.ServiceType = channel.ServiceType
 		recommendation.BaseURLs = append([]string(nil), channel.BaseURLs...)
+		capabilities := DiscoveryCapabilitiesResult{}
 		if recommendation.ChannelKind != "" {
 			compatModel := discoveryCompatProbeModel(recommendation.ChannelKind, models.Selected, successByProtocol)
 			compat := runCompatDiagnoseWithProbeModel(channel, recommendation.ChannelKind, channel.APIKeys[0], capabilityTestBaseURL(channel), compatModel)
@@ -158,12 +175,15 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 			for key, message := range compat.Evidence {
 				recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{Type: "compat", Key: key, Message: message})
 			}
+			capabilities = runDiscoveryCapabilityProbes(channel, recommendation.ChannelKind, channel.APIKeys[0], capabilityTestBaseURL(channel), compatModel, req.TargetClients, compat)
+			mergeDiscoveryCapabilityRecommendations(&recommendation, capabilities)
 		}
 
 		evidence := buildDiscoveryEvidence(models, protocols, recommendation)
 		c.JSON(http.StatusOK, ChannelDiscoveryResponse{
 			Models:         models,
 			Protocols:      protocols,
+			Capabilities:   capabilities,
 			Recommendation: recommendation,
 			Evidence:       evidence,
 		})
@@ -356,7 +376,7 @@ func buildDiscoveryMappingRecommendation(
 	reasoningMapping := discoveryReasoningMapping(channelKind, modelMapping)
 	evidence := []DiscoveryEvidence(nil)
 	if len(reasoningMapping) > 0 {
-		evidence = append(evidence, DiscoveryEvidence{Type: "reasoning", Message: "思考强度为按源模型角色给出的默认建议，未逐档测试；发现流程只验证基础请求可用"})
+		evidence = append(evidence, DiscoveryEvidence{Type: "reasoning", Message: "思考强度为按源模型角色给出的默认建议；发现流程会继续验证工具调用与思考回传要求"})
 	}
 	return DiscoveryRecommendation{
 		ChannelKind:      channelKind,
@@ -407,6 +427,458 @@ func discoverySupportedModelPatterns(modelMapping map[string]string, targetClien
 	}
 	sort.Strings(patterns)
 	return patterns
+}
+
+const discoveryToolProbeName = "ccx_probe"
+
+func runDiscoveryCapabilityProbes(
+	channel *config.UpstreamConfig,
+	channelKind string,
+	apiKey string,
+	baseURL string,
+	probeModel string,
+	targetClients []string,
+	compat CompatDiagnoseResult,
+) DiscoveryCapabilitiesResult {
+	return DiscoveryCapabilitiesResult{
+		ToolCalls:        runDiscoveryToolCallProbe(channel, channelKind, apiKey, baseURL, probeModel, targetClients),
+		ThinkingPassback: discoveryThinkingPassbackProbeResult(compat),
+	}
+}
+
+func mergeDiscoveryCapabilityRecommendations(recommendation *DiscoveryRecommendation, capabilities DiscoveryCapabilitiesResult) {
+	merge := func(probe DiscoveryCapabilityProbeResult, key string) {
+		if probe.Tested && probe.Evidence != "" {
+			recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{Type: "capability", Key: key, Message: probe.Evidence})
+		}
+		if len(probe.Recommendation) == 0 {
+			return
+		}
+		if recommendation.Compat == nil {
+			recommendation.Compat = make(map[string]bool)
+		}
+		for name, value := range probe.Recommendation {
+			recommendation.Compat[name] = value
+		}
+	}
+
+	merge(capabilities.ToolCalls, "toolCalls")
+	merge(capabilities.ThinkingPassback, "thinkingPassback")
+}
+
+func discoveryThinkingPassbackProbeResult(compat CompatDiagnoseResult) DiscoveryCapabilityProbeResult {
+	keys := []string{"passbackReasoningContent", "passbackThinkingBlocks"}
+	evidence := make([]string, 0, len(keys))
+	recommendation := make(map[string]bool)
+	required := false
+	tested := false
+
+	for _, key := range keys {
+		if message := strings.TrimSpace(compat.Evidence[key]); message != "" {
+			tested = true
+			evidence = append(evidence, fmt.Sprintf("%s: %s", key, message))
+		}
+		if value, ok := compat.Recommendations[key]; ok {
+			recommendation[key] = value
+			if value {
+				required = true
+			}
+		}
+	}
+	if !tested {
+		return DiscoveryCapabilityProbeResult{
+			Tested:    false,
+			Supported: false,
+			Evidence:  "当前上游类型无思考回传探测项或探测未得出结论",
+		}
+	}
+
+	return DiscoveryCapabilityProbeResult{
+		Tested:         true,
+		Supported:      true,
+		Required:       required,
+		Evidence:       strings.Join(evidence, " / "),
+		Recommendation: recommendation,
+	}
+}
+
+func runDiscoveryToolCallProbe(channel *config.UpstreamConfig, channelKind, apiKey, baseURL, probeModel string, targetClients []string) DiscoveryCapabilityProbeResult {
+	protocol := compatProbeProtocol(channel, channelKind)
+	if protocol == "" {
+		return DiscoveryCapabilityProbeResult{
+			Tested:    false,
+			Supported: false,
+			Evidence:  "当前渠道类型无工具调用探测项",
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+
+	req, err := buildDiscoveryToolCallProbeRequest(protocol, baseURL, probeModel, channel, apiKey)
+	if err != nil {
+		return DiscoveryCapabilityProbeResult{
+			Tested:    false,
+			Supported: false,
+			Error:     err.Error(),
+			Evidence:  "工具调用探测请求构建失败",
+		}
+	}
+
+	events, statusCode, body, sendErr := sendCompatProbe(ctx, req, channel)
+	result := DiscoveryCapabilityProbeResult{Tested: true, StatusCode: statusCode}
+	if isCompatProbeTimeout(sendErr, ctx) {
+		result.Error = "timeout"
+		result.Evidence = "工具调用探测超时，无法确认上游是否支持工具调用"
+		return result
+	}
+	if sendErr != nil || statusCode < 200 || statusCode >= 300 {
+		result.Error = discoveryProbeDiagnostic(statusCode, body, sendErr)
+		result.Evidence = fmt.Sprintf("上游拒绝工具调用探测请求（HTTP %d）", statusCode)
+		return result
+	}
+	if discoverySSEHasToolCall(events, protocol, discoveryToolProbeName) {
+		result.Supported = true
+		result.Evidence = "上游返回了 ccx_probe 工具调用"
+		result.Recommendation = discoveryToolCallRecommendations(channelKind, channel.ServiceType, targetClients)
+		return result
+	}
+	if hasMeaningfulCompatSSE(events, protocol) {
+		result.Evidence = "上游返回了有效内容，但未按强制 tool_choice 产生工具调用"
+		return result
+	}
+	result.Evidence = "工具调用探测响应为空或无法识别"
+	return result
+}
+
+func discoveryProbeDiagnostic(statusCode int, body string, err error) string {
+	diagnostic := strings.TrimSpace(body)
+	if diagnostic == "" && err != nil {
+		diagnostic = err.Error()
+	}
+	if diagnostic == "" && statusCode > 0 {
+		diagnostic = fmt.Sprintf("HTTP %d", statusCode)
+	}
+	return truncateCapabilityError(diagnostic)
+}
+
+func discoveryToolCallRecommendations(channelKind, serviceType string, targetClients []string) map[string]bool {
+	if channelKind != "responses" && !hasDiscoveryTargetClient(targetClients, "codex") {
+		return nil
+	}
+	switch strings.TrimSpace(serviceType) {
+	case "responses", "copilot":
+		return map[string]bool{"codexNativeToolPassthrough": true}
+	case "openai", "chat", "claude", "gemini":
+		return map[string]bool{"codexToolCompat": true}
+	default:
+		return nil
+	}
+}
+
+func hasDiscoveryTargetClient(targetClients []string, target string) bool {
+	for _, client := range targetClients {
+		if strings.EqualFold(strings.TrimSpace(client), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildDiscoveryToolCallProbeRequest(protocol, baseURL, probeModel string, channel *config.UpstreamConfig, apiKey string) (*http.Request, error) {
+	switch protocol {
+	case "messages", "claude":
+		return buildClaudeCompatRequest(baseURL, buildClaudeToolCallProbeBody(compatProbeModel(capabilityProbeModelClaudeFable5, probeModel)), channel, apiKey)
+	case "chat":
+		return buildOpenAIChatCompatRequest(baseURL, buildOpenAIChatToolCallProbeBody(probeModel), channel, apiKey)
+	case "responses":
+		return buildResponsesCompatRequest(baseURL, buildResponsesToolCallProbeBody(probeModel), channel, apiKey)
+	case "gemini":
+		model := compatProbeModel("gemini-3.5-flash", probeModel)
+		return buildGeminiCompatRequest(baseURL, "/v1beta/models/"+model+":streamGenerateContent?alt=sse", buildGeminiToolCallProbeBody(), channel, apiKey)
+	default:
+		return nil, fmt.Errorf("unsupported tool call probe protocol: %s", protocol)
+	}
+}
+
+func buildClaudeToolCallProbeBody(model string) []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": model,
+		"system": []map[string]interface{}{
+			{"type": "text", "text": "You are validating tool-call support. Nonce: " + nonce},
+		},
+		"messages":   []map[string]string{{"role": "user", "content": "Call ccx_probe with value ok."}},
+		"max_tokens": 128,
+		"stream":     true,
+		"tools": []map[string]interface{}{
+			discoveryClaudeToolDefinition(),
+		},
+		"tool_choice": map[string]string{"type": "tool", "name": discoveryToolProbeName},
+	})
+	return body
+}
+
+func buildOpenAIChatToolCallProbeBody(models ...string) []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": compatProbeModel("gpt-5.4-mini", models...),
+		"messages": []map[string]string{
+			{"role": "system", "content": "You are validating tool-call support. Nonce: " + nonce},
+			{"role": "user", "content": "Call ccx_probe with value ok."},
+		},
+		"max_tokens": 128,
+		"stream":     true,
+		"tools": []map[string]interface{}{
+			discoveryOpenAIFunctionToolDefinition(),
+		},
+		"tool_choice": map[string]interface{}{"type": "function", "function": map[string]string{"name": discoveryToolProbeName}},
+	})
+	return body
+}
+
+func buildResponsesToolCallProbeBody(models ...string) []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"model":             compatProbeModel("gpt-5.4-mini", models...),
+		"instructions":      "You are validating tool-call support. Nonce: " + nonce,
+		"input":             "Call ccx_probe with value ok.",
+		"max_output_tokens": 128,
+		"stream":            true,
+		"tools": []map[string]interface{}{
+			discoveryResponsesFunctionToolDefinition(),
+		},
+		"tool_choice": map[string]string{"type": "function", "name": discoveryToolProbeName},
+	})
+	return body
+}
+
+func buildGeminiToolCallProbeBody() []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{"role": "user", "parts": []map[string]string{{"text": "Call ccx_probe with value ok. Nonce: " + nonce}}},
+		},
+		"tools": []map[string]interface{}{
+			{
+				"functionDeclarations": []map[string]interface{}{
+					{
+						"name":        discoveryToolProbeName,
+						"description": "Returns a probe value.",
+						"parameters": map[string]interface{}{
+							"type": "OBJECT",
+							"properties": map[string]interface{}{
+								"value": map[string]string{"type": "STRING"},
+							},
+							"required": []string{"value"},
+						},
+					},
+				},
+			},
+		},
+		"toolConfig": map[string]interface{}{
+			"functionCallingConfig": map[string]interface{}{
+				"mode":                 "ANY",
+				"allowedFunctionNames": []string{discoveryToolProbeName},
+			},
+		},
+		"generationConfig": map[string]int{"maxOutputTokens": 128},
+	})
+	return body
+}
+
+func discoveryClaudeToolDefinition() map[string]interface{} {
+	return map[string]interface{}{
+		"name":        discoveryToolProbeName,
+		"description": "Returns a probe value.",
+		"input_schema": map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"value": map[string]string{"type": "string"},
+			},
+			"required": []string{"value"},
+		},
+	}
+}
+
+func discoveryOpenAIFunctionToolDefinition() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":        discoveryToolProbeName,
+			"description": "Returns a probe value.",
+			"parameters": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"value": map[string]string{"type": "string"},
+				},
+				"required": []string{"value"},
+			},
+		},
+	}
+}
+
+func discoveryResponsesFunctionToolDefinition() map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "function",
+		"name":        discoveryToolProbeName,
+		"description": "Returns a probe value.",
+		"parameters": map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"value": map[string]string{"type": "string"},
+			},
+			"required": []string{"value"},
+		},
+	}
+}
+
+func discoverySSEHasToolCall(lines []string, protocol, toolName string) bool {
+	for _, line := range lines {
+		if line == "" || line == "[DONE]" {
+			continue
+		}
+		var ev map[string]interface{}
+		if json.Unmarshal([]byte(line), &ev) != nil {
+			continue
+		}
+		switch protocol {
+		case "messages", "claude":
+			if discoveryClaudeEventHasToolCall(ev, toolName) {
+				return true
+			}
+		case "chat":
+			if discoveryOpenAIChatEventHasToolCall(ev, toolName) {
+				return true
+			}
+		case "responses":
+			if discoveryResponsesEventHasToolCall(ev, toolName) {
+				return true
+			}
+		case "gemini":
+			if discoveryGeminiEventHasToolCall(ev, toolName) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func discoveryClaudeEventHasToolCall(ev map[string]interface{}, toolName string) bool {
+	if stringField(ev, "type") != "content_block_start" {
+		return false
+	}
+	block, ok := ev["content_block"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	blockType := stringField(block, "type")
+	return (blockType == "tool_use" || blockType == "server_tool_use") && stringField(block, "name") == toolName
+}
+
+func discoveryOpenAIChatEventHasToolCall(ev map[string]interface{}, toolName string) bool {
+	choices, ok := ev["choices"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, choiceValue := range choices {
+		choice, ok := choiceValue.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		delta, ok := choice["delta"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if discoveryToolCallsContainName(delta["tool_calls"], toolName) {
+			return true
+		}
+		if functionCall, ok := delta["function_call"].(map[string]interface{}); ok && stringField(functionCall, "name") == toolName {
+			return true
+		}
+	}
+	return false
+}
+
+func discoveryResponsesEventHasToolCall(ev map[string]interface{}, toolName string) bool {
+	if item, ok := ev["item"].(map[string]interface{}); ok && discoveryResponsesItemIsToolCall(item, toolName) {
+		return true
+	}
+	response, ok := ev["response"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	output, ok := response["output"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, itemValue := range output {
+		item, ok := itemValue.(map[string]interface{})
+		if ok && discoveryResponsesItemIsToolCall(item, toolName) {
+			return true
+		}
+	}
+	return false
+}
+
+func discoveryResponsesItemIsToolCall(item map[string]interface{}, toolName string) bool {
+	itemType := stringField(item, "type")
+	if itemType != "function_call" && itemType != "custom_tool_call" && !strings.HasSuffix(itemType, "_call") {
+		return false
+	}
+	return stringField(item, "name") == toolName
+}
+
+func discoveryGeminiEventHasToolCall(ev map[string]interface{}, toolName string) bool {
+	candidates, ok := ev["candidates"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, candidateValue := range candidates {
+		candidate, ok := candidateValue.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		content, ok := candidate["content"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		parts, ok := content["parts"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, partValue := range parts {
+			part, ok := partValue.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			functionCall, ok := part["functionCall"].(map[string]interface{})
+			if ok && stringField(functionCall, "name") == toolName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func discoveryToolCallsContainName(raw interface{}, toolName string) bool {
+	toolCalls, ok := raw.([]interface{})
+	if !ok {
+		return false
+	}
+	for _, callValue := range toolCalls {
+		call, ok := callValue.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if function, ok := call["function"].(map[string]interface{}); ok && stringField(function, "name") == toolName {
+			return true
+		}
+		if stringField(call, "name") == toolName {
+			return true
+		}
+	}
+	return false
 }
 
 func discoverTransientModelsWithFetchers(ctx context.Context, channel *config.UpstreamConfig, channelKind string, apiKey string, fetchers ChannelDiscoveryModelFetchers) DiscoveryModelsResult {

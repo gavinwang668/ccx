@@ -78,8 +78,8 @@ func TestBuildDiscoveryMappingRecommendationUsesOnlySuccessfulModels(t *testing.
 	if rec.ReasoningMapping["gpt"] != "max" || rec.ReasoningMapping["mini"] != "high" || rec.ReasoningMapping["codex"] != "high" {
 		t.Fatalf("unexpected reasoning mapping: %#v", rec.ReasoningMapping)
 	}
-	if len(rec.Evidence) != 1 || rec.Evidence[0].Type != "reasoning" || !strings.Contains(rec.Evidence[0].Message, "未逐档测试") {
-		t.Fatalf("reasoning evidence should explain untested effort levels: %#v", rec.Evidence)
+	if len(rec.Evidence) != 1 || rec.Evidence[0].Type != "reasoning" || !strings.Contains(rec.Evidence[0].Message, "验证工具调用与思考回传") {
+		t.Fatalf("reasoning evidence should explain follow-up capability probes: %#v", rec.Evidence)
 	}
 }
 
@@ -295,5 +295,146 @@ func TestChannelDiscoveryCompatUsesDiscoveredActualModel(t *testing.T) {
 	}
 	if !sawActualCompatToolProbe {
 		t.Fatal("expected image_generation compat probe to use discovered actual model")
+	}
+}
+
+func TestChannelDiscoveryReportsResponsesToolCallCapability(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var sawToolProbe bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"actual-main"}]}`))
+		case "/v1/responses":
+			body, _ := io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "text/event-stream")
+			if bytes.Contains(body, []byte(`"name":"ccx_probe"`)) {
+				sawToolProbe = true
+				_, _ = w.Write([]byte("event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"ccx_probe\"}}\n\n"))
+				_, _ = w.Write([]byte("event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{\\\"value\\\":\\\"ok\\\"}\"}\n\n"))
+				return
+			}
+			_, _ = w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"))
+			_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	router := gin.New()
+	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+
+	body := []byte(`{
+		"channelKind":"responses",
+		"serviceType":"responses",
+		"baseUrls":["` + upstream.URL + `"],
+		"apiKey":"sk-test",
+		"targetClients":["codex"]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/channel-discovery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !sawToolProbe {
+		t.Fatal("expected tool-call probe request")
+	}
+
+	var resp ChannelDiscoveryResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Capabilities.ToolCalls.Tested || !resp.Capabilities.ToolCalls.Supported {
+		t.Fatalf("tool capability=%#v", resp.Capabilities.ToolCalls)
+	}
+	if !resp.Recommendation.Compat["codexNativeToolPassthrough"] {
+		t.Fatalf("expected codexNativeToolPassthrough recommendation, compat=%#v", resp.Recommendation.Compat)
+	}
+}
+
+func TestChannelDiscoveryReportsClaudeThinkingPassbackCapability(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var sawToolProbe bool
+	var sawHistoricalThinkingProbe bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"actual-claude"}]}`))
+		case "/v1/messages":
+			body, _ := io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "text/event-stream")
+			switch {
+			case bytes.Contains(body, []byte(`"name":"ccx_probe"`)):
+				sawToolProbe = true
+				_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"ccx_probe\",\"input\":{}}}\n\n"))
+				_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"value\\\":\\\"ok\\\"}\"}}\n\n"))
+				_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+			case bytes.Contains(body, []byte("previous reasoning")):
+				sawHistoricalThinkingProbe = true
+				_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+				_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+			case bytes.Contains(body, []byte(`"thinking"`)):
+				_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n"))
+				_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"analysis\"}}\n\n"))
+				_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"))
+				_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+				_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+			default:
+				_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+				_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	router := gin.New()
+	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+
+	body := []byte(`{
+		"channelKind":"messages",
+		"serviceType":"claude",
+		"baseUrls":["` + upstream.URL + `"],
+		"apiKey":"sk-test",
+		"targetClients":["claude-code"]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/channel-discovery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !sawToolProbe {
+		t.Fatal("expected tool-call probe request")
+	}
+	if !sawHistoricalThinkingProbe {
+		t.Fatal("expected historical thinking passback probe request")
+	}
+
+	var resp ChannelDiscoveryResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Capabilities.ToolCalls.Tested || !resp.Capabilities.ToolCalls.Supported {
+		t.Fatalf("tool capability=%#v", resp.Capabilities.ToolCalls)
+	}
+	if !resp.Capabilities.ThinkingPassback.Tested || !resp.Capabilities.ThinkingPassback.Required {
+		t.Fatalf("thinking capability=%#v", resp.Capabilities.ThinkingPassback)
+	}
+	if !resp.Recommendation.Compat["passbackReasoningContent"] || !resp.Recommendation.Compat["passbackThinkingBlocks"] {
+		t.Fatalf("thinking passback recommendations missing: %#v", resp.Recommendation.Compat)
 	}
 }

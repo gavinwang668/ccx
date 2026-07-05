@@ -841,6 +841,7 @@
   "channelDiscovery.title": "Discover usable config",
   "channelDiscovery.hint": "Probe models, protocols, redirects, and compatibility switches with the current Base URL and API key.",
   "channelDiscovery.button": "Discover config",
+  "channelDiscovery.running": "Config discovery is still running. Closing this dialog keeps the current task state.",
   "channelDiscovery.failed": "Config discovery failed",
   "channelDiscovery.missingBaseUrl": "Enter a Base URL first.",
   "channelDiscovery.missingApiKey": "Enter an API key first.",
@@ -851,6 +852,13 @@
   "channelDiscovery.reasoning": "Recommended reasoning effort",
   "channelDiscovery.reasoningNote": "Reasoning effort is a role-based default recommendation. Discovery does not test every effort level.",
   "channelDiscovery.compat": "Compatibility switches",
+  "channelDiscovery.capabilities": "Capability checks",
+  "channelDiscovery.capabilityToolCalls": "Tool calls",
+  "channelDiscovery.capabilityThinkingPassback": "Thinking passback",
+  "channelDiscovery.capabilitySupported": "supported",
+  "channelDiscovery.capabilityUnsupported": "unsupported",
+  "channelDiscovery.capabilityRequired": "required",
+  "channelDiscovery.capabilityNotRequired": "not required",
   "channelDiscovery.apply": "Apply recommendation",
   "channelDiscovery.applied": "Discovery recommendation applied. Review and save."
 }
