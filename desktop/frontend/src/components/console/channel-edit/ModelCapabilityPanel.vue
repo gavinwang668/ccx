@@ -188,7 +188,10 @@ function removeRow(id: number) {
 </script>
 
 <template>
-  <section class="space-y-4 rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm backdrop-blur-sm">
+  <section
+    class="relative space-y-4 rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm backdrop-blur-sm"
+    :class="activeModelInputId ? 'z-50' : 'z-0'"
+  >
     <div class="border-b border-border/40 pb-2">
       <div class="min-w-0 space-y-1">
         <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary">
@@ -424,7 +427,7 @@ function removeRow(id: number) {
         />
         <div
           v-if="activeModelInputId === 'new' && filteredModels(newModel).length"
-          class="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
+          class="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
         >
           <button
             v-for="model in filteredModels(newModel)"
@@ -439,7 +442,7 @@ function removeRow(id: number) {
         </div>
         <div
           v-else-if="activeModelInputId === 'new'"
-          class="absolute left-0 right-0 top-full z-30 mt-1 rounded-lg border border-border bg-popover px-3 py-2 text-[10px] leading-4 text-muted-foreground shadow-lg"
+          class="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-border bg-popover px-3 py-2 text-[10px] leading-4 text-muted-foreground shadow-lg"
         >
           {{ modelListEmptyHint }}
         </div>
