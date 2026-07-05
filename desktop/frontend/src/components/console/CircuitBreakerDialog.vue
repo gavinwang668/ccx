@@ -27,11 +27,11 @@ const success = ref('')
 
 const activePreset = ref('balanced')
 const form = reactive({
-  windowSize: 10,
-  failureThreshold: 0.5,
-  consecutiveFailuresThreshold: 3,
-  requestTimeoutMs: 120000,
-  responseHeaderTimeoutMs: 60000,
+  windowSize: 20,
+  failureThreshold: 0.70,
+  consecutiveFailuresThreshold: 5,
+  requestTimeoutMs: 300000,
+  responseHeaderTimeoutMs: 120000,
   streamFirstContentTimeoutMs: streamTimeoutPresets.balanced.firstContentMs,
   streamInactivityTimeoutMs: streamTimeoutPresets.balanced.inactivityMs,
   streamToolCallIdleTimeoutMs: streamTimeoutPresets.balanced.toolCallIdleMs,
@@ -42,12 +42,13 @@ const sliderStyle = (value: number, min: number, max: number) => {
   return { '--cb-slider-progress': `${Math.min(100, Math.max(0, percent))}%` }
 }
 
-// 工具调用 idle 预设按低速 5 TPS 粗估：60/120/300s 分别预留约 300/600/1500 token 的参数生成窗口。
+// 预设向更宽松方向平移一档：原温和→均衡、原均衡→激进、原激进移除（需手动自定义）
+// 新增更宽松的温和策略，降低新用户误熔断概率
 const presets = [
-  { key: 'gentle', labelKey: 'env.runtimeCbPresetGentle' as const, windowSize: 20, failureThreshold: 0.70, consecutiveFailuresThreshold: 5, requestTimeoutMs: 300000, responseHeaderTimeoutMs: 120000, streamFirstContentTimeoutMs: streamTimeoutPresets.gentle.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.gentle.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.gentle.toolCallIdleMs },
-  { key: 'balanced', labelKey: 'env.runtimeCbPresetBalanced' as const, windowSize: 10, failureThreshold: 0.50, consecutiveFailuresThreshold: 3, requestTimeoutMs: 120000, responseHeaderTimeoutMs: 60000, streamFirstContentTimeoutMs: streamTimeoutPresets.balanced.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.balanced.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.balanced.toolCallIdleMs },
-  { key: 'aggressive', labelKey: 'env.runtimeCbPresetAggressive' as const, windowSize: 5, failureThreshold: 0.30, consecutiveFailuresThreshold: 2, requestTimeoutMs: 60000, responseHeaderTimeoutMs: 30000, streamFirstContentTimeoutMs: streamTimeoutPresets.aggressive.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.aggressive.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.aggressive.toolCallIdleMs },
-  { key: 'custom', labelKey: 'env.runtimeCbPresetCustom' as const, windowSize: 10, failureThreshold: 0.50, consecutiveFailuresThreshold: 3, requestTimeoutMs: 120000, responseHeaderTimeoutMs: 60000, streamFirstContentTimeoutMs: streamTimeoutPresets.balanced.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.balanced.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.balanced.toolCallIdleMs },
+  { key: 'gentle', labelKey: 'env.runtimeCbPresetGentle' as const, windowSize: 50, failureThreshold: 0.85, consecutiveFailuresThreshold: 10, requestTimeoutMs: 300000, responseHeaderTimeoutMs: 300000, streamFirstContentTimeoutMs: streamTimeoutPresets.gentle.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.gentle.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.gentle.toolCallIdleMs },
+  { key: 'balanced', labelKey: 'env.runtimeCbPresetBalanced' as const, windowSize: 20, failureThreshold: 0.70, consecutiveFailuresThreshold: 5, requestTimeoutMs: 300000, responseHeaderTimeoutMs: 120000, streamFirstContentTimeoutMs: streamTimeoutPresets.balanced.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.balanced.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.balanced.toolCallIdleMs },
+  { key: 'aggressive', labelKey: 'env.runtimeCbPresetAggressive' as const, windowSize: 10, failureThreshold: 0.50, consecutiveFailuresThreshold: 3, requestTimeoutMs: 120000, responseHeaderTimeoutMs: 60000, streamFirstContentTimeoutMs: streamTimeoutPresets.aggressive.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.aggressive.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.aggressive.toolCallIdleMs },
+  { key: 'custom', labelKey: 'env.runtimeCbPresetCustom' as const, windowSize: 20, failureThreshold: 0.70, consecutiveFailuresThreshold: 5, requestTimeoutMs: 300000, responseHeaderTimeoutMs: 120000, streamFirstContentTimeoutMs: streamTimeoutPresets.balanced.firstContentMs, streamInactivityTimeoutMs: streamTimeoutPresets.balanced.inactivityMs, streamToolCallIdleTimeoutMs: streamTimeoutPresets.balanced.toolCallIdleMs },
 ]
 
 const matchPreset = () => {
@@ -117,14 +118,14 @@ const fetchConfig = async () => {
     const resp = await fetch(url, { headers: { 'x-api-key': adminKey } })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const data = await resp.json()
-    form.windowSize = data.windowSize ?? 10
-    form.failureThreshold = data.failureThreshold ?? 0.5
-    form.consecutiveFailuresThreshold = data.consecutiveFailuresThreshold ?? 3
-    form.requestTimeoutMs = data.requestTimeoutMs && data.requestTimeoutMs >= 1000 ? data.requestTimeoutMs : 120000
-    form.responseHeaderTimeoutMs = data.responseHeaderTimeoutMs && data.responseHeaderTimeoutMs >= 1000 ? data.responseHeaderTimeoutMs : 60000
-    form.streamFirstContentTimeoutMs = data.streamFirstContentTimeoutMs && data.streamFirstContentTimeoutMs >= 5000 ? data.streamFirstContentTimeoutMs : 60000
-    form.streamInactivityTimeoutMs = data.streamInactivityTimeoutMs && data.streamInactivityTimeoutMs >= 1000 ? data.streamInactivityTimeoutMs : 60000
-    form.streamToolCallIdleTimeoutMs = data.streamToolCallIdleTimeoutMs && data.streamToolCallIdleTimeoutMs >= 30000 ? data.streamToolCallIdleTimeoutMs : 180000
+    form.windowSize = data.windowSize ?? 20
+    form.failureThreshold = data.failureThreshold ?? 0.70
+    form.consecutiveFailuresThreshold = data.consecutiveFailuresThreshold ?? 5
+    form.requestTimeoutMs = data.requestTimeoutMs && data.requestTimeoutMs >= 1000 ? data.requestTimeoutMs : 300000
+    form.responseHeaderTimeoutMs = data.responseHeaderTimeoutMs && data.responseHeaderTimeoutMs >= 1000 ? data.responseHeaderTimeoutMs : 120000
+    form.streamFirstContentTimeoutMs = data.streamFirstContentTimeoutMs && data.streamFirstContentTimeoutMs >= 5000 ? data.streamFirstContentTimeoutMs : 90000
+    form.streamInactivityTimeoutMs = data.streamInactivityTimeoutMs && data.streamInactivityTimeoutMs >= 1000 ? data.streamInactivityTimeoutMs : 90000
+    form.streamToolCallIdleTimeoutMs = data.streamToolCallIdleTimeoutMs && data.streamToolCallIdleTimeoutMs >= 30000 ? data.streamToolCallIdleTimeoutMs : 300000
     matchPreset()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

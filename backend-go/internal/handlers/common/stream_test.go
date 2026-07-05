@@ -67,8 +67,8 @@ func TestResolveStreamPreflightTimeouts_DefaultToolCallIdleIsLongerThanStreamIdl
 
 	timeouts := ResolveStreamPreflightTimeouts(upstream, global)
 
-	if timeouts.ToolCallIdleTimeoutMs != 120000 {
-		t.Fatalf("ToolCallIdleTimeoutMs = %d, want 120000", timeouts.ToolCallIdleTimeoutMs)
+	if timeouts.ToolCallIdleTimeoutMs != 300000 {
+		t.Fatalf("ToolCallIdleTimeoutMs = %d, want 300000", timeouts.ToolCallIdleTimeoutMs)
 	}
 	if timeouts.ToolCallIdleTimeoutMs <= timeouts.InactivityTimeoutMs {
 		t.Fatalf("tool call idle timeout should be longer than regular stream idle: tool=%d stream=%d", timeouts.ToolCallIdleTimeoutMs, timeouts.InactivityTimeoutMs)

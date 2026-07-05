@@ -101,7 +101,7 @@ func TestCircuitLogsIncludeTransitionFields(t *testing.T) {
 	log.SetOutput(&buf)
 	defer log.SetOutput(origWriter)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 5; i++ {
 		m.RecordFailure("https://example.com", "sk-test", "claude")
 	}
 	m.MoveKeyToHalfOpen("https://example.com", "sk-test", "claude")

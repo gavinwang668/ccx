@@ -355,10 +355,10 @@ func main() {
 		params := metrics.CircuitBreakerParams{
 			WindowSize:                   envCfg.MetricsWindowSize,
 			FailureThreshold:             envCfg.MetricsFailureThreshold,
-			ConsecutiveFailuresThreshold: 3,
-			StreamFirstContentTimeoutMs:  30000,
-			StreamInactivityTimeoutMs:    20000,
-			StreamToolCallIdleTimeoutMs:  120000,
+			ConsecutiveFailuresThreshold: 5,
+			StreamFirstContentTimeoutMs:  90000,
+			StreamInactivityTimeoutMs:    90000,
+			StreamToolCallIdleTimeoutMs:  300000,
 		}
 		if cfg.CircuitBreaker != nil {
 			if cfg.CircuitBreaker.WindowSize != nil {

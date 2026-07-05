@@ -84,18 +84,18 @@ func NewEnvConfig() *EnvConfig {
 		RewriteResponseModel: getEnv("REWRITE_RESPONSE_MODEL", "false") == "true",
 		ServerReadTimeout:    clampInt(getEnvAsInt("SERVER_READ_TIMEOUT", 60000), 10000, 300000),
 
-		RequestTimeout:     clampInt(getEnvAsInt("REQUEST_TIMEOUT", 120000), MinRequestTimeoutMs, MaxRequestTimeoutMs),
+		RequestTimeout:     clampInt(getEnvAsInt("REQUEST_TIMEOUT", 300000), MinRequestTimeoutMs, MaxRequestTimeoutMs),
 		MaxRequestBodySize: getEnvAsInt64("MAX_REQUEST_BODY_SIZE_MB", 50) * 1024 * 1024, // MB 转换为字节
 		EnableCORS:         getEnv("ENABLE_CORS", "false") == "true",
 		CORSOrigin:         getEnv("CORS_ORIGIN", "*"),
 		// 指标配置
-		MetricsWindowSize:       getEnvAsInt("METRICS_WINDOW_SIZE", 10),
-		MetricsFailureThreshold: getEnvAsFloat("METRICS_FAILURE_THRESHOLD", 0.5),
+		MetricsWindowSize:       getEnvAsInt("METRICS_WINDOW_SIZE", 20),
+		MetricsFailureThreshold: getEnvAsFloat("METRICS_FAILURE_THRESHOLD", 0.7),
 		// 指标持久化配置
 		MetricsPersistenceEnabled: getEnv("METRICS_PERSISTENCE_ENABLED", "true") != "false",
 		MetricsRetentionDays:      clampInt(getEnvAsInt("METRICS_RETENTION_DAYS", 366), 3, 366),
 		// HTTP 客户端配置
-		ResponseHeaderTimeout: clampInt(getEnvAsInt("RESPONSE_HEADER_TIMEOUT", 60), 30, 120), // 30-120 秒
+		ResponseHeaderTimeout: clampInt(getEnvAsInt("RESPONSE_HEADER_TIMEOUT", 120), 30, 300), // 30-300 秒
 		// 驾驶舱 override 默认有效期
 		OverrideTTLMinutes: clampInt(getEnvAsInt("OVERRIDE_TTL_MINUTES", 30), 1, 1440),
 		// 日志文件配置

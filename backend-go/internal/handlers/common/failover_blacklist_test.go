@@ -83,6 +83,16 @@ func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
 			},
 		},
 		{
+			name:       "400 invalid request wrapper with balance message should blacklist",
+			statusCode: 400,
+			body:       `{"type":"error","error":{"type":"invalid_request_error","message":"余额不足，请联系客服微信 claudemaster 充值 (insufficient balance — add WeChat: claudemaster to top up)"},"request_id":"req_123"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "余额不足，请联系客服微信 claudemaster 充值 (insufficient balance — add WeChat: claudemaster to top up)",
+			},
+		},
+		{
 			name:       "403 string error field with insufficient balance should blacklist",
 			statusCode: 403,
 			body:       `{"error":"API Key额度不足，请访问https://right.codes查看详情"}`,
@@ -424,6 +434,30 @@ func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
 			got := ShouldBlacklistKey(tt.statusCode, []byte(tt.body))
 			if got != tt.want {
 				t.Fatalf("ShouldBlacklistKey(%d, %s) = %+v, want %+v", tt.statusCode, tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldRetryWithNextKey_MessageWinsOverInvalidRequestCode(t *testing.T) {
+	body := []byte(`{"type":"error","error":{"code":"invalid_request_error","type":"invalid_request_error","message":"余额不足，请联系客服微信 claudemaster 充值 (insufficient balance - add WeChat: claudemaster to top up)"}}`)
+
+	tests := []struct {
+		name      string
+		fuzzyMode bool
+	}{
+		{name: "normal mode", fuzzyMode: false},
+		{name: "fuzzy mode", fuzzyMode: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFailover, gotQuota := ShouldRetryWithNextKey(400, body, tt.fuzzyMode, "Messages")
+			if !gotFailover {
+				t.Fatalf("ShouldRetryWithNextKey(400, balance invalid_request, %v) failover = false, want true", tt.fuzzyMode)
+			}
+			if !gotQuota {
+				t.Fatalf("ShouldRetryWithNextKey(400, balance invalid_request, %v) quota = false, want true", tt.fuzzyMode)
 			}
 		})
 	}

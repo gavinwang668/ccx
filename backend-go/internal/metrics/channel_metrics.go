@@ -59,17 +59,17 @@ func ParseCircuitState(text string) CircuitState {
 	}
 }
 
-// 默认熔断器参数常量
+// 默认熔断器参数常量（温和作为新默认，原温和→均衡、原均衡→激进）
 const (
-	defaultConsecutiveRetryableFailuresThreshold int64         = 3
+	defaultConsecutiveRetryableFailuresThreshold int64         = 5
 	defaultHalfOpenSuccessThreshold              int           = 1
 	defaultCircuitBackoffBase                    time.Duration = 30 * time.Second
 	defaultCircuitBackoffMax                     time.Duration = 10 * time.Minute
 	defaultBreakerHealthWindow                   time.Duration = 15 * time.Minute
-	// 流式健康检测默认参数
-	defaultStreamFirstContentTimeoutMs = 30000  // HTTP 200 后首个有效内容等待超时（30秒）
-	defaultStreamInactivityTimeoutMs   = 20000  // 首字后连续性确认窗口（20秒）
-	defaultStreamToolCallIdleTimeoutMs = 120000 // 工具调用空闲超时（120秒）
+	// 流式健康检测默认参数（匹配新均衡策略 = 原温和）
+	defaultStreamFirstContentTimeoutMs = 90000  // HTTP 200 后首个有效内容等待超时（90秒）
+	defaultStreamInactivityTimeoutMs   = 90000  // 首字后连续性确认窗口（90秒）
+	defaultStreamToolCallIdleTimeoutMs = 300000 // 工具调用空闲超时（300秒）
 )
 
 // RequestRecord 带时间戳的请求记录（扩展版，支持 Token、Cache 和失败分类数据）。
@@ -190,8 +190,8 @@ func (m *MetricsManager) GetAPIType() string {
 func NewMetricsManager() *MetricsManager {
 	m := &MetricsManager{
 		keyMetrics:                   make(map[string]*KeyMetrics),
-		windowSize:                   10,  // 默认基于最近 10 次请求计算失败率
-		failureThreshold:             0.5, // 默认 50% 失败率阈值
+		windowSize:                   20,   // 默认基于最近 20 次请求计算失败率（均衡策略 = 原温和）
+		failureThreshold:             0.7,  // 默认 70% 失败率阈值（均衡策略 = 原温和）
 		consecutiveFailuresThreshold: defaultConsecutiveRetryableFailuresThreshold,
 		circuitRecoveryTime:          defaultCircuitBackoffBase,
 		circuitBackoffBase:           defaultCircuitBackoffBase,

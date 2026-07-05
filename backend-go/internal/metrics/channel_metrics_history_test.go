@@ -71,6 +71,11 @@ func TestBreakerHealthWindowKeepsRecentFailures(t *testing.T) {
 	m.mu.Lock()
 	metrics := m.getOrCreateKey(baseURL, apiKey, serviceType)
 	metrics.requestHistory = append(metrics.requestHistory,
+		RequestRecord{Timestamp: now.Add(-10 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
+		RequestRecord{Timestamp: now.Add(-9 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
+		RequestRecord{Timestamp: now.Add(-8 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
+		RequestRecord{Timestamp: now.Add(-7 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
+		RequestRecord{Timestamp: now.Add(-6 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
 		RequestRecord{Timestamp: now.Add(-5 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
 		RequestRecord{Timestamp: now.Add(-4 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
 		RequestRecord{Timestamp: now.Add(-3 * time.Minute), Success: false, FailureClass: FailureClassRetryable},
@@ -83,8 +88,8 @@ func TestBreakerHealthWindowKeepsRecentFailures(t *testing.T) {
 	if m.IsChannelHealthyMultiURL([]string{baseURL}, []string{apiKey}, serviceType) {
 		t.Fatal("expected channel to remain unhealthy while recent breaker failures are inside health window")
 	}
-	if got := m.CalculateChannelFailureRateMultiURL([]string{baseURL}, []string{apiKey}, serviceType); got != 0.6 {
-		t.Fatalf("expected recent breaker failure rate 0.6, got %v", got)
+	if got := m.CalculateChannelFailureRateMultiURL([]string{baseURL}, []string{apiKey}, serviceType); got != 0.8 {
+		t.Fatalf("expected recent breaker failure rate 0.8, got %v", got)
 	}
 }
 

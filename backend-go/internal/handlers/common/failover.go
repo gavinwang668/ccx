@@ -58,9 +58,20 @@ func shouldRetryWithNextKeyFuzzy(statusCode int, bodyBytes []byte, apiType strin
 		return false, false
 	}
 
+	bodyFailover, bodyQuota := false, false
+	bodyClassified := false
+	if len(bodyBytes) > 0 {
+		bodyFailover, bodyQuota = classifyByErrorMessageWithLogTag(bodyBytes, apiType, logTag)
+		bodyClassified = true
+	}
+
 	// 检查是否为参数校验类不可重试错误（invalid_request 等）
 	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
 	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 {
+		if bodyFailover {
+			LogWithTag(logTag, "[%s-Failover-Fuzzy] 消息体包含可重试业务错误，优先于 4xx 错误码处理", apiType)
+			return true, bodyQuota
+		}
 		if isNonRetryableError(bodyBytes, apiType) {
 			LogWithTag(logTag, "[%s-Failover-Fuzzy] 检测到不可重试错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
 			return false, false
@@ -75,9 +86,8 @@ func shouldRetryWithNextKeyFuzzy(statusCode int, bodyBytes []byte, apiType strin
 
 	// 对于其他状态码，检查消息体是否包含配额相关关键词
 	// 这样 403 + "预扣费额度" 消息 → isQuotaRelated=true
-	if len(bodyBytes) > 0 {
-		_, msgQuota := classifyByErrorMessageWithLogTag(bodyBytes, apiType, logTag)
-		if msgQuota {
+	if bodyClassified {
+		if bodyQuota {
 			LogWithTag(logTag, "[%s-Failover-Fuzzy] 消息体包含配额相关关键词，标记为配额相关", apiType)
 			return true, true
 		}
@@ -96,11 +106,24 @@ func shouldRetryWithNextKeyNormal(statusCode int, bodyBytes []byte, apiType stri
 		return false, false
 	}
 
+	bodyFailover, bodyQuota := false, false
+	bodyClassified := false
+	if len(bodyBytes) > 0 {
+		bodyFailover, bodyQuota = classifyByErrorMessageWithLogTag(bodyBytes, apiType, logTag)
+		bodyClassified = true
+	}
+
 	// 检查是否为参数校验类不可重试错误（invalid_request 等）
 	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
-	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 && isNonRetryableError(bodyBytes, apiType) {
-		LogWithTag(logTag, "[%s-Failover-Debug] 检测到不可重试错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
-		return false, false
+	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 {
+		if bodyFailover {
+			LogWithTag(logTag, "[%s-Failover-Debug] 消息体包含可重试业务错误，优先于 4xx 错误码处理", apiType)
+			return true, bodyQuota
+		}
+		if isNonRetryableError(bodyBytes, apiType) {
+			LogWithTag(logTag, "[%s-Failover-Debug] 检测到不可重试错误 (statusCode=%d)，不进行 failover, body=%s", apiType, statusCode, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
+			return false, false
+		}
 	}
 
 	shouldFailover, isQuotaRelated := classifyByStatusCode(statusCode)
@@ -116,15 +139,21 @@ func shouldRetryWithNextKeyNormal(statusCode int, bodyBytes []byte, apiType stri
 		// 否则，仍检查消息体是否包含 quota 相关关键词
 		// 这样 403 + "预扣费额度" 消息 → isQuotaRelated=true
 		LogWithTag(logTag, "[%s-Failover-Debug] 调用 classifyByErrorMessage, body=%s", apiType, errorBodySummaryForLog(apiType, statusCode, bodyBytes))
-		_, msgQuota := classifyByErrorMessageWithLogTag(bodyBytes, apiType, logTag)
-		LogWithTag(logTag, "[%s-Failover-Debug] classifyByErrorMessage 返回: msgQuota=%v", apiType, msgQuota)
-		if msgQuota {
+		if !bodyClassified {
+			bodyFailover, bodyQuota = classifyByErrorMessageWithLogTag(bodyBytes, apiType, logTag)
+			bodyClassified = true
+		}
+		LogWithTag(logTag, "[%s-Failover-Debug] classifyByErrorMessage 返回: msgQuota=%v", apiType, bodyQuota)
+		if bodyQuota {
 			return true, true
 		}
 		return true, false
 	}
 
 	// statusCode 不触发 failover 时，完全依赖消息体判断
+	if bodyClassified {
+		return bodyFailover, bodyQuota
+	}
 	return classifyByErrorMessageWithLogTag(bodyBytes, apiType, logTag)
 }
 
@@ -194,6 +223,11 @@ func classifyByErrorMessageWithLogTag(bodyBytes []byte, apiType string, logTag s
 		}
 	}
 
+	if failover, quota, field := classifyMessageFromMap(errResp); failover {
+		LogWithTag(logTag, "[%s-Failover-Debug] 提取到顶层消息 (字段: %s)", apiType, field)
+		return true, quota
+	}
+
 	if errCode, ok := firstStringField(errResp, "code", "status", "reason"); ok {
 		if isNonRetryableErrorCode(errCode) {
 			LogWithTag(logTag, "[%s-Failover-Debug] 检测到顶层不可重试错误码: %s", apiType, errCode)
@@ -208,10 +242,6 @@ func classifyByErrorMessageWithLogTag(bodyBytes []byte, apiType string, logTag s
 		LogWithTag(logTag, "[%s-Failover-Debug] 提取到顶层 details 错误码", apiType)
 		return true, quota
 	}
-	if failover, quota, field := classifyMessageFromMap(errResp); failover {
-		LogWithTag(logTag, "[%s-Failover-Debug] 提取到顶层消息 (字段: %s)", apiType, field)
-		return true, quota
-	}
 	if errType, ok := errResp["type"].(string); ok {
 		if failover, quota := classifyErrorType(errType); failover {
 			LogWithTag(logTag, "[%s-Failover-Debug] 提取到顶层 type: %s", apiType, errType)
@@ -223,6 +253,11 @@ func classifyByErrorMessageWithLogTag(bodyBytes []byte, apiType string, logTag s
 	if !ok {
 		LogWithTag(logTag, "[%s-Failover-Debug] 未找到error对象, keys=%v", apiType, getMapKeys(errResp))
 		return false, false
+	}
+
+	if failover, quota, field := classifyMessageFromMap(errObj); failover {
+		LogWithTag(logTag, "[%s-Failover-Debug] 提取到消息 (字段: %s)", apiType, field)
+		return true, quota
 	}
 
 	// 检查 error.code 字段，参数校验类错误码不应重试
@@ -252,13 +287,12 @@ func classifyByErrorMessageWithLogTag(bodyBytes []byte, apiType string, logTag s
 		return false, false
 	}
 
-	if failover, quota, field := classifyMessageFromMap(errObj); failover {
-		LogWithTag(logTag, "[%s-Failover-Debug] 提取到消息 (字段: %s)", apiType, field)
-		return true, quota
-	}
-
 	// 如果 upstream_error 是嵌套对象，尝试提取其中的消息
 	if upstreamErr, ok := errObj["upstream_error"].(map[string]interface{}); ok {
+		if failover, quota, field := classifyMessageFromMap(upstreamErr); failover {
+			LogWithTag(logTag, "[%s-Failover-Debug] 提取到嵌套 upstream_error.%s", apiType, field)
+			return true, quota
+		}
 		if errCode, ok := firstStringField(upstreamErr, "code", "status", "reason"); ok {
 			if isNonRetryableErrorCode(errCode) {
 				LogWithTag(logTag, "[%s-Failover-Debug] 检测到嵌套 upstream_error 不可重试错误码: %s", apiType, errCode)
@@ -268,10 +302,6 @@ func classifyByErrorMessageWithLogTag(bodyBytes []byte, apiType string, logTag s
 				LogWithTag(logTag, "[%s-Failover-Debug] 提取到嵌套 upstream_error 错误码: %s", apiType, errCode)
 				return true, quota
 			}
-		}
-		if failover, quota, field := classifyMessageFromMap(upstreamErr); failover {
-			LogWithTag(logTag, "[%s-Failover-Debug] 提取到嵌套 upstream_error.%s", apiType, field)
-			return true, quota
 		}
 		if failover, quota := classifyDetailsFromMap(upstreamErr); failover {
 			LogWithTag(logTag, "[%s-Failover-Debug] 提取到嵌套 upstream_error.details 错误码", apiType)
@@ -1113,6 +1143,23 @@ func ShouldBlacklistKey(statusCode int, bodyBytes []byte) BlacklistResult {
 	}
 
 	typeLower := strings.ToLower(errType)
+
+	// 高置信 message 优先于状态码/type/code。部分中转站会用 400 + invalid_request_error
+	// 包装真实的 Key 余额/认证状态，不能让外层错误码短路拉黑。
+	if isInsufficientBalanceMessage(errMessage) {
+		return BlacklistResult{
+			ShouldBlacklist: true,
+			Reason:          "insufficient_balance",
+			Message:         truncateMessage(errMessage),
+		}
+	}
+	if isAuthenticationMessage(errMessage) {
+		return BlacklistResult{
+			ShouldBlacklist: true,
+			Reason:          "authentication_error",
+			Message:         truncateMessage(errMessage),
+		}
+	}
 
 	// 认证错误: authentication_error / invalid_api_key
 	if typeLower == "authentication_error" || typeLower == "invalid_api_key" {
