@@ -34,6 +34,28 @@ type ChannelDiscoveryRequest struct {
 	TargetClients      []string          `json:"targetClients"`
 }
 
+type DiscoveryModelsFetchRequest struct {
+	ChannelKind        string
+	ServiceType        string
+	BaseURL            string
+	BaseURLs           []string
+	APIKey             string
+	AuthHeader         string
+	CustomHeaders      map[string]string
+	ProxyURL           string
+	InsecureSkipVerify bool
+}
+
+type DiscoveryModelsFetchResponse struct {
+	StatusCode int
+	URL        string
+	Body       []byte
+}
+
+type ChannelDiscoveryModelFetcher func(context.Context, DiscoveryModelsFetchRequest) (DiscoveryModelsFetchResponse, error)
+
+type ChannelDiscoveryModelFetchers map[string]ChannelDiscoveryModelFetcher
+
 type DiscoverySelectedModels struct {
 	Strong  string `json:"strong,omitempty"`
 	Primary string `json:"primary,omitempty"`
@@ -90,6 +112,10 @@ type ChannelDiscoveryResponse struct {
 }
 
 func ChannelDiscovery(cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return ChannelDiscoveryWithModelFetchers(cfgManager, nil)
+}
+
+func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFetchers ChannelDiscoveryModelFetchers) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ChannelDiscoveryRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -108,7 +134,7 @@ func ChannelDiscovery(cfgManager *config.ConfigManager) gin.HandlerFunc {
 			globalCapabilities = cfgManager.GetConfig().UpstreamModelCapabilities
 		}
 
-		models := discoverTransientModels(c.Request.Context(), channel, normalizeDiscoveryChannelKind(req.ChannelKind), channel.APIKeys[0])
+		models := discoverTransientModelsWithFetchers(c.Request.Context(), channel, normalizeDiscoveryChannelKind(req.ChannelKind), channel.APIKeys[0], modelFetchers)
 		if len(models.Items) == 0 {
 			models.Items = fallbackDiscoveryProbeModels(req.ChannelKind, channel.ServiceType)
 			models.Source = "fallback"
@@ -381,6 +407,71 @@ func discoverySupportedModelPatterns(modelMapping map[string]string, targetClien
 	}
 	sort.Strings(patterns)
 	return patterns
+}
+
+func discoverTransientModelsWithFetchers(ctx context.Context, channel *config.UpstreamConfig, channelKind string, apiKey string, fetchers ChannelDiscoveryModelFetchers) DiscoveryModelsResult {
+	fetcherKey, fetcher := selectDiscoveryModelsFetcher(channelKind, channel.ServiceType, fetchers)
+	if fetcher == nil {
+		return discoverTransientModels(ctx, channel, channelKind, apiKey)
+	}
+
+	resp, err := fetcher(ctx, DiscoveryModelsFetchRequest{
+		ChannelKind:        channelKind,
+		ServiceType:        channel.ServiceType,
+		BaseURL:            channel.BaseURL,
+		BaseURLs:           append([]string(nil), channel.BaseURLs...),
+		APIKey:             apiKey,
+		AuthHeader:         channel.AuthHeader,
+		CustomHeaders:      cloneStringMap(channel.CustomHeaders),
+		ProxyURL:           channel.ProxyURL,
+		InsecureSkipVerify: channel.InsecureSkipVerify,
+	})
+
+	result := DiscoveryModelsResult{
+		Source:     fetcherKey + "_models_handler",
+		URL:        resp.URL,
+		StatusCode: resp.StatusCode,
+	}
+	if err != nil {
+		result.Warnings = []string{err.Error()}
+		return result
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result.Warnings = []string{fmt.Sprintf("%s models handler returned HTTP %d", fetcherKey, resp.StatusCode)}
+		return result
+	}
+	result.Items = parseDiscoveryModels(resp.Body)
+	if len(result.Items) == 0 {
+		result.Warnings = []string{fetcherKey + " models handler returned no parseable models"}
+	}
+	return result
+}
+
+func selectDiscoveryModelsFetcher(channelKind, serviceType string, fetchers ChannelDiscoveryModelFetchers) (string, ChannelDiscoveryModelFetcher) {
+	if len(fetchers) == 0 {
+		return "", nil
+	}
+
+	candidates := []string{normalizeDiscoveryChannelKind(channelKind)}
+	if protocol, ok := normalizeServiceTypeToProtocol(serviceType); ok {
+		candidates = append(candidates, string(protocol))
+	}
+
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		if fetcher, ok := fetchers[candidate]; ok {
+			return candidate, fetcher
+		}
+	}
+	return "", nil
 }
 
 func discoverTransientModels(ctx context.Context, channel *config.UpstreamConfig, channelKind string, apiKey string) DiscoveryModelsResult {

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -174,6 +175,72 @@ func TestChannelDiscoveryHandlerDiscoversTransientResponsesChannel(t *testing.T)
 	}
 	if !responsesOK {
 		t.Fatalf("protocols=%#v", resp.Protocols)
+	}
+}
+
+func TestChannelDiscoveryUsesInjectedModelsFetcher(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/anthropic/v1/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	fetchers := ChannelDiscoveryModelFetchers{
+		"messages": func(_ context.Context, req DiscoveryModelsFetchRequest) (DiscoveryModelsFetchResponse, error) {
+			if req.BaseURL != upstream.URL+"/anthropic" {
+				t.Fatalf("baseURL=%q", req.BaseURL)
+			}
+			if req.APIKey != "sk-test" || req.ServiceType != "claude" {
+				t.Fatalf("unexpected fetch request: %#v", req)
+			}
+			return DiscoveryModelsFetchResponse{
+				StatusCode: http.StatusOK,
+				Body:       []byte(`{"object":"list","data":[{"id":"actual-main"},{"id":"actual-mini"}]}`),
+			}, nil
+		},
+	}
+
+	router := gin.New()
+	router.POST("/api/channel-discovery", ChannelDiscoveryWithModelFetchers(nil, fetchers))
+
+	body := []byte(`{
+		"channelKind":"messages",
+		"serviceType":"claude",
+		"baseUrls":["` + upstream.URL + `/anthropic"],
+		"apiKey":"sk-test"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/channel-discovery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var resp ChannelDiscoveryResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Models.Source != "messages_models_handler" {
+		t.Fatalf("models source=%q", resp.Models.Source)
+	}
+	if resp.Models.StatusCode != http.StatusOK {
+		t.Fatalf("models status=%d", resp.Models.StatusCode)
+	}
+	if got := strings.Join(resp.Models.Items, ","); got != "actual-main,actual-mini" {
+		t.Fatalf("models=%q", got)
+	}
+	for _, warning := range resp.Models.Warnings {
+		if strings.Contains(warning, "404") || strings.Contains(warning, "built-in probe") {
+			t.Fatalf("unexpected fallback warning: %#v", resp.Models.Warnings)
+		}
 	}
 }
 

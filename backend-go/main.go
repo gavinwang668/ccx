@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -74,6 +77,47 @@ type runtimePaths struct {
 	ScheduledRecoveryStatePath string
 	LogDir                     string
 	BackupDir                  string
+}
+
+func buildChannelDiscoveryModelFetchers(cfgManager *config.ConfigManager) handlers.ChannelDiscoveryModelFetchers {
+	return handlers.ChannelDiscoveryModelFetchers{
+		"messages":  channelModelsHandlerFetcher(messages.GetChannelModels(cfgManager)),
+		"responses": channelModelsHandlerFetcher(responses.GetChannelModels(cfgManager)),
+		"chat":      channelModelsHandlerFetcher(chat.GetChannelModels(cfgManager)),
+		"gemini":    channelModelsHandlerFetcher(gemini.GetChannelModels(cfgManager)),
+	}
+}
+
+func channelModelsHandlerFetcher(handler gin.HandlerFunc) handlers.ChannelDiscoveryModelFetcher {
+	return func(ctx context.Context, req handlers.DiscoveryModelsFetchRequest) (handlers.DiscoveryModelsFetchResponse, error) {
+		body, err := json.Marshal(map[string]any{
+			"key":                req.APIKey,
+			"baseUrl":            req.BaseURL,
+			"baseUrls":           req.BaseURLs,
+			"serviceType":        req.ServiceType,
+			"proxyUrl":           req.ProxyURL,
+			"insecureSkipVerify": req.InsecureSkipVerify,
+			"customHeaders":      req.CustomHeaders,
+			"authHeader":         req.AuthHeader,
+		})
+		if err != nil {
+			return handlers.DiscoveryModelsFetchResponse{}, err
+		}
+
+		recorder := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(recorder)
+		httpReq := httptest.NewRequest(http.MethodPost, "/internal/channel-discovery/models", bytes.NewReader(body)).WithContext(ctx)
+		httpReq.Header.Set("Content-Type", "application/json")
+		ginCtx.Request = httpReq
+		ginCtx.Params = gin.Params{{Key: "id", Value: "0"}}
+
+		handler(ginCtx)
+
+		return handlers.DiscoveryModelsFetchResponse{
+			StatusCode: recorder.Code,
+			Body:       append([]byte(nil), recorder.Body.Bytes()...),
+		}, nil
+	}
 }
 
 func parseCLIArgs(args []string) (cliOptions, error) {
@@ -602,13 +646,14 @@ func main() {
 	}
 
 	// Web 管理界面 API 路由
+	discoveryModelFetchers := buildChannelDiscoveryModelFetchers(cfgManager)
 	apiGroup := r.Group("/api")
 	{
 		apiGroup.POST("/copilot/oauth/device/code", copilot.RequestDeviceCode())
 		apiGroup.POST("/copilot/oauth/token", copilot.PollAccessToken())
 		apiGroup.POST("/copilot/oauth/verify", copilot.VerifyToken())
 
-		apiGroup.POST("/channel-discovery", handlers.ChannelDiscovery(cfgManager))
+		apiGroup.POST("/channel-discovery", handlers.ChannelDiscoveryWithModelFetchers(cfgManager, discoveryModelFetchers))
 
 		apiGroup.POST("/responses/channels/:id/copilot/diagnose", responses.DiagnoseCopilotChannel(cfgManager))
 
