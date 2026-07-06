@@ -176,6 +176,7 @@ func (s *ChannelScheduler) SelectChannelWithOptions(ctx context.Context, opts Se
 	}
 	trace.setStage("context_filter", len(activeChannels))
 	if opts.CandidateFilter != nil {
+		beforeFilter := append([]ChannelInfo(nil), activeChannels...)
 		activeChannels, err = opts.CandidateFilter(activeChannels, func(ch ChannelInfo) *config.UpstreamConfig {
 			return s.getUpstreamByIndex(ch.Index, kind)
 		}, func(ch ChannelInfo, upstream *config.UpstreamConfig) bool {
@@ -184,6 +185,7 @@ func (s *ChannelScheduler) SelectChannelWithOptions(ctx context.Context, opts Se
 		if err != nil {
 			return nil, traceErr(err)
 		}
+		traceCandidateFilterSkips(beforeFilter, activeChannels, trace)
 		if len(activeChannels) == 0 {
 			trace.setStage("candidate_filter", 0)
 			return nil, traceErr(fmt.Errorf("没有可用的 %s 渠道满足候选过滤条件", kindDisplayName(kind)))
@@ -423,6 +425,22 @@ func (s *ChannelScheduler) channelAvailableForCandidateFilter(ch ChannelInfo, up
 		return false
 	}
 	return s.channelCircuitState(upstream, kind) != metrics.CircuitStateOpen
+}
+
+func traceCandidateFilterSkips(before, after []ChannelInfo, trace *SelectionTrace) {
+	if trace == nil || len(before) == 0 {
+		return
+	}
+	kept := make(map[int]struct{}, len(after))
+	for _, ch := range after {
+		kept[ch.Index] = struct{}{}
+	}
+	for _, ch := range before {
+		if _, ok := kept[ch.Index]; ok {
+			continue
+		}
+		trace.skipChannel(ch, "candidate_filter", "filtered_out", "")
+	}
 }
 
 func (s *ChannelScheduler) channelCircuitState(upstream *config.UpstreamConfig, kind ChannelKind) metrics.CircuitState {

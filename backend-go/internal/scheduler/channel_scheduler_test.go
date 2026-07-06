@@ -181,6 +181,55 @@ func TestSelectChannelTraceRecordsActiveModelFilterSkips(t *testing.T) {
 	}
 }
 
+func TestSelectChannelTraceRecordsCandidateFilterSkips(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "kept",
+				BaseURL:  "https://kept.example.com",
+				APIKeys:  []string{"sk-kept"},
+				Status:   "active",
+				Priority: 1,
+			},
+			{
+				Name:     "filtered",
+				BaseURL:  "https://filtered.example.com",
+				APIKeys:  []string{"sk-filtered"},
+				Status:   "active",
+				Priority: 2,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	result, err := scheduler.SelectChannelWithOptions(context.Background(), SelectionOptions{
+		Kind: ChannelKindMessages,
+		CandidateFilter: func(
+			channels []ChannelInfo,
+			upstreamFor func(ChannelInfo) *config.UpstreamConfig,
+			candidateAvailable func(ChannelInfo, *config.UpstreamConfig) bool,
+		) ([]ChannelInfo, error) {
+			return channels[:1], nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 0 {
+		t.Fatalf("result channel = %d, want 0", result.ChannelIndex)
+	}
+
+	skips := result.Trace.Candidates
+	if len(skips) != 1 {
+		t.Fatalf("skips len = %d, want 1: %#v", len(skips), skips)
+	}
+	if skips[0].Stage != "candidate_filter" || skips[0].Reason != "filtered_out" || skips[0].ChannelName != "filtered" {
+		t.Fatalf("skip = %#v, want candidate_filter filtered_out for filtered", skips[0])
+	}
+}
+
 // TestPromotedChannelBypassesHealthCheck 测试促销渠道绕过健康检查
 func TestPromotedChannelBypassesHealthCheck(t *testing.T) {
 	// 设置促销截止时间为 5 分钟后
