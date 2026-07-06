@@ -86,22 +86,8 @@ func WebSocketHandler(
 				continue
 			}
 
-			selection, err := selectResponsesWebSocketChannel(c, cfgManager, channelScheduler, payload)
-			if err != nil {
-				writeWebSocketError(conn, http.StatusServiceUnavailable, "channel_selection_error", err.Error())
-				return
-			}
-			if selection != nil && selection.Upstream != nil && selection.Upstream.ServiceType == "responses" {
-				if err := serveNativeResponsesWebSocket(c, conn, cfgManager, sessionManager, channelScheduler, selection, payload); err != nil {
-					if isWebSocketClosed(err) {
-						return
-					}
-					writeWebSocketError(conn, http.StatusBadGateway, "upstream_websocket_error", err.Error())
-					return
-				}
-				return
-			}
-
+			// 下游保持 Codex 原生 responses_websockets 协议；上游统一走 HTTP/SSE bridge，
+			// 这样原生 Responses 渠道也能复用 518n-2 continuation folding。
 			serveResponsesWebSocketBridgeLoop(c, conn, bridgeRouter, payload)
 			return
 		}

@@ -30,6 +30,10 @@ func handleStreamSuccess(
 	originalRequestJSON []byte,
 	timeouts common.StreamPreflightTimeouts,
 ) (*types.Usage, error) {
+	if err := utils.DecompressResponseBodyIfNeeded(resp); err != nil {
+		return nil, fmt.Errorf("%w: %v", common.ErrInvalidResponseBody, err)
+	}
+
 	if envCfg.EnableResponseLogs {
 		responseTime := time.Since(startTime).Milliseconds()
 		common.RequestLogf(c, "[Responses-Stream] Responses 流式响应开始: %dms, 状态: %d", responseTime, resp.StatusCode)

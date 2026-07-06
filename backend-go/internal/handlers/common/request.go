@@ -119,6 +119,20 @@ func ReadRequestBody(c *gin.Context, maxBodySize int64) ([]byte, error) {
 		return nil, fmt.Errorf("request body too large")
 	}
 
+	if encoding := c.Request.Header.Get("Content-Encoding"); encoding != "" {
+		decompressed, decompressErr := utils.DecompressBytesByEncoding(bodyBytes, encoding)
+		if decompressErr != nil {
+			c.JSON(400, gin.H{"error": fmt.Sprintf("Failed to decompress request body: %v", decompressErr)})
+			return nil, decompressErr
+		}
+		bodyBytes = decompressed
+		c.Request.Header.Del("Content-Encoding")
+		if int64(len(bodyBytes)) > maxBodySize {
+			c.JSON(413, gin.H{"error": fmt.Sprintf("Request body too large after decompression, maximum size is %d MB", maxBodySize/1024/1024)})
+			return nil, fmt.Errorf("request body too large after decompression")
+		}
+	}
+
 	// 恢复请求体供后续使用
 	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	return bodyBytes, nil

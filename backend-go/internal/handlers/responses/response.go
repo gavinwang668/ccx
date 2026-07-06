@@ -22,6 +22,8 @@ func handleSuccess(
 	c *gin.Context,
 	resp *http.Response,
 	provider *providers.ResponsesProvider,
+	upstream *config.UpstreamConfig,
+	apiKey string,
 	upstreamType string,
 	envCfg *config.EnvConfig,
 	sessionManager *session.SessionManager,
@@ -51,6 +53,9 @@ func handleSuccess(
 	}
 
 	if isStream {
+		if upstreamType == "responses" {
+			return handleFoldedResponsesStreamSuccess(c, resp, provider, upstream, apiKey, envCfg, sessionManager, originalReq, originalRequestJSON)
+		}
 		return handleStreamSuccess(c, resp, upstreamType, envCfg, sessionManager, startTime, originalReq, originalRequestJSON, timeouts)
 	}
 

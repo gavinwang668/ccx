@@ -16,7 +16,48 @@ import (
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/klauspost/compress/zstd"
 )
+
+func TestReadRequestBodyDecompressesZstd(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	original := []byte(`{"model":"gpt-5","stream":true}`)
+
+	var compressed bytes.Buffer
+	encoder, err := zstd.NewWriter(&compressed)
+	if err != nil {
+		t.Fatalf("zstd.NewWriter() err = %v", err)
+	}
+	if _, err := encoder.Write(original); err != nil {
+		t.Fatalf("zstd write err = %v", err)
+	}
+	if err := encoder.Close(); err != nil {
+		t.Fatalf("zstd close err = %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(compressed.Bytes()))
+	c.Request.Header.Set("Content-Encoding", "zstd")
+
+	got, err := ReadRequestBody(c, 1024*1024)
+	if err != nil {
+		t.Fatalf("ReadRequestBody() err = %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("decompressed body = %s, want %s", string(got), string(original))
+	}
+	if got := c.Request.Header.Get("Content-Encoding"); got != "" {
+		t.Fatalf("Content-Encoding header should be cleared after decompression, got %q", got)
+	}
+	restored, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		t.Fatalf("read restored body err = %v", err)
+	}
+	if !bytes.Equal(restored, original) {
+		t.Fatalf("restored body = %s, want %s", string(restored), string(original))
+	}
+}
 
 func TestNormalizeMetadataUserID(t *testing.T) {
 	tests := []struct {
