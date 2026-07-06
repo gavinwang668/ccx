@@ -792,6 +792,7 @@ export interface DiscoveryCapabilityProbeResult {
 
 export interface DiscoveryCapabilitiesResult {
   toolCalls: DiscoveryCapabilityProbeResult
+  vision: DiscoveryCapabilityProbeResult
   thinkingPassback: DiscoveryCapabilityProbeResult
 }
 
@@ -808,6 +809,8 @@ export interface ChannelDiscoveryRecommendation {
   modelMapping: Record<string, string>
   reasoningMapping?: Record<string, string>
   supportedModels?: string[]
+  noVisionModels?: string[]
+  visionFallbackModel?: string
   compat?: Partial<Record<string, boolean>>
   urlRecommendation?: {
     current: string

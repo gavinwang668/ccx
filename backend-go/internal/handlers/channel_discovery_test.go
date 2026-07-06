@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/gin-gonic/gin"
 )
 
@@ -117,6 +118,45 @@ func TestBuildDiscoveryMappingRecommendationUsesStableClaudeSourceAliases(t *tes
 	wantSupportedModels := []string{"*fable*", "*haiku*", "*opus*", "*sonnet*"}
 	if !sameStringSet(rec.SupportedModels, wantSupportedModels) {
 		t.Fatalf("supportedModels=%#v, want %#v", rec.SupportedModels, wantSupportedModels)
+	}
+}
+
+func TestSelectDiscoveryModelsPrefersToolCapableModels(t *testing.T) {
+	global := map[string]config.UpstreamModelCapability{
+		"plain-main": {
+			ContextWindowTokens: 1000000,
+			Capabilities:        map[string]bool{"toolCalls": false},
+		},
+		"tool-main": {
+			ContextWindowTokens: 200000,
+			Capabilities:        map[string]bool{"toolCalls": true},
+		},
+	}
+
+	selected := selectDiscoveryModels([]string{"plain-main", "tool-main"}, global)
+	if selected.Primary != "tool-main" {
+		t.Fatalf("primary=%q, want tool-main", selected.Primary)
+	}
+}
+
+func TestDiscoveryRecommendationUsesMiMoVisionCapabilities(t *testing.T) {
+	models := []string{"mimo-v2.5", "mimo-v2.5-pro"}
+	selected := selectDiscoveryModels(models, nil)
+	successByProtocol := map[string][]string{"messages": models}
+
+	rec := buildDiscoveryMappingRecommendation("messages", selected, successByProtocol, []string{"claude-code"})
+	applyDiscoveryModelCapabilityRecommendations(&rec, models, successByProtocol["messages"], nil)
+
+	for source, target := range rec.ModelMapping {
+		if target != "mimo-v2.5-pro" {
+			t.Fatalf("modelMapping[%q]=%q, want mimo-v2.5-pro; full mapping=%#v", source, target, rec.ModelMapping)
+		}
+	}
+	if !sameStringSet(rec.NoVisionModels, []string{"mimo-v2.5-pro"}) {
+		t.Fatalf("noVisionModels=%#v", rec.NoVisionModels)
+	}
+	if rec.VisionFallbackModel != "mimo-v2.5" {
+		t.Fatalf("visionFallbackModel=%q, want mimo-v2.5", rec.VisionFallbackModel)
 	}
 }
 
@@ -381,6 +421,74 @@ func TestChannelDiscoveryReportsResponsesToolCallCapability(t *testing.T) {
 	}
 	if !resp.Recommendation.Compat["codexNativeToolPassthrough"] {
 		t.Fatalf("expected codexNativeToolPassthrough recommendation, compat=%#v", resp.Recommendation.Compat)
+	}
+}
+
+func TestChannelDiscoveryReportsVisionCapabilityAndFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var sawVisionProbeFallback bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"mimo-v2.5"},{"id":"mimo-v2.5-pro"}]}`))
+		case "/v1/messages":
+			body, _ := io.ReadAll(r.Body)
+			if bytes.Contains(body, []byte(`"type":"image"`)) {
+				if bytes.Contains(body, []byte(`"model":"mimo-v2.5"`)) {
+					sawVisionProbeFallback = true
+				}
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+			_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	router := gin.New()
+	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+
+	body := []byte(`{
+		"channelKind":"messages",
+		"serviceType":"claude",
+		"baseUrls":["` + upstream.URL + `"],
+		"apiKey":"sk-test",
+		"targetClients":["claude-code"]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/channel-discovery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !sawVisionProbeFallback {
+		t.Fatal("expected vision probe to use mimo-v2.5 fallback model")
+	}
+
+	var resp ChannelDiscoveryResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.Capabilities.Vision.Tested || !resp.Capabilities.Vision.Supported {
+		t.Fatalf("vision capability=%#v", resp.Capabilities.Vision)
+	}
+	for source, target := range resp.Recommendation.ModelMapping {
+		if target != "mimo-v2.5-pro" {
+			t.Fatalf("modelMapping[%q]=%q, want mimo-v2.5-pro; full mapping=%#v", source, target, resp.Recommendation.ModelMapping)
+		}
+	}
+	if !sameStringSet(resp.Recommendation.NoVisionModels, []string{"mimo-v2.5-pro"}) {
+		t.Fatalf("noVisionModels=%#v", resp.Recommendation.NoVisionModels)
+	}
+	if resp.Recommendation.VisionFallbackModel != "mimo-v2.5" {
+		t.Fatalf("visionFallbackModel=%q", resp.Recommendation.VisionFallbackModel)
 	}
 }
 

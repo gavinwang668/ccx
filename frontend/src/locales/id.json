@@ -882,6 +882,7 @@
   "channelDiscovery.compat": "Switch kompatibilitas",
   "channelDiscovery.capabilities": "Pemeriksaan kemampuan",
   "channelDiscovery.capabilityToolCalls": "Tool call",
+  "channelDiscovery.capabilityVision": "Input gambar",
   "channelDiscovery.capabilityThinkingPassback": "Passback thinking",
   "channelDiscovery.capabilitySupported": "didukung",
   "channelDiscovery.capabilityUnsupported": "tidak didukung",

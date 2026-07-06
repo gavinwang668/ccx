@@ -882,6 +882,7 @@
   "channelDiscovery.compat": "适配开关",
   "channelDiscovery.capabilities": "能力验证",
   "channelDiscovery.capabilityToolCalls": "工具调用",
+  "channelDiscovery.capabilityVision": "图片输入",
   "channelDiscovery.capabilityThinkingPassback": "思考回传",
   "channelDiscovery.capabilitySupported": "支持",
   "channelDiscovery.capabilityUnsupported": "不支持",

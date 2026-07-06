@@ -102,6 +102,7 @@ const {
   channelDiscoveryCompatEntries,
   channelDiscoveryReasoningEntries,
   channelDiscoverySuccessfulProtocols,
+  channelDiscoveryCapabilityEntries,
   expectedRequestUrls,
   quickExpectedRequestUrls,
   clearCopilotPollTimer,
@@ -410,6 +411,27 @@ const embeddingTargetModels = computed(() =>
                                 class="rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1 font-mono text-[10px] text-amber-700 dark:text-amber-300"
                               >
                                 {{ key }}={{ value }}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div v-if="channelDiscoveryCapabilityEntries.length" class="space-y-1.5">
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                              {{ t('channelDiscovery.capabilities') }}
+                            </div>
+                            <div class="flex flex-wrap items-center gap-1.5">
+                              <span
+                                v-for="capability in channelDiscoveryCapabilityEntries"
+                                :key="capability.key"
+                                :title="capability.detail"
+                                class="rounded-md border px-2 py-1 font-mono text-[10px]"
+                                :class="capability.tone === 'success'
+                                  ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                  : capability.tone === 'secondary'
+                                    ? 'border-secondary/30 bg-secondary/10 text-secondary-foreground'
+                                    : 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'"
+                              >
+                                {{ capability.label }}={{ capability.text }}
                               </span>
                             </div>
                           </div>

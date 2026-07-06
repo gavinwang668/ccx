@@ -1170,6 +1170,14 @@
   "channelDiscovery.reasoning": "Recommended reasoning effort",
   "channelDiscovery.reasoningNote": "Reasoning effort is a role-based default recommendation. Discovery does not test every effort level.",
   "channelDiscovery.compat": "Compatibility switches",
+  "channelDiscovery.capabilities": "Capability checks",
+  "channelDiscovery.capabilityToolCalls": "Tool calls",
+  "channelDiscovery.capabilityVision": "Vision",
+  "channelDiscovery.capabilityThinkingPassback": "Thinking passback",
+  "channelDiscovery.capabilitySupported": "supported",
+  "channelDiscovery.capabilityUnsupported": "unsupported",
+  "channelDiscovery.capabilityRequired": "required",
+  "channelDiscovery.capabilityNotRequired": "not required",
   "channelDiscovery.apply": "Apply recommendation",
   "channelDiscovery.applied": "Discovery recommendation applied. Review and save."
 }

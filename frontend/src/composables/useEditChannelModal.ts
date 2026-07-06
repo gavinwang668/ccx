@@ -381,6 +381,17 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
         detail: capabilities.toolCalls.evidence || capabilities.toolCalls.error || '',
       })
     }
+    if (capabilities.vision?.tested) {
+      entries.push({
+        key: 'vision',
+        label: t('channelDiscovery.capabilityVision'),
+        text: capabilities.vision.supported
+          ? t('channelDiscovery.capabilitySupported')
+          : t('channelDiscovery.capabilityUnsupported'),
+        color: capabilities.vision.supported ? 'success' : 'warning',
+        detail: capabilities.vision.evidence || capabilities.vision.error || '',
+      })
+    }
     if (capabilities.thinkingPassback?.tested) {
       entries.push({
         key: 'thinkingPassback',
@@ -571,15 +582,19 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
     }
 
     const mapping = recommendation.modelMapping ?? {}
+    const noVisionSet = new Set(recommendation.noVisionModels ?? [])
     modelMappingRows.value = Object.entries(mapping).map(([source, target]) => ({
       id: ++rowIdCounter,
       source,
       target,
       reasoning: (recommendation.reasoningMapping?.[source] || '') as ModelMappingRow['reasoning'],
-      noVision: false,
+      noVision: noVisionSet.has(target),
     }))
     form.modelMapping = { ...mapping }
     form.reasoningMapping = { ...(recommendation.reasoningMapping || {}) } as typeof form.reasoningMapping
+    form.noVisionModels = [...noVisionSet]
+    form.visionFallbackModel = recommendation.visionFallbackModel || ''
+    form.visionFallbackReasoningEffort = ''
     if (recommendation.supportedModels) {
       form.supportedModels = [...recommendation.supportedModels]
     }

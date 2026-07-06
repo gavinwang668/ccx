@@ -583,6 +583,47 @@ const { t } = useLanguage()
     return channelDiscoveryResult.value?.protocols.filter(protocol => protocol.success) ?? []
   })
 
+  const channelDiscoveryCapabilityEntries = computed(() => {
+    const capabilities = channelDiscoveryResult.value?.capabilities
+    if (!capabilities) return []
+
+    const entries: Array<{ key: string; label: string; text: string; tone: 'success' | 'warning' | 'secondary'; detail: string }> = []
+    if (capabilities.toolCalls?.tested) {
+      entries.push({
+        key: 'toolCalls',
+        label: t('channelDiscovery.capabilityToolCalls'),
+        text: capabilities.toolCalls.supported
+          ? t('channelDiscovery.capabilitySupported')
+          : t('channelDiscovery.capabilityUnsupported'),
+        tone: capabilities.toolCalls.supported ? 'success' : 'warning',
+        detail: capabilities.toolCalls.evidence || capabilities.toolCalls.error || '',
+      })
+    }
+    if (capabilities.vision?.tested) {
+      entries.push({
+        key: 'vision',
+        label: t('channelDiscovery.capabilityVision'),
+        text: capabilities.vision.supported
+          ? t('channelDiscovery.capabilitySupported')
+          : t('channelDiscovery.capabilityUnsupported'),
+        tone: capabilities.vision.supported ? 'success' : 'warning',
+        detail: capabilities.vision.evidence || capabilities.vision.error || '',
+      })
+    }
+    if (capabilities.thinkingPassback?.tested) {
+      entries.push({
+        key: 'thinkingPassback',
+        label: t('channelDiscovery.capabilityThinkingPassback'),
+        text: capabilities.thinkingPassback.required
+          ? t('channelDiscovery.capabilityRequired')
+          : t('channelDiscovery.capabilityNotRequired'),
+        tone: capabilities.thinkingPassback.required ? 'secondary' : 'success',
+        detail: capabilities.thinkingPassback.evidence || capabilities.thinkingPassback.error || '',
+      })
+    }
+    return entries
+  })
+
   function discoveryTargetClients(): ChannelDiscoveryTargetClient[] {
     if (props.channelType === 'responses') return ['codex']
     if (props.channelType === 'messages') return ['claude-code']
@@ -648,15 +689,18 @@ const { t } = useLanguage()
     }
 
     const mapping = recommendation.modelMapping ?? {}
+    const noVisionSet = new Set(recommendation.noVisionModels ?? [])
     modelMappingRows.value = Object.entries(mapping).map(([source, target]) => ({
       id: nextRowId(),
       source,
       target,
       reasoning: (recommendation.reasoningMapping?.[source] || '') as ReasoningEffort | '',
-      noVision: false,
+      noVision: noVisionSet.has(target),
     }))
     form.modelMappingText = stringifyJson(mapping)
     form.reasoningMappingText = stringifyJson(recommendation.reasoningMapping)
+    form.visionFallbackModel = recommendation.visionFallbackModel || ''
+    form.visionFallbackReasoningEffort = ''
     if (recommendation.supportedModels) {
       form.supportedModelsText = recommendation.supportedModels.join('\n')
     }
@@ -1100,6 +1144,7 @@ const { t } = useLanguage()
     channelDiscoveryCompatEntries,
     channelDiscoveryReasoningEntries,
     channelDiscoverySuccessfulProtocols,
+    channelDiscoveryCapabilityEntries,
     expectedRequestUrls,
     quickExpectedRequestUrls,
     clearCopilotPollTimer,

@@ -92,6 +92,7 @@ type DiscoveryCapabilityProbeResult struct {
 
 type DiscoveryCapabilitiesResult struct {
 	ToolCalls        DiscoveryCapabilityProbeResult `json:"toolCalls"`
+	Vision           DiscoveryCapabilityProbeResult `json:"vision"`
 	ThinkingPassback DiscoveryCapabilityProbeResult `json:"thinkingPassback"`
 }
 
@@ -102,16 +103,18 @@ type DiscoveryEvidence struct {
 }
 
 type DiscoveryRecommendation struct {
-	ChannelKind       string                 `json:"channelKind"`
-	ServiceType       string                 `json:"serviceType"`
-	BaseURLs          []string               `json:"baseUrls,omitempty"`
-	ModelMapping      map[string]string      `json:"modelMapping"`
-	ReasoningMapping  map[string]string      `json:"reasoningMapping,omitempty"`
-	SupportedModels   []string               `json:"supportedModels,omitempty"`
-	Compat            map[string]bool        `json:"compat,omitempty"`
-	URLRecommendation *URLRecommendation     `json:"urlRecommendation,omitempty"`
-	Evidence          []DiscoveryEvidence    `json:"evidence,omitempty"`
-	Alternatives      []DiscoveryAlternative `json:"alternatives,omitempty"`
+	ChannelKind         string                 `json:"channelKind"`
+	ServiceType         string                 `json:"serviceType"`
+	BaseURLs            []string               `json:"baseUrls,omitempty"`
+	ModelMapping        map[string]string      `json:"modelMapping"`
+	ReasoningMapping    map[string]string      `json:"reasoningMapping,omitempty"`
+	SupportedModels     []string               `json:"supportedModels,omitempty"`
+	NoVisionModels      []string               `json:"noVisionModels,omitempty"`
+	VisionFallbackModel string                 `json:"visionFallbackModel,omitempty"`
+	Compat              map[string]bool        `json:"compat,omitempty"`
+	URLRecommendation   *URLRecommendation     `json:"urlRecommendation,omitempty"`
+	Evidence            []DiscoveryEvidence    `json:"evidence,omitempty"`
+	Alternatives        []DiscoveryAlternative `json:"alternatives,omitempty"`
 }
 
 type DiscoveryAlternative struct {
@@ -166,16 +169,18 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 		recommendation := buildDiscoveryMappingRecommendation(recommendedKind, models.Selected, successByProtocol, req.TargetClients)
 		recommendation.ServiceType = channel.ServiceType
 		recommendation.BaseURLs = append([]string(nil), channel.BaseURLs...)
+		applyDiscoveryModelCapabilityRecommendations(&recommendation, models.Items, successByProtocol[recommendedKind], globalCapabilities)
 		capabilities := DiscoveryCapabilitiesResult{}
 		if recommendation.ChannelKind != "" {
 			compatModel := discoveryCompatProbeModel(recommendation.ChannelKind, models.Selected, successByProtocol)
+			visionModel := discoveryVisionProbeModel(recommendation, models.Items, successByProtocol[recommendation.ChannelKind], globalCapabilities, compatModel)
 			compat := runCompatDiagnoseWithProbeModel(channel, recommendation.ChannelKind, channel.APIKeys[0], capabilityTestBaseURL(channel), compatModel)
 			recommendation.Compat = compat.Recommendations
 			recommendation.URLRecommendation = compat.URLRecommendations
 			for key, message := range compat.Evidence {
 				recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{Type: "compat", Key: key, Message: message})
 			}
-			capabilities = runDiscoveryCapabilityProbes(channel, recommendation.ChannelKind, channel.APIKeys[0], capabilityTestBaseURL(channel), compatModel, req.TargetClients, compat)
+			capabilities = runDiscoveryCapabilityProbes(channel, recommendation.ChannelKind, channel.APIKeys[0], capabilityTestBaseURL(channel), compatModel, visionModel, req.TargetClients, compat)
 			mergeDiscoveryCapabilityRecommendations(&recommendation, capabilities)
 		}
 
@@ -275,14 +280,15 @@ func selectDiscoveryModels(models []string, global map[string]config.UpstreamMod
 		Primary: bestDiscoveryModel(unique, global, []string{"sonnet", "gpt", "chat", "main"}),
 		Fast:    bestDiscoveryModel(unique, global, []string{"haiku", "mini", "flash", "lite", "fast"}),
 	}
-	if selected.Primary == "" {
-		selected.Primary = unique[0]
-	}
+	fallback := bestDiscoveryFallbackModel(unique, global)
 	if selected.Strong == "" {
-		selected.Strong = selected.Primary
+		selected.Strong = firstNonEmptyDiscoveryModel(selected.Primary, selected.Fast, fallback)
+	}
+	if selected.Primary == "" {
+		selected.Primary = firstNonEmptyDiscoveryModel(selected.Strong, selected.Fast, fallback)
 	}
 	if selected.Fast == "" {
-		selected.Fast = selected.Primary
+		selected.Fast = firstNonEmptyDiscoveryModel(selected.Primary, selected.Strong, fallback)
 	}
 	return selected
 }
@@ -309,10 +315,11 @@ func bestDiscoveryModel(models []string, global map[string]config.UpstreamModelC
 	best := ""
 	bestScore := -1
 	for _, model := range models {
-		score := discoveryModelKeywordScore(model, keywords)
-		if resolved := config.ResolveUpstreamCapability(model, nil, global); resolved.Capability.ContextWindowTokens > 0 {
-			score += resolved.Capability.ContextWindowTokens / 100000
+		keywordScore := discoveryModelKeywordScore(model, keywords)
+		if keywordScore == 0 {
+			continue
 		}
+		score := keywordScore + discoveryModelCapabilityScore(model, global)
 		if score > bestScore {
 			best = model
 			bestScore = score
@@ -322,6 +329,50 @@ func bestDiscoveryModel(models []string, global map[string]config.UpstreamModelC
 		return ""
 	}
 	return best
+}
+
+func bestDiscoveryFallbackModel(models []string, global map[string]config.UpstreamModelCapability) string {
+	best := ""
+	bestScore := -1
+	for _, model := range models {
+		score := discoveryModelCapabilityScore(model, global)
+		if score > bestScore {
+			best = model
+			bestScore = score
+		}
+	}
+	if best != "" {
+		return best
+	}
+	return models[0]
+}
+
+func firstNonEmptyDiscoveryModel(models ...string) string {
+	for _, model := range models {
+		if strings.TrimSpace(model) != "" {
+			return model
+		}
+	}
+	return ""
+}
+
+func discoveryModelCapabilityScore(model string, global map[string]config.UpstreamModelCapability) int {
+	resolved := config.ResolveUpstreamCapability(model, nil, global)
+	score := 0
+	if resolved.Capability.ContextWindowTokens > 0 {
+		score += resolved.Capability.ContextWindowTokens / 100000
+	}
+	if known, supported := discoveryModelKnownCapability(model, "toolCalls", global); known {
+		if supported {
+			score += 20
+		} else {
+			score -= 20
+		}
+	}
+	if len(resolved.Capability.ReasoningEfforts) > 0 || strings.TrimSpace(resolved.Capability.ThinkingMode) != "" {
+		score += 4
+	}
+	return score
 }
 
 func discoveryModelKeywordScore(model string, keywords []string) int {
@@ -429,6 +480,100 @@ func discoverySupportedModelPatterns(modelMapping map[string]string, targetClien
 	return patterns
 }
 
+func applyDiscoveryModelCapabilityRecommendations(
+	recommendation *DiscoveryRecommendation,
+	allModels []string,
+	successfulModels []string,
+	global map[string]config.UpstreamModelCapability,
+) {
+	if recommendation == nil || len(recommendation.ModelMapping) == 0 {
+		return
+	}
+
+	mappedModels := uniqueDiscoveryModels(mapValuesDiscoveryModels(recommendation.ModelMapping))
+	noVisionModels := make([]string, 0, len(mappedModels))
+	noToolModels := make([]string, 0)
+	for _, model := range mappedModels {
+		if known, supported := discoveryModelKnownCapability(model, "vision", global); known && !supported {
+			noVisionModels = append(noVisionModels, model)
+		}
+		if known, supported := discoveryModelKnownCapability(model, "toolCalls", global); known && !supported {
+			noToolModels = append(noToolModels, model)
+		}
+	}
+	if len(noVisionModels) > 0 {
+		recommendation.NoVisionModels = noVisionModels
+		if fallback := bestDiscoveryVisionModel(successfulModels, allModels, global, noVisionModels); fallback != "" {
+			recommendation.VisionFallbackModel = fallback
+			recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{
+				Type:    "vision",
+				Key:     "visionFallbackModel",
+				Message: fmt.Sprintf("内置能力表显示部分映射模型不支持图片输入，推荐使用 %s 作为图片回退模型", fallback),
+			})
+		} else {
+			recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{
+				Type:    "vision",
+				Key:     "noVisionModels",
+				Message: "内置能力表显示部分映射模型不支持图片输入，未找到可确认的图片回退模型",
+			})
+		}
+	}
+	if len(noToolModels) > 0 {
+		recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{
+			Type:    "capability",
+			Key:     "toolCalls",
+			Message: fmt.Sprintf("内置能力表显示部分映射模型可能不支持工具调用：%s", strings.Join(noToolModels, ", ")),
+		})
+	}
+}
+
+func mapValuesDiscoveryModels(mapping map[string]string) []string {
+	values := make([]string, 0, len(mapping))
+	for _, value := range mapping {
+		values = append(values, value)
+	}
+	return values
+}
+
+func bestDiscoveryVisionModel(successfulModels []string, allModels []string, global map[string]config.UpstreamModelCapability, exclude []string) string {
+	excluded := make(map[string]struct{}, len(exclude))
+	for _, model := range exclude {
+		excluded[model] = struct{}{}
+	}
+	candidates := append([]string(nil), successfulModels...)
+	candidates = append(candidates, allModels...)
+	candidates = uniqueDiscoveryModels(candidates)
+	best := ""
+	bestScore := -1
+	for _, model := range candidates {
+		if _, ok := excluded[model]; ok {
+			continue
+		}
+		known, supported := discoveryModelKnownCapability(model, "vision", global)
+		if !known || !supported {
+			continue
+		}
+		score := discoveryModelCapabilityScore(model, global)
+		if score > bestScore {
+			best = model
+			bestScore = score
+		}
+	}
+	return best
+}
+
+func discoveryModelKnownCapability(model, capability string, global map[string]config.UpstreamModelCapability) (bool, bool) {
+	resolved := config.ResolveUpstreamCapability(model, nil, global)
+	if !resolved.Known || resolved.Capability.Capabilities == nil {
+		return false, false
+	}
+	supported, exists := resolved.Capability.Capabilities[capability]
+	if !exists {
+		return true, false
+	}
+	return true, supported
+}
+
 const discoveryToolProbeName = "ccx_probe"
 
 func runDiscoveryCapabilityProbes(
@@ -437,11 +582,13 @@ func runDiscoveryCapabilityProbes(
 	apiKey string,
 	baseURL string,
 	probeModel string,
+	visionProbeModel string,
 	targetClients []string,
 	compat CompatDiagnoseResult,
 ) DiscoveryCapabilitiesResult {
 	return DiscoveryCapabilitiesResult{
 		ToolCalls:        runDiscoveryToolCallProbe(channel, channelKind, apiKey, baseURL, probeModel, targetClients),
+		Vision:           runDiscoveryVisionProbe(channel, channelKind, apiKey, baseURL, visionProbeModel),
 		ThinkingPassback: discoveryThinkingPassbackProbeResult(compat),
 	}
 }
@@ -463,7 +610,24 @@ func mergeDiscoveryCapabilityRecommendations(recommendation *DiscoveryRecommenda
 	}
 
 	merge(capabilities.ToolCalls, "toolCalls")
+	merge(capabilities.Vision, "vision")
 	merge(capabilities.ThinkingPassback, "thinkingPassback")
+}
+
+func discoveryVisionProbeModel(
+	recommendation DiscoveryRecommendation,
+	allModels []string,
+	successfulModels []string,
+	global map[string]config.UpstreamModelCapability,
+	fallbackModel string,
+) string {
+	if model := strings.TrimSpace(recommendation.VisionFallbackModel); model != "" {
+		return model
+	}
+	if model := bestDiscoveryVisionModel(successfulModels, allModels, global, recommendation.NoVisionModels); model != "" {
+		return model
+	}
+	return fallbackModel
 }
 
 func discoveryThinkingPassbackProbeResult(compat CompatDiagnoseResult) DiscoveryCapabilityProbeResult {
@@ -551,6 +715,59 @@ func runDiscoveryToolCallProbe(channel *config.UpstreamConfig, channelKind, apiK
 	return result
 }
 
+const discoveryVisionProbeImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+
+func runDiscoveryVisionProbe(channel *config.UpstreamConfig, channelKind, apiKey, baseURL, probeModel string) DiscoveryCapabilityProbeResult {
+	protocol := compatProbeProtocol(channel, channelKind)
+	if protocol == "" {
+		return DiscoveryCapabilityProbeResult{
+			Tested:    false,
+			Supported: false,
+			Evidence:  "当前渠道类型无图片输入探测项",
+		}
+	}
+	if strings.TrimSpace(probeModel) == "" {
+		return DiscoveryCapabilityProbeResult{
+			Tested:    false,
+			Supported: false,
+			Evidence:  "未找到可用于图片输入探测的模型",
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+
+	req, err := buildDiscoveryVisionProbeRequest(protocol, baseURL, probeModel, channel, apiKey)
+	if err != nil {
+		return DiscoveryCapabilityProbeResult{
+			Tested:    false,
+			Supported: false,
+			Error:     err.Error(),
+			Evidence:  "图片输入探测请求构建失败",
+		}
+	}
+
+	events, statusCode, body, sendErr := sendCompatProbe(ctx, req, channel)
+	result := DiscoveryCapabilityProbeResult{Tested: true, StatusCode: statusCode}
+	if isCompatProbeTimeout(sendErr, ctx) {
+		result.Error = "timeout"
+		result.Evidence = "图片输入探测超时，无法确认上游是否支持 vision"
+		return result
+	}
+	if sendErr != nil || statusCode < 200 || statusCode >= 300 {
+		result.Error = discoveryProbeDiagnostic(statusCode, body, sendErr)
+		result.Evidence = fmt.Sprintf("上游拒绝图片输入探测请求（HTTP %d，model=%s）", statusCode, probeModel)
+		return result
+	}
+	if hasMeaningfulCompatSSE(events, protocol) {
+		result.Supported = true
+		result.Evidence = fmt.Sprintf("上游接受图片输入探测请求（model=%s）", probeModel)
+		return result
+	}
+	result.Evidence = "图片输入探测响应为空或无法识别"
+	return result
+}
+
 func discoveryProbeDiagnostic(statusCode int, body string, err error) string {
 	diagnostic := strings.TrimSpace(body)
 	if diagnostic == "" && err != nil {
@@ -601,6 +818,22 @@ func buildDiscoveryToolCallProbeRequest(protocol, baseURL, probeModel string, ch
 	}
 }
 
+func buildDiscoveryVisionProbeRequest(protocol, baseURL, probeModel string, channel *config.UpstreamConfig, apiKey string) (*http.Request, error) {
+	switch protocol {
+	case "messages", "claude":
+		return buildClaudeCompatRequest(baseURL, buildClaudeVisionProbeBody(compatProbeModel(capabilityProbeModelClaudeFable5, probeModel)), channel, apiKey)
+	case "chat":
+		return buildOpenAIChatCompatRequest(baseURL, buildOpenAIChatVisionProbeBody(probeModel), channel, apiKey)
+	case "responses":
+		return buildResponsesCompatRequest(baseURL, buildResponsesVisionProbeBody(probeModel), channel, apiKey)
+	case "gemini":
+		model := compatProbeModel("gemini-3.5-flash", probeModel)
+		return buildGeminiCompatRequest(baseURL, "/v1beta/models/"+model+":streamGenerateContent?alt=sse", buildGeminiVisionProbeBody(), channel, apiKey)
+	default:
+		return nil, fmt.Errorf("unsupported vision probe protocol: %s", protocol)
+	}
+}
+
 func buildClaudeToolCallProbeBody(model string) []byte {
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 	body, _ := json.Marshal(map[string]interface{}{
@@ -615,6 +848,28 @@ func buildClaudeToolCallProbeBody(model string) []byte {
 			discoveryClaudeToolDefinition(),
 		},
 		"tool_choice": map[string]string{"type": "tool", "name": discoveryToolProbeName},
+	})
+	return body
+}
+
+func buildClaudeVisionProbeBody(model string) []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": model,
+		"system": []map[string]interface{}{
+			{"type": "text", "text": "You are validating image-input support. Nonce: " + nonce},
+		},
+		"messages": []map[string]interface{}{
+			{
+				"role": "user",
+				"content": []map[string]interface{}{
+					{"type": "text", "text": "Reply with ok if you can inspect this image."},
+					{"type": "image", "source": map[string]string{"type": "base64", "media_type": "image/png", "data": discoveryVisionProbeImageBase64}},
+				},
+			},
+		},
+		"max_tokens": 32,
+		"stream":     true,
 	})
 	return body
 }
@@ -637,6 +892,26 @@ func buildOpenAIChatToolCallProbeBody(models ...string) []byte {
 	return body
 }
 
+func buildOpenAIChatVisionProbeBody(models ...string) []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": compatProbeModel("gpt-5.4-mini", models...),
+		"messages": []map[string]interface{}{
+			{"role": "system", "content": "You are validating image-input support. Nonce: " + nonce},
+			{
+				"role": "user",
+				"content": []map[string]interface{}{
+					{"type": "text", "text": "Reply with ok if you can inspect this image."},
+					{"type": "image_url", "image_url": map[string]string{"url": "data:image/png;base64," + discoveryVisionProbeImageBase64}},
+				},
+			},
+		},
+		"max_tokens": 32,
+		"stream":     true,
+	})
+	return body
+}
+
 func buildResponsesToolCallProbeBody(models ...string) []byte {
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 	body, _ := json.Marshal(map[string]interface{}{
@@ -649,6 +924,26 @@ func buildResponsesToolCallProbeBody(models ...string) []byte {
 			discoveryResponsesFunctionToolDefinition(),
 		},
 		"tool_choice": map[string]string{"type": "function", "name": discoveryToolProbeName},
+	})
+	return body
+}
+
+func buildResponsesVisionProbeBody(models ...string) []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"model":        compatProbeModel("gpt-5.4-mini", models...),
+		"instructions": "You are validating image-input support. Nonce: " + nonce,
+		"input": []map[string]interface{}{
+			{
+				"role": "user",
+				"content": []map[string]string{
+					{"type": "input_text", "text": "Reply with ok if you can inspect this image."},
+					{"type": "input_image", "image_url": "data:image/png;base64," + discoveryVisionProbeImageBase64},
+				},
+			},
+		},
+		"max_output_tokens": 32,
+		"stream":            true,
 	})
 	return body
 }
@@ -683,6 +978,23 @@ func buildGeminiToolCallProbeBody() []byte {
 			},
 		},
 		"generationConfig": map[string]int{"maxOutputTokens": 128},
+	})
+	return body
+}
+
+func buildGeminiVisionProbeBody() []byte {
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	body, _ := json.Marshal(map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"role": "user",
+				"parts": []map[string]interface{}{
+					{"text": "Reply with ok if you can inspect this image. Nonce: " + nonce},
+					{"inlineData": map[string]string{"mimeType": "image/png", "data": discoveryVisionProbeImageBase64}},
+				},
+			},
+		},
+		"generationConfig": map[string]int{"maxOutputTokens": 32},
 	})
 	return body
 }

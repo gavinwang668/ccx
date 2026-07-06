@@ -882,6 +882,7 @@
   "channelDiscovery.compat": "Compatibility switches",
   "channelDiscovery.capabilities": "Capability checks",
   "channelDiscovery.capabilityToolCalls": "Tool calls",
+  "channelDiscovery.capabilityVision": "Vision",
   "channelDiscovery.capabilityThinkingPassback": "Thinking passback",
   "channelDiscovery.capabilitySupported": "supported",
   "channelDiscovery.capabilityUnsupported": "unsupported",
