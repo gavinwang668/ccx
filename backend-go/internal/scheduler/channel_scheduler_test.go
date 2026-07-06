@@ -350,6 +350,33 @@ func traceHasCandidateSkip(trace *SelectionTrace, channelIndex int, stage, reaso
 	return false
 }
 
+func TestFormatSelectionTraceSummaryLimitsSkips(t *testing.T) {
+	trace := &SelectionTrace{
+		Kind: ChannelKindMessages,
+		Stages: []SelectionTraceStage{
+			{Name: "active_model_filter", Count: 3},
+			{Name: "context_filter", Count: 2},
+		},
+		Candidates: []SelectionTraceCandidate{
+			{ChannelIndex: 0, ChannelName: "a", Stage: "priority_order", Reason: "inactive_status"},
+			{ChannelIndex: 1, ChannelName: "b", Stage: "priority_order", Reason: "runtime_cooldown"},
+			{ChannelIndex: 2, ChannelName: "c", Stage: "priority_order", Reason: "rate_limit_pressure"},
+		},
+		Selected: &SelectionTraceSelection{ChannelIndex: 3, ChannelName: "d", Reason: "fallback"},
+	}
+
+	summary := FormatSelectionTraceSummary(trace, 2)
+	for _, want := range []string{
+		"stages=active_model_filter:3,context_filter:2",
+		"skipped=0:a@priority_order/inactive_status,1:b@priority_order/runtime_cooldown,+1",
+		"selected=3:d/fallback",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary = %q, want contains %q", summary, want)
+		}
+	}
+}
+
 // TestExpiredPromotionNotBypassHealthCheck 测试过期的促销不绕过健康检查
 func TestExpiredPromotionNotBypassHealthCheck(t *testing.T) {
 	// 设置促销截止时间为过去

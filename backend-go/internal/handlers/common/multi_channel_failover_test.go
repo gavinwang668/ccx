@@ -1,11 +1,14 @@
 package common_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,6 +197,75 @@ func TestHandleMultiChannelFailover_KeepsAffinityForTextRequest(t *testing.T) {
 	}
 	if idx != 1 {
 		t.Fatalf("纯文本请求应亲和到成功渠道，期望 1，实际 %d", idx)
+	}
+}
+
+func TestHandleMultiChannelFailoverLogsSelectionTraceInDebug(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "suspended",
+				BaseURL:  "https://suspended.example.com",
+				APIKeys:  []string{"sk-suspended"},
+				Status:   "suspended",
+				Priority: 1,
+			},
+			{
+				Name:     "active",
+				BaseURL:  "https://active.example.com",
+				APIKeys:  []string{"sk-active"},
+				Status:   "active",
+				Priority: 2,
+			},
+		},
+	}
+
+	env := newAffinityTestEnv(t, cfg)
+	defer env.cleanup()
+
+	var logs bytes.Buffer
+	oldOutput := log.Writer()
+	oldFlags := log.Flags()
+	oldPrefix := log.Prefix()
+	log.SetOutput(&logs)
+	log.SetFlags(0)
+	log.SetPrefix("")
+	defer func() {
+		log.SetOutput(oldOutput)
+		log.SetFlags(oldFlags)
+		log.SetPrefix(oldPrefix)
+	}()
+
+	c := newTestGinContext(httptest.NewRecorder())
+	envCfg := config.NewEnvConfig()
+	envCfg.LogLevel = "debug"
+
+	common.HandleMultiChannelFailover(
+		c,
+		envCfg,
+		env.scheduler,
+		scheduler.ChannelKindMessages,
+		"Messages",
+		"user-debug",
+		"gpt-4o",
+		"",
+		func(selection *scheduler.SelectionResult) common.MultiChannelAttemptResult {
+			return common.MultiChannelAttemptResult{Handled: true, SuccessKey: "ok"}
+		},
+		nil,
+		nil,
+	)
+
+	output := logs.String()
+	for _, want := range []string{
+		"[Messages-Select-Trace]",
+		"stages=active_model_filter:2",
+		"0:suspended@priority_order/inactive_status",
+		"selected=1:active/priority_order",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("logs = %q, want contains %q", output, want)
+		}
 	}
 }
 

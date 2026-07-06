@@ -151,6 +151,11 @@ func HandleMultiChannelFailoverWithSelectionFilter(
 			RequestLogf(c, "[%s-Select] 选择渠道: [%d] %s (原因: %s, 尝试 %d/%d)",
 				apiType, channelIndex, upstream.Name, selection.Reason, channelAttempt+1, maxChannelAttempts)
 		}
+		if envCfg.ShouldLog("debug") {
+			if summary := scheduler.FormatSelectionTraceSummary(selection.Trace, 4); summary != "" {
+				RequestLogf(c, "[%s-Select-Trace] %s", apiType, summary)
+			}
+		}
 
 		result := trySelectedChannel(selection)
 		if result.Handled {

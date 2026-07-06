@@ -1,5 +1,10 @@
 package scheduler
 
+import (
+	"fmt"
+	"strings"
+)
+
 // SelectionTrace 记录一次渠道选择的关键阶段与候选跳过原因。
 //
 // 它只描述调度器已经做出的判断，不参与选择决策；调用方可用于日志、
@@ -76,4 +81,48 @@ func (t *SelectionTrace) selectChannel(channelIndex int, channelName, reason str
 		ChannelName:  channelName,
 		Reason:       reason,
 	}
+}
+
+// FormatSelectionTraceSummary 生成适合请求日志的一行调度摘要。
+// maxSkips 控制最多展示多少个跳过候选；小于等于 0 时只展示阶段和最终选择。
+func FormatSelectionTraceSummary(trace *SelectionTrace, maxSkips int) string {
+	if trace == nil {
+		return ""
+	}
+
+	parts := make([]string, 0, 3)
+	if len(trace.Stages) > 0 {
+		stages := make([]string, 0, len(trace.Stages))
+		for _, stage := range trace.Stages {
+			stages = append(stages, fmt.Sprintf("%s:%d", stage.Name, stage.Count))
+		}
+		parts = append(parts, "stages="+strings.Join(stages, ","))
+	}
+	if maxSkips > 0 && len(trace.Candidates) > 0 {
+		limit := maxSkips
+		if limit > len(trace.Candidates) {
+			limit = len(trace.Candidates)
+		}
+		skips := make([]string, 0, limit+1)
+		for _, candidate := range trace.Candidates[:limit] {
+			name := candidate.ChannelName
+			if name == "" {
+				name = "unknown"
+			}
+			skips = append(skips, fmt.Sprintf("%d:%s@%s/%s", candidate.ChannelIndex, name, candidate.Stage, candidate.Reason))
+		}
+		if len(trace.Candidates) > limit {
+			skips = append(skips, fmt.Sprintf("+%d", len(trace.Candidates)-limit))
+		}
+		parts = append(parts, "skipped="+strings.Join(skips, ","))
+	}
+	if trace.Selected != nil {
+		name := trace.Selected.ChannelName
+		if name == "" {
+			name = "unknown"
+		}
+		parts = append(parts, fmt.Sprintf("selected=%d:%s/%s", trace.Selected.ChannelIndex, name, trace.Selected.Reason))
+	}
+
+	return strings.Join(parts, " ")
 }
