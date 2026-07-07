@@ -556,9 +556,9 @@ func diagnoseClaudeThinkingBlockPassback(channel *config.UpstreamConfig, apiKey,
 	}
 
 	if statusCode == http.StatusBadRequest || statusCode == http.StatusUnprocessableEntity {
-		recs["passbackReasoningContent"] = false
+		// 历史 thinking block 探测仅检测 thinking 格式支持，不影响 reasoning content 透传；
+		// passbackReasoningContent 由独立探测决定，不在此覆写。
 		recs["passbackThinkingBlocks"] = false
-		evid["passbackReasoningContent"] = fmt.Sprintf("upstream rejected historical content thinking blocks (HTTP %d)", statusCode)
 		evid["passbackThinkingBlocks"] = fmt.Sprintf("upstream rejected historical content thinking blocks (HTTP %d)", statusCode)
 		return
 	}

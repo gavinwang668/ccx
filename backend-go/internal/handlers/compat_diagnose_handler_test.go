@@ -240,8 +240,8 @@ func TestDiagnoseClaudeChannelDisablesThinkingBlocksWhenProbeRejected(t *testing
 	if !historicalThinkingProbeSeen {
 		t.Fatal("historical thinking block probe was not sent")
 	}
-	if got := result.Recommendations["passbackReasoningContent"]; got != false {
-		t.Fatalf("passbackReasoningContent = %v, want false; evidence=%q", got, result.Evidence["passbackReasoningContent"])
+	if got := result.Recommendations["passbackReasoningContent"]; got != true {
+		t.Fatalf("passbackReasoningContent = %v, want true (thinking probe succeeded); evidence=%q", got, result.Evidence["passbackReasoningContent"])
 	}
 	if got := result.Recommendations["passbackThinkingBlocks"]; got != false {
 		t.Fatalf("passbackThinkingBlocks = %v, want false; evidence=%q", got, result.Evidence["passbackThinkingBlocks"])

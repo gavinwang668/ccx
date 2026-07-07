@@ -177,8 +177,14 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 			compat := runCompatDiagnoseWithProbeModel(channel, recommendation.ChannelKind, channel.APIKeys[0], capabilityTestBaseURL(channel), compatModel)
 			recommendation.Compat = compat.Recommendations
 			recommendation.URLRecommendation = compat.URLRecommendations
-			for key, message := range compat.Evidence {
-				recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{Type: "compat", Key: key, Message: message})
+			// 按 key 排序后遍历，保证证据列表顺序确定（map 迭代顺序不稳定）。
+			compatEvidenceKeys := make([]string, 0, len(compat.Evidence))
+			for key := range compat.Evidence {
+				compatEvidenceKeys = append(compatEvidenceKeys, key)
+			}
+			sort.Strings(compatEvidenceKeys)
+			for _, key := range compatEvidenceKeys {
+				recommendation.Evidence = append(recommendation.Evidence, DiscoveryEvidence{Type: "compat", Key: key, Message: compat.Evidence[key]})
 			}
 			capabilities = runDiscoveryCapabilityProbes(channel, recommendation.ChannelKind, channel.APIKeys[0], capabilityTestBaseURL(channel), compatModel, visionModel, req.TargetClients, compat)
 			mergeDiscoveryCapabilityRecommendations(&recommendation, capabilities)
@@ -476,6 +482,10 @@ func discoveryReasoningMapping(channelKind string, modelMapping map[string]strin
 		add("gpt", "max")
 		add("mini", "high")
 		add("codex", "high")
+	case "gemini":
+		add("pro", "max")
+		add("gemini", "high")
+		add("flash", "medium")
 	}
 	if len(reasoning) == 0 {
 		return nil
@@ -1387,12 +1397,15 @@ func runDiscoveryProtocolProbes(ctx context.Context, channel *config.UpstreamCon
 
 func runDiscoveryProtocolProbe(ctx context.Context, channel *config.UpstreamConfig, protocol string, models []string, timeout time.Duration, cfgManager *config.ConfigManager) DiscoveryProtocolResult {
 	result := DiscoveryProtocolResult{Protocol: protocol}
+	var successLatency int64
+	var successCount int
 	for _, model := range models {
 		modelResult := executeModelTest(ctx, channel, protocol, model, timeout, "", cfgManager, -1, protocol, channel.APIKeys[0], nil)
-		result.LatencyMs += modelResult.Latency
 		if modelResult.Success {
 			result.Success = true
 			result.SuccessModels = append(result.SuccessModels, model)
+			successLatency += modelResult.Latency
+			successCount++
 		} else {
 			result.FailedModels = append(result.FailedModels, model)
 			if modelResult.Error != nil && result.Error == "" {
@@ -1400,8 +1413,9 @@ func runDiscoveryProtocolProbe(ctx context.Context, channel *config.UpstreamConf
 			}
 		}
 	}
-	if len(models) > 0 {
-		result.LatencyMs = result.LatencyMs / int64(len(models))
+	// LatencyMs 仅统计成功模型的均值，避免超时探测拉低有效延迟读数。
+	if successCount > 0 {
+		result.LatencyMs = successLatency / int64(successCount)
 	}
 	return result
 }
