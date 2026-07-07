@@ -656,3 +656,45 @@ func TestHasMeaningfulCompatSSE(t *testing.T) {
 		})
 	}
 }
+
+func TestCompatProbeProtocolMessagesServiceTypeRouting(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelKind string
+		serviceType string
+		want        string
+	}{
+		// responses channelKind：与原逻辑一致
+		{"responses+claude", "responses", "claude", "claude"},
+		{"responses+responses", "responses", "responses", "responses"},
+		{"responses+copilot", "responses", "copilot", "responses"},
+		{"responses+chat", "responses", "chat", "chat"},
+		{"responses+openai", "responses", "openai", "chat"},
+		{"responses+gemini", "responses", "gemini", "gemini"},
+		{"responses+unknown", "responses", "unknown", "responses"},
+		// messages channelKind+claude/messages serviceType → 原生 messages 探测
+		{"messages+claude", "messages", "claude", "messages"},
+		{"messages+messages", "messages", "messages", "messages"},
+		{"messages+empty", "messages", "", "messages"},
+		// messages channelKind+非 Claude 上游 → 用上游实际协议，避免假阴性
+		{"messages+responses", "messages", "responses", "responses"},
+		{"messages+copilot", "messages", "copilot", "responses"},
+		{"messages+chat", "messages", "chat", "chat"},
+		{"messages+openai", "messages", "openai", "chat"},
+		{"messages+gemini", "messages", "gemini", "gemini"},
+		// 其他 channelKind 不受影响
+		{"chat+any", "chat", "responses", "chat"},
+		{"gemini+any", "gemini", "claude", "gemini"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch := &config.UpstreamConfig{ServiceType: tt.serviceType}
+			got := compatProbeProtocol(ch, tt.channelKind)
+			if got != tt.want {
+				t.Fatalf("compatProbeProtocol(serviceType=%q, channelKind=%q) = %q, want %q",
+					tt.serviceType, tt.channelKind, got, tt.want)
+			}
+		})
+	}
+}

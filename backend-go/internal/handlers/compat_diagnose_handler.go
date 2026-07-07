@@ -331,7 +331,8 @@ func probeBaseURLCandidateWithModel(channel *config.UpstreamConfig, channelKind,
 }
 
 func compatProbeProtocol(channel *config.UpstreamConfig, channelKind string) string {
-	if channelKind == "responses" {
+	switch channelKind {
+	case "responses":
 		switch channel.ServiceType {
 		case "claude", "gemini", "responses":
 			return channel.ServiceType
@@ -339,6 +340,17 @@ func compatProbeProtocol(channel *config.UpstreamConfig, channelKind string) str
 			return "responses"
 		case "openai", "chat":
 			return "chat"
+		}
+	case "messages":
+		// Messages 渠道若 serviceType 指向非 Claude 上游，用上游实际协议探测能力，
+		// 避免用 Claude 格式探测一个只接受 responses/chat 格式的上游导致假阴性。
+		switch channel.ServiceType {
+		case "responses", "copilot":
+			return "responses"
+		case "openai", "chat":
+			return "chat"
+		case "gemini":
+			return "gemini"
 		}
 	}
 	return channelKind
