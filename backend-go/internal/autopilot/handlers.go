@@ -1,0 +1,264 @@
+package autopilot
+
+import (
+	"net/http"
+	"strings"
+
+	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/gin-gonic/gin"
+)
+
+// ─── 响应类型 ────────────────────────────────────────────────────────────────────
+
+// OverviewResponse GET /api/health-center/overview 返回结构。
+type OverviewResponse struct {
+	TotalChannels  int            `json:"totalChannels"`
+	TotalEndpoints int            `json:"totalEndpoints"`
+	StateCounts    map[string]int `json:"stateCounts"` // key=HealthState 常量, value=数量
+}
+
+// ChannelHealthItem 渠道级聚合健康信息。
+type ChannelHealthItem struct {
+	ChannelUID     string  `json:"channelUid"`
+	ChannelID      int     `json:"channelId"`
+	ChannelKind    string  `json:"channelKind"`
+	ChannelName    string  `json:"channelName,omitempty"`
+	AggState       string  `json:"aggState"` // AggregateHealthState 结果
+	EndpointCount  int     `json:"endpointCount"`
+	HealthyCount   int     `json:"healthyCount"`
+	DegradedCount  int     `json:"degradedCount"`
+	LimitedCount   int     `json:"limitedCount"`
+	DeadCount      int     `json:"deadCount"`
+	UnknownCount   int     `json:"unknownCount"`
+	AvgSuccessRate float64 `json:"avgSuccessRate,omitempty"`
+}
+
+// ChannelsResponse GET /api/health-center/channels 返回结构。
+type ChannelsResponse struct {
+	Channels []ChannelHealthItem `json:"channels"`
+}
+
+// EndpointDetailItem endpoint 级详情（Key 已脱敏）。
+type EndpointDetailItem struct {
+	EndpointUID      string  `json:"endpointUid"`
+	ChannelUID       string  `json:"channelUid"`
+	ChannelKind      string  `json:"channelKind"`
+	BaseURL          string  `json:"baseUrl"`
+	KeyHash          string  `json:"keyHash"` // SHA256 前 16 位，绝不返回明文
+	HealthState      string  `json:"healthState"`
+	HealthConfidence float64 `json:"healthConfidence"`
+	HealthEvidence   string  `json:"healthEvidence,omitempty"`
+	SuggestedAction  string  `json:"suggestedAction,omitempty"`
+	QualityTier      string  `json:"qualityTier,omitempty"`
+	StabilityTier    string  `json:"stabilityTier,omitempty"`
+	SpeedTier        string  `json:"speedTier,omitempty"`
+	SuccessRate15m   float64 `json:"successRate15m,omitempty"`
+	SuccessRate1h    float64 `json:"successRate1h,omitempty"`
+	P95LatencyMs     float64 `json:"p95LatencyMs,omitempty"`
+	ConsecutiveFail  int     `json:"consecutiveFail"`
+	LastSuccessAt    string  `json:"lastSuccessAt,omitempty"`
+	UpdatedAt        string  `json:"updatedAt,omitempty"`
+}
+
+// EndpointsResponse GET /api/health-center/channels/:channelUid/endpoints 返回结构。
+type EndpointsResponse struct {
+	ChannelUID string               `json:"channelUid"`
+	Endpoints  []EndpointDetailItem `json:"endpoints"`
+}
+
+// ─── 路由注册 ────────────────────────────────────────────────────────────────────
+
+// RegisterRoutes 注册健康中心只读 API 到给定路由组。
+func RegisterRoutes(router gin.IRouter, mgr *Manager) {
+	group := router.Group("/health-center")
+	{
+		group.GET("/overview", handleOverview(mgr))
+		group.GET("/channels", handleChannels(mgr))
+		group.GET("/channels/:channelUid/endpoints", handleEndpoints(mgr))
+	}
+}
+
+// ─── Handler 实现 ────────────────────────────────────────────────────────────────
+
+// handleOverview GET /api/health-center/overview
+// 全局汇总：各 HealthState 计数、渠道数、endpoint 数。
+func handleOverview(mgr *Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		allProfiles := mgr.ProfileStore().ListAll()
+
+		stateCounts := map[string]int{
+			string(HealthStateUnknown):       0,
+			string(HealthStateHealthy):       0,
+			string(HealthStateDegraded):      0,
+			string(HealthStateLimited):       0,
+			string(HealthStateMisconfigured): 0,
+			string(HealthStateDead):          0,
+		}
+
+		channelSet := make(map[string]struct{})
+		for _, p := range allProfiles {
+			channelSet[p.ChannelUID] = struct{}{}
+			state := string(p.HealthState)
+			if _, ok := stateCounts[state]; ok {
+				stateCounts[state]++
+			} else {
+				stateCounts[state] = 1
+			}
+		}
+
+		c.JSON(http.StatusOK, OverviewResponse{
+			TotalChannels:  len(channelSet),
+			TotalEndpoints: len(allProfiles),
+			StateCounts:    stateCounts,
+		})
+	}
+}
+
+// handleChannels GET /api/health-center/channels
+// 渠道级聚合列表。
+func handleChannels(mgr *Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		allProfiles := mgr.ProfileStore().ListAll()
+
+		// 按 channelUID 分组
+		grouped := make(map[string][]*KeyEndpointProfile)
+		for _, p := range allProfiles {
+			grouped[p.ChannelUID] = append(grouped[p.ChannelUID], p)
+		}
+
+		// 从配置获取渠道名称映射
+		cfg := mgr.cfgManager.GetConfig()
+		channelNames := buildChannelNameMap(cfg)
+
+		items := make([]ChannelHealthItem, 0, len(grouped))
+		for channelUID, profiles := range grouped {
+			item := aggregateChannel(channelUID, profiles)
+			if name, ok := channelNames[channelUID]; ok {
+				item.ChannelName = name
+			}
+			items = append(items, item)
+		}
+
+		c.JSON(http.StatusOK, ChannelsResponse{Channels: items})
+	}
+}
+
+// handleEndpoints GET /api/health-center/channels/:channelUid/endpoints
+// endpoint 级展开（Key 用 hash 展示，绝不返回明文 key）。
+func handleEndpoints(mgr *Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		channelUID := c.Param("channelUid")
+		if channelUID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channelUid 不能为空"})
+			return
+		}
+
+		profiles := mgr.ProfileStore().ListByChannel(channelUID)
+		endpoints := make([]EndpointDetailItem, 0, len(profiles))
+		for _, p := range profiles {
+			item := EndpointDetailItem{
+				EndpointUID:      p.EndpointUID,
+				ChannelUID:       p.ChannelUID,
+				ChannelKind:      p.ChannelKind,
+				BaseURL:          p.BaseURL,
+				KeyHash:          p.KeyMask, // KeyMask 已脱敏，绝不返回明文 key
+				HealthState:      string(p.HealthState),
+				HealthConfidence: p.HealthConfidence,
+				HealthEvidence:   strings.Join(p.HealthEvidence, "; "),
+				SuggestedAction:  string(p.SuggestedAction),
+				QualityTier:      string(p.QualityTier),
+				StabilityTier:    string(p.StabilityTier),
+				SpeedTier:        string(p.SpeedTier),
+				SuccessRate15m:   p.SuccessRate15m,
+				P95LatencyMs:     float64(p.P95LatencyMs),
+				ConsecutiveFail:  p.ConsecutiveFail,
+			}
+			if p.LastSuccessAt != nil {
+				item.LastSuccessAt = p.LastSuccessAt.Format("2006-01-02T15:04:05Z07:00")
+			}
+			if !p.UpdatedAt.IsZero() {
+				item.UpdatedAt = p.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
+			}
+			endpoints = append(endpoints, item)
+		}
+
+		c.JSON(http.StatusOK, EndpointsResponse{
+			ChannelUID: channelUID,
+			Endpoints:  endpoints,
+		})
+	}
+}
+
+// ─── 内部辅助 ────────────────────────────────────────────────────────────────────
+
+// aggregateChannel 将同一 channelUID 下的 endpoint profiles 聚合为渠道级摘要。
+func aggregateChannel(channelUID string, profiles []*KeyEndpointProfile) ChannelHealthItem {
+	item := ChannelHealthItem{
+		ChannelUID:    channelUID,
+		EndpointCount: len(profiles),
+	}
+
+	if len(profiles) > 0 {
+		item.ChannelID = profiles[0].ChannelID
+		item.ChannelKind = profiles[0].ChannelKind
+	}
+
+	var totalSuccessRate float64
+	var states []DiagnosisResult
+
+	for _, p := range profiles {
+		switch p.HealthState {
+		case HealthStateHealthy:
+			item.HealthyCount++
+		case HealthStateDegraded:
+			item.DegradedCount++
+		case HealthStateLimited:
+			item.LimitedCount++
+		case HealthStateDead:
+			item.DeadCount++
+		default:
+			item.UnknownCount++
+		}
+		totalSuccessRate += p.SuccessRate15m
+		states = append(states, DiagnosisResult{State: p.HealthState})
+	}
+
+	if len(profiles) > 0 {
+		item.AvgSuccessRate = totalSuccessRate / float64(len(profiles))
+	}
+
+	item.AggState = string(AggregateHealthState(states))
+	return item
+}
+
+// buildChannelNameMap 从配置中构建 channelUID -> 名称 映射。
+func buildChannelNameMap(cfg config.Config) map[string]string {
+	names := make(map[string]string)
+
+	type upstreamList struct {
+		channels []config.UpstreamConfig
+		prefix   string
+	}
+	lists := []upstreamList{
+		{cfg.Upstream, "messages"},
+		{cfg.ResponsesUpstream, "responses"},
+		{cfg.GeminiUpstream, "gemini"},
+		{cfg.ChatUpstream, "chat"},
+		{cfg.ImagesUpstream, "images"},
+		{cfg.VectorsUpstream, "vectors"},
+	}
+
+	for _, ul := range lists {
+		for _, ch := range ul.channels {
+			if ch.ChannelUID == "" {
+				continue
+			}
+			name := ch.Name
+			if name == "" {
+				name = ul.prefix + "#" + strings.TrimPrefix(ch.ChannelUID, "ch_")
+			}
+			names[ch.ChannelUID] = name
+		}
+	}
+	return names
+}

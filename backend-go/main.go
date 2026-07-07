@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/BenedictKing/ccx/internal/autopilot"
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/conversation"
 	"github.com/BenedictKing/ccx/internal/handlers"
@@ -58,6 +59,7 @@ const (
 	thinkingCacheDBFile            = "thinking_cache.db"
 	conversationStateFile          = "conversation_state.json"
 	scheduledRecoveryStateFileName = "scheduled_recovery_state.json"
+	autopilotDBFile                = "autopilot.db"
 )
 
 type cliOptions struct {
@@ -75,6 +77,7 @@ type runtimePaths struct {
 	ThinkingCacheDBPath        string
 	ConversationStatePath      string
 	ScheduledRecoveryStatePath string
+	AutopilotDBPath            string
 	LogDir                     string
 	BackupDir                  string
 }
@@ -272,6 +275,7 @@ func resolveRuntimePaths(opts cliOptions, envCfg *config.EnvConfig) (runtimePath
 		ThinkingCacheDBPath:        filepath.Join(stateDir, thinkingCacheDBFile),
 		ConversationStatePath:      filepath.Join(stateDir, conversationStateFile),
 		ScheduledRecoveryStatePath: filepath.Join(stateDir, scheduledRecoveryStateFileName),
+		AutopilotDBPath:            filepath.Join(stateDir, autopilotDBFile),
 		LogDir:                     logDir,
 		BackupDir:                  backupDir,
 	}, nil
@@ -474,6 +478,31 @@ func main() {
 	// 初始化 URL 管理器（非阻塞，动态排序）
 	urlManager := warmup.NewURLManager(30*time.Second, 3) // 30秒冷却期，连续3次失败后移到末尾
 	log.Printf("[URLManager-Init] URL管理器已初始化 (冷却期: 30秒, 最大连续失败: 3)")
+
+	// 初始化 Autopilot 健康中心（Phase 1 shadow/read-only）
+	var autopilotManager *autopilot.Manager
+	{
+		autopilotStore, apErr := autopilot.NewProfileStore(paths.AutopilotDBPath)
+		if apErr != nil {
+			log.Printf("[Autopilot-Init] 警告: 初始化 ProfileStore 失败: %v (健康中心将不可用)", apErr)
+		} else {
+			metricsAdapters := map[string]autopilot.MetricsProvider{
+				"messages":  autopilot.NewMetricsManagerAdapter(messagesMetricsManager),
+				"responses": autopilot.NewMetricsManagerAdapter(responsesMetricsManager),
+				"gemini":    autopilot.NewMetricsManagerAdapter(geminiMetricsManager),
+				"chat":      autopilot.NewMetricsManagerAdapter(chatMetricsManager),
+				"images":    autopilot.NewMetricsManagerAdapter(imagesMetricsManager),
+				"vectors":   autopilot.NewMetricsManagerAdapter(vectorsMetricsManager),
+			}
+			autopilotMetrics := autopilot.NewMetricsAdapterManager(metricsAdapters)
+			autopilotManager = autopilot.NewManager(autopilotStore, autopilotMetrics, cfgManager, autopilot.ManagerConfig{
+				WorkerInterval: 5 * time.Minute,
+				QuietLogs:      envCfg.QuietPollingLogs,
+			})
+			autopilotManager.StartWorker(context.Background())
+			log.Printf("[Autopilot-Init] 健康中心已初始化 (DB: %s, 间隔: 5分钟)", paths.AutopilotDBPath)
+		}
+	}
 
 	channelScheduler := scheduler.NewChannelScheduler(cfgManager, messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager, traceAffinityManager, urlManager, vectorsMetricsManager)
 	channelScheduler.SetRateLimitManager(rateLimitManager)
@@ -852,6 +881,11 @@ func main() {
 		apiGroup.GET("/vectors/models/stats/history", handlers.GetModelStatsHistory(vectorsMetricsManager))
 		apiGroup.GET("/vectors/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindVectors), cfgManager, scheduler.ChannelKindVectors))
 
+		// 健康中心 API（Phase 1 shadow/read-only）
+		if autopilotManager != nil {
+			autopilot.RegisterRoutes(apiGroup, autopilotManager)
+		}
+
 		// Fuzzy 模式设置
 		apiGroup.GET("/settings/fuzzy-mode", handlers.GetFuzzyMode(cfgManager))
 		apiGroup.PUT("/settings/fuzzy-mode", handlers.SetFuzzyMode(cfgManager))
@@ -1061,6 +1095,15 @@ func main() {
 		// 关闭对话追踪器（flush 持久化状态）
 		conversationTracker.Stop()
 		log.Println("[Conversation-Shutdown] 对话追踪器已安全关闭")
+
+		// 停止 Autopilot 健康中心（flush 画像 + 关闭 SQLite）
+		if autopilotManager != nil {
+			if err := autopilotManager.Close(); err != nil {
+				log.Printf("[Autopilot-Shutdown] 警告: 关闭健康中心时发生错误: %v", err)
+			} else {
+				log.Println("[Autopilot-Shutdown] 健康中心已安全关闭")
+			}
+		}
 
 		// 停止调度器后台 reaper
 		channelScheduler.Stop()

@@ -1,0 +1,338 @@
+package autopilot
+
+import (
+	"context"
+	"log"
+	"sync"
+	"time"
+
+	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/BenedictKing/ccx/internal/metrics"
+)
+
+// channelEntry 内部遍历用：渠道基础信息 + API Key 列表。
+type channelEntry struct {
+	ChannelUID  string
+	ChannelID   int
+	ChannelKind string
+	BaseURL     string
+	APIKeys     []string
+}
+
+// metricsManagerAdapter 包装 *metrics.MetricsManager，实现 MetricsProvider 接口。
+// MetricsManager 有 GetTimeWindowStatsForKey 和 GetKeyCircuitState / GetKeyMetrics，
+// 但缺少 GetKeySnapshot；此适配器用现有方法组装 KeyCircuitSnapshot。
+type metricsManagerAdapter struct {
+	mgr *metrics.MetricsManager
+}
+
+// NewMetricsManagerAdapter 包装 *metrics.MetricsManager 为 MetricsProvider。
+// mgr 为 nil 时返回 nil（调用方需处理）。
+func NewMetricsManagerAdapter(mgr *metrics.MetricsManager) MetricsProvider {
+	if mgr == nil {
+		return nil
+	}
+	return &metricsManagerAdapter{mgr: mgr}
+}
+
+func (a *metricsManagerAdapter) GetTimeWindowStatsForKey(baseURL, apiKey, serviceType string, duration time.Duration) TimeWindowStats {
+	stats := a.mgr.GetTimeWindowStatsForKey(baseURL, apiKey, serviceType, duration)
+	return TimeWindowStats{
+		RequestCount: stats.RequestCount,
+		SuccessCount: stats.SuccessCount,
+		FailureCount: stats.FailureCount,
+		SuccessRate:  stats.SuccessRate,
+	}
+}
+
+func (a *metricsManagerAdapter) GetKeySnapshot(baseURL, apiKey, serviceType string) KeyCircuitSnapshot {
+	cs := a.mgr.GetKeyCircuitState(baseURL, apiKey, serviceType)
+	km := a.mgr.GetKeyMetrics(baseURL, apiKey, serviceType)
+
+	snap := KeyCircuitSnapshot{
+		CircuitState: int(cs),
+	}
+	if km != nil {
+		snap.ConsecutiveFailures = km.ConsecutiveFailures
+		snap.LastSuccessAt = km.LastSuccessAt
+	}
+	return snap
+}
+
+// metricsAdapterManager 按 serviceType 路由到对应的 MetricsProvider。
+// 每个 service type 对应一个独立的 MetricsManager 实例。
+type metricsAdapterManager struct {
+	managers map[string]MetricsProvider
+}
+
+// NewMetricsAdapterManager 创建按 serviceType 路由的 MetricsProvider。
+// managers 中的 nil 条目会被安全跳过（返回零值）。
+func NewMetricsAdapterManager(managers map[string]MetricsProvider) MetricsProvider {
+	return &metricsAdapterManager{managers: managers}
+}
+
+func (a *metricsAdapterManager) GetTimeWindowStatsForKey(baseURL, apiKey, serviceType string, duration time.Duration) TimeWindowStats {
+	mgr, ok := a.managers[serviceType]
+	if !ok || mgr == nil {
+		return TimeWindowStats{SuccessRate: 100}
+	}
+	return mgr.GetTimeWindowStatsForKey(baseURL, apiKey, serviceType, duration)
+}
+
+func (a *metricsAdapterManager) GetKeySnapshot(baseURL, apiKey, serviceType string) KeyCircuitSnapshot {
+	mgr, ok := a.managers[serviceType]
+	if !ok || mgr == nil {
+		return KeyCircuitSnapshot{}
+	}
+	return mgr.GetKeySnapshot(baseURL, apiKey, serviceType)
+}
+
+// ManagerConfig Manager 可调参数。
+type ManagerConfig struct {
+	// WorkerInterval 后台聚合循环间隔，默认 5 分钟。
+	WorkerInterval time.Duration
+	// QuietLogs 是否静默常规日志（遵循 QUIET_POLLING_LOGS 惯例）。
+	QuietLogs bool
+}
+
+// Manager 健康中心聚合入口。
+// 持有 ProfileStore / Profiler / HealthAnalyzer / FastDecayScorer，
+// 启动后台 worker 定期遍历各渠道 endpoint 进行 L1 指标采集、画像推导、健康诊断。
+type Manager struct {
+	store      *ProfileStore
+	profiler   *Profiler
+	analyzer   *HealthAnalyzer
+	scorer     *FastDecayScorer
+	metrics    MetricsProvider
+	cfgManager *config.ConfigManager
+	cfg        ManagerConfig
+
+	cancel func()
+	wg     sync.WaitGroup
+}
+
+// NewManager 创建 Manager 实例。
+// store 由调用方构造并传入；metrics 应为 metricsAdapterManager（按 serviceType 路由）。
+func NewManager(
+	store *ProfileStore,
+	metrics MetricsProvider,
+	cfgManager *config.ConfigManager,
+	cfg ManagerConfig,
+) *Manager {
+	if cfg.WorkerInterval <= 0 {
+		cfg.WorkerInterval = 5 * time.Minute
+	}
+	return &Manager{
+		store:      store,
+		profiler:   NewProfiler(metrics),
+		analyzer:   NewHealthAnalyzer(),
+		scorer:     NewFastDecayScorer(),
+		metrics:    metrics,
+		cfgManager: cfgManager,
+		cfg:        cfg,
+	}
+}
+
+// StartWorker 启动后台聚合 worker。ctx 取消时退出循环。
+func (m *Manager) StartWorker(ctx context.Context) {
+	ctx, m.cancel = context.WithCancel(ctx)
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.runWorker(ctx)
+	}()
+}
+
+// Stop 优雅停止后台 worker（等待当前循环完成）。
+func (m *Manager) Stop() {
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.wg.Wait()
+}
+
+// Close 停止 worker 并关闭 ProfileStore。
+func (m *Manager) Close() error {
+	m.Stop()
+	return m.store.Close()
+}
+
+// ProfileStore 返回内部 ProfileStore 引用（供 handler 读取画像数据）。
+func (m *Manager) ProfileStore() *ProfileStore {
+	return m.store
+}
+
+// runWorker 后台循环主逻辑。
+func (m *Manager) runWorker(ctx context.Context) {
+	if !m.cfg.QuietLogs {
+		log.Printf("[Autopilot-Worker] 后台聚合 worker 已启动 (间隔: %s)", m.cfg.WorkerInterval)
+	}
+
+	// 启动时立即执行一次
+	m.collectAll()
+
+	ticker := time.NewTicker(m.cfg.WorkerInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			if !m.cfg.QuietLogs {
+				log.Printf("[Autopilot-Worker] 后台聚合 worker 正在停止")
+			}
+			// 退出前 flush 脏数据
+			if err := m.store.Flush(); err != nil {
+				log.Printf("[Autopilot-Worker] 警告: 退出前 flush 失败: %v", err)
+			}
+			return
+		case <-ticker.C:
+			m.collectAll()
+		}
+	}
+}
+
+// collectAll 遍历所有渠道的 endpoint，执行 L1 画像推导 + 健康诊断。
+func (m *Manager) collectAll() {
+	start := time.Now()
+	entries := m.gatherChannelEntries()
+	if len(entries) == 0 {
+		if !m.cfg.QuietLogs {
+			log.Printf("[Autopilot-Worker] 无可遍历渠道，跳过本轮")
+		}
+		return
+	}
+
+	var profiled, diagnosed int
+	for _, entry := range entries {
+		for _, apiKey := range entry.APIKeys {
+			profile := m.profiler.DeriveEndpointProfile(
+				entry.ChannelUID,
+				entry.ChannelID,
+				entry.ChannelKind,
+				entry.BaseURL,
+				apiKey,
+				entry.ChannelKind,
+			)
+			profiled++
+
+			// 收集被动信号并诊断
+			signals := m.collectSignals(entry.BaseURL, apiKey, entry.ChannelKind)
+			diagnosis := m.analyzer.Diagnose(signals)
+
+			profile.HealthState = diagnosis.State
+			profile.HealthConfidence = diagnosis.Confidence
+			if diagnosis.Reason != "" {
+				profile.HealthEvidence = []string{diagnosis.Reason}
+			}
+			profile.UpdatedAt = time.Now()
+
+			if err := m.store.Upsert(&profile); err != nil {
+				log.Printf("[Autopilot-Worker] 警告: 写入画像失败 endpoint=%s: %v", profile.EndpointUID, err)
+			}
+			diagnosed++
+		}
+	}
+
+	// 批量落盘
+	if err := m.store.Flush(); err != nil {
+		log.Printf("[Autopilot-Worker] 警告: flush 失败: %v", err)
+	}
+
+	elapsed := time.Since(start)
+	if !m.cfg.QuietLogs {
+		log.Printf("[Autopilot-Worker] 本轮完成: 渠道=%d, 画像=%d, 诊断=%d, 耗时=%s",
+			len(entries), profiled, diagnosed, elapsed.Truncate(time.Millisecond))
+	}
+}
+
+// gatherChannelEntries 从当前配置中提取所有渠道及其 API Key。
+func (m *Manager) gatherChannelEntries() []channelEntry {
+	cfg := m.cfgManager.GetConfig()
+	var entries []channelEntry
+
+	type upstreamList struct {
+		channels    []config.UpstreamConfig
+		channelKind string
+	}
+	lists := []upstreamList{
+		{cfg.Upstream, "messages"},
+		{cfg.ResponsesUpstream, "responses"},
+		{cfg.GeminiUpstream, "gemini"},
+		{cfg.ChatUpstream, "chat"},
+		{cfg.ImagesUpstream, "images"},
+		{cfg.VectorsUpstream, "vectors"},
+	}
+
+	for _, ul := range lists {
+		for i, ch := range ul.channels {
+			if len(ch.APIKeys) == 0 {
+				continue
+			}
+			// 使用第一个 BaseURL（多 URL 场景下 ProfileStore 中分别存储）
+			baseURL := ch.BaseURL
+			if len(ch.BaseURLs) > 0 {
+				baseURL = ch.BaseURLs[0]
+			}
+			if baseURL == "" {
+				continue
+			}
+			entries = append(entries, channelEntry{
+				ChannelUID:  ch.ChannelUID,
+				ChannelID:   i,
+				ChannelKind: ul.channelKind,
+				BaseURL:     baseURL,
+				APIKeys:     ch.APIKeys,
+			})
+		}
+	}
+	return entries
+}
+
+// collectSignals 从 MetricsManager 收集 endpoint 级被动信号。
+func (m *Manager) collectSignals(baseURL, apiKey, serviceType string) EndpointSignals {
+	now := time.Now()
+	signals := EndpointSignals{Now: now}
+
+	// 1 小时窗口
+	stats1h := m.metrics.GetTimeWindowStatsForKey(baseURL, apiKey, serviceType, 1*time.Hour)
+	signals.TotalRequests1h = int(stats1h.RequestCount)
+	signals.SuccessCount1h = int(stats1h.SuccessCount)
+	signals.FailureCount1h = int(stats1h.FailureCount)
+	signals.SuccessRate1h = stats1h.SuccessRate
+
+	// 24 小时窗口
+	stats24h := m.metrics.GetTimeWindowStatsForKey(baseURL, apiKey, serviceType, 24*time.Hour)
+	signals.TotalRequests24h = int(stats24h.RequestCount)
+	signals.SuccessCount24h = int(stats24h.SuccessCount)
+	signals.FailureCount24h = int(stats24h.FailureCount)
+
+	// 15 分钟窗口
+	stats15m := m.metrics.GetTimeWindowStatsForKey(baseURL, apiKey, serviceType, 15*time.Minute)
+	signals.TotalRequests15m = int(stats15m.RequestCount)
+	if stats15m.RequestCount > 0 {
+		signals.SuccessRate15m = stats15m.SuccessRate
+	}
+
+	// 熔断器快照
+	snapshot := m.metrics.GetKeySnapshot(baseURL, apiKey, serviceType)
+	signals.ConsecutiveFail = int(snapshot.ConsecutiveFailures)
+	signals.LastSuccessAt = snapshot.LastSuccessAt
+	signals.CircuitBreakerOpen = snapshot.CircuitState == 1 // 1 = open
+
+	// Phase 1: 细粒度错误分类暂不逐条统计，以总失败数代替
+	signals.AuthFailureCount = 0
+	signals.DNSFailureCount = 0
+	signals.QuotaFailureCount = 0
+	signals.OverloadedCount = int(snapshot.OverloadedCount)
+	signals.RetryAfterCount = 0
+	signals.NotFoundCount = 0
+	signals.ProtocolErrorCount = 0
+	signals.StreamBreakCount = 0
+	signals.EmptyResponseCount = 0
+
+	// Key 统计
+	signals.TotalKeys = 1
+	signals.DisabledKeys = 0
+
+	return signals
+}
