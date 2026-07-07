@@ -1203,6 +1203,43 @@ SupportsLongCtx：
 
 **虚标处理**：如果 L1 被动信号显示某渠道的 vision/tool/reasoning 请求**成功但用户标记为"结果差"**，系统不自动关闭标签，而是在 UI 上显示「⚠️ 用户反馈能力可能不准确」，允许人工 override。这避免了系统在"质量差"和"不支持"之间误判。
 
+#### 识图能力分层与向现有代码的过渡
+
+现有代码中识图能力由渠道级手动配置控制（`NoVision`、`NoVisionModels`、`VisionFallbackModel`），Autopilot 逐步引入自动画像，两者按优先级共存：
+
+```text
+Layer 0 — 手动显式配置（现有，始终最高优先级）
+  NoVision=true          → SupportsVision 强制为 false，自动画像不覆盖
+  NoVisionModels=[...]   → 指定模型不支持视觉，其余模型仍可走自动画像
+  VisionFallbackModel    → 主模型无视觉时的回退，Phase 1 继续生效
+
+Layer 1 — 自动画像 shadow（Phase 1，只展示不调度）
+  endpoint 级 SupportsVision 由 L3 probe 生成，写入 KeyEndpointProfile
+  NoVision=nil 且注册表 Capabilities["vision"]=true → shadow 展示建议值
+  调度仍走现有 shouldReserveVisionChannelForText watermark 逻辑
+
+Layer 2 — 自动画像影响 endpoint 排序（Phase 2）
+  EndpointAttemptPolicy 使用 KeyEndpointProfile.SupportsVision 过滤候选
+  NoVision=nil 的渠道：优先使用画像值；画像置信度 < 0.7 时回退 Layer 0 规则
+  shouldReserveVisionChannelForText 继续保护视觉渠道不被文本请求耗尽
+
+Layer 3 — 完全自动（Phase 3）
+  SupportsVision 由持续 L1+L3 信号维护，NoVision 降级为人工 override 入口
+  VisionFallbackModel 可由 ModelResolver 自动选取满足视觉下界的备选模型
+```
+
+兼容规则（落地时必须测试）：
+
+```text
+NoVision=true                → SupportsVision 永远 false，忽略所有画像
+NoVision=false（显式关闭）   → SupportsVision 信任用户，画像不覆盖
+NoVision=nil（未配置）       → Phase 1 用注册表+probe；Phase 2+ 用画像
+NoVisionModels 包含请求模型  → 该模型 SupportsVision=false，不影响其他模型
+画像置信度 < 0.7             → 回退到注册表 Capabilities["vision"] 判断
+probe 返回 400/415           → 标记 SupportsVision=false，置信度=0.9
+probe 成功但内容不可解析      → 不更新画像，保持现有状态
+```
+
 ### 4.4 HealthAnalyzer — 健康诊断器
 
 **职责**：持续分析渠道健康，生成 HealthState 和证据。
@@ -1420,6 +1457,55 @@ func WithEndpointAttemptPolicy(policy *autopilot.EndpointAttemptPolicy) TryUpstr
 
 这样可以复用现有 `TryUpstreamWithAllKeys` 的熔断、限流、拉黑、日志、URL warmup 行为，只在候选排序和模型覆盖点插入 autopilot。
 
+#### 4.6.2a TryUpstreamWithAllKeys 改造细节
+
+**改造目标**：最小侵入地将 `EndpointAttemptPolicy` 注入现有双层循环，不破坏熔断/限流/拉黑/warmup 等现有保护行为。
+
+改造后的执行顺序（baseURL × key 双层循环内）：
+
+```text
+原始 urlResults（按配置顺序）
+  │
+  ├─ 1. [NEW] policy.FilterURLs(urlResults)
+  │       → 移除画像中 HealthState=dead 的 baseURL
+  │       → FailOpen=true 时：过滤后为空则回退全量 urlResults
+  │
+  ├─ 2. [NEW] policy.SortURLs(filtered)
+  │       → 按 EndpointCandidate.Score 降序排列 baseURL
+  │
+  └─ 遍历每个 baseURL：
+       │
+       ├─ 3. [EXISTING] URL warmup 检查（不变）
+       ├─ 4. [EXISTING] keypool.CandidatesForModel(baseURL, model)
+       │
+       ├─ 5. [NEW] policy.FilterKeys(baseURL, candidates)
+       │       → 移除画像中 FastDecay.EffectiveScore < threshold 的 key
+       │       → 移除处于 cooldown 中的 key（已有逻辑，policy 可追加条件）
+       │       → FailOpen=true 时：过滤后为空则回退全量 candidates
+       │
+       ├─ 6. [NEW] policy.SortKeys(baseURL, filtered)
+       │       → 按 EndpointCandidate.Score 降序排列 key
+       │       → 同分时：成本低的优先，信任等级高的作为 tie-breaker
+       │
+       └─ 遍历每个 key：
+            ├─ 7. [EXISTING] 熔断、限流、拉黑检查（不变）
+            ├─ 8. [EXISTING] 发起上游请求（不变）
+            ├─ 9. [NEW] 请求成功 → NotifySuccess(baseURL, key) → 更新亲和
+            └─ 10.[NEW] 请求失败 → NotifyFailure(baseURL, key) → 更新 FastDecay
+```
+
+`MappedModel` 的注入点在步骤 8 之前：
+
+```go
+// 如果 policy 对当前 (baseURL, key) 提供了 MappedModel，替换请求体中的 model 字段
+if candidate := policy.GetCandidate(baseURL, key); candidate != nil && candidate.MappedModel != "" {
+    requestBody.Model = candidate.MappedModel
+    // ChannelLog 中记录 originalModel 和 mappedModel
+}
+```
+
+**FailOpen 保证**：任何 policy 操作出错（panic recover、nil policy、store 读取失败），立即退出 policy 路径，回到原有顺序遍历，不中断请求。
+
 #### 4.6.3 与现有手动控制的优先级
 
 SmartRouter 不能破坏用户显式控制：
@@ -1552,7 +1638,59 @@ type TrustedRoutingHint struct {
   - 直接升级到 high/premium，而不是让本地模型猜
 ```
 
-这样 advisor 优化的是“明显不用强模型”的部分，而不是把强模型任务拆碎后试图合并。
+这样 advisor 优化的是”明显不用强模型”的部分，而不是把强模型任务拆碎后试图合并。
+
+### 4.8 Endpoint 级亲和保持机制
+
+**背景**：现有 `TraceAffinityManager` 实现了渠道级亲和（同一 trace 固定到同一 channel index）。Autopilot 引入 endpoint 级后，需要在 channel 内进一步稳定 `(baseURL, key)` 对的选择，避免每次请求都随机轮转 key。
+
+#### 4.8.1 亲和粒度层级
+
+```text
+层级 1：Channel 亲和（现有，已实现）
+  key: traceAffinityKey(kind, userID, contextBucket)
+  value: channelIndex
+  由 session.TraceAffinityManager 管理，含超时续期
+
+层级 2：Endpoint 亲和（新增，Phase 2）
+  key: endpointAffinityKey(kind, userID, contextBucket)
+  value: metricsKey（= GenerateMetricsIdentityKey(baseURL, apiKey, serviceType)）
+  在 TryUpstreamWithAllKeys 成功后由 autopilot 写入，失败后清除
+
+两层独立管理：channel 亲和失效不自动清 endpoint 亲和；endpoint 亲和失效只在
+同 channel 内重新选 key，不影响 channel 亲和。
+```
+
+#### 4.8.2 亲和选取与保持规则
+
+```text
+请求进入 TryUpstreamWithAllKeys：
+  1. 查 endpoint 亲和 → 得到 preferred metricsKey
+  2. 检查 preferred endpoint 的当前状态：
+     ├─ 健康且未被 policy 过滤 → 提升到候选列表首位（不跳过其他候选）
+     ├─ 处于 cooldown/熔断/拉黑 → 忽略亲和，走 policy 正常排序
+     └─ key 被禁用 / 画像 HealthState=dead → 清除亲和记录，走正常排序
+
+请求成功（任意 endpoint）：
+  → SetEndpointAffinity(kind, userID, contextBucket, metricsKey)
+  → UpdateTraceAffinity(kind, userID)（channel 层续期）
+
+请求失败（该 endpoint）：
+  → 不清除亲和，仍允许下次优先尝试（避免偶发失败导致频繁漂移）
+  → 连续失败 ≥ 3 次 → ClearEndpointAffinity，下次走正常排序
+```
+
+#### 4.8.3 亲和失效条件
+
+| 条件 | 行为 |
+|------|------|
+| key 被显式禁用 | 立即清除亲和，failover 到同 channel 其他 key |
+| endpoint 进入 cooldown（429） | 忽略亲和，不清除；cooldown 结束后恢复优先 |
+| 熔断器 open | 忽略亲和，不清除；半开后恢复优先 |
+| 连续失败 ≥ 3 次（L1 被动） | 清除亲和，重新选 endpoint |
+| channel 亲和漂移（failover 换 channel） | 清除旧 channel 的 endpoint 亲和 |
+| 亲和 TTL 超时（默认 30min） | 自动清除，下次重新建立 |
+| `session_pin` ManualRoutingIntent | 覆盖自动亲和，直到 intent 到期 |
 
 ## 5. 智能调度策略
 
