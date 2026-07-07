@@ -277,7 +277,6 @@ func TestLimiter_ApplyUpstreamHints_RetryAfterHTTPDate(t *testing.T) {
 	}
 }
 
-
 func TestLimiter_ApplyUpstreamHints_5xxRetryAfter(t *testing.T) {
 	base := time.Now()
 	l := NewChannelLimiter(Config{RPM: 60}, base)
