@@ -1436,12 +1436,13 @@ func discoveryCompatProbeModel(channelKind string, selected DiscoverySelectedMod
 }
 
 func recommendDiscoveryChannelKind(requested string, targetClients []string, protocols []DiscoveryProtocolResult) string {
+	if normalized := normalizeDiscoveryChannelKind(requested); normalized != "" {
+		return normalized
+	}
+
 	success := make(map[string]bool, len(protocols))
 	for _, protocol := range protocols {
 		success[protocol.Protocol] = protocol.Success
-	}
-	if requested != "" && success[requested] {
-		return requested
 	}
 	targetSet := make(map[string]bool, len(targetClients))
 	for _, target := range targetClients {
@@ -1465,7 +1466,7 @@ func recommendDiscoveryChannelKind(requested string, targetClients []string, pro
 			return protocol
 		}
 	}
-	return normalizeDiscoveryChannelKind(requested)
+	return ""
 }
 
 func normalizeDiscoveryChannelKind(channelKind string) string {

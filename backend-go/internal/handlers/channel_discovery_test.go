@@ -121,6 +121,30 @@ func TestBuildDiscoveryMappingRecommendationUsesStableClaudeSourceAliases(t *tes
 	}
 }
 
+func TestRecommendDiscoveryChannelKindKeepsExplicitRequestedProtocol(t *testing.T) {
+	protocols := []DiscoveryProtocolResult{
+		{Protocol: "messages", Success: false},
+		{Protocol: "responses", Success: true},
+	}
+
+	got := recommendDiscoveryChannelKind("messages", []string{"codex"}, protocols)
+	if got != "messages" {
+		t.Fatalf("recommended channelKind=%q, want messages", got)
+	}
+}
+
+func TestRecommendDiscoveryChannelKindFallsBackWithoutExplicitProtocol(t *testing.T) {
+	protocols := []DiscoveryProtocolResult{
+		{Protocol: "messages", Success: true},
+		{Protocol: "responses", Success: true},
+	}
+
+	got := recommendDiscoveryChannelKind("", []string{"codex"}, protocols)
+	if got != "responses" {
+		t.Fatalf("recommended channelKind=%q, want responses", got)
+	}
+}
+
 func TestSelectDiscoveryModelsPrefersToolCapableModels(t *testing.T) {
 	global := map[string]config.UpstreamModelCapability{
 		"plain-main": {

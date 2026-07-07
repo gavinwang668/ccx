@@ -98,7 +98,9 @@ export function useEditChannelPresets(options: EditChannelPresetOptions) {
   }
 
   const showCodexResponsesChannelPresets = computed(() => {
-    return options.channelType.value === 'responses' && options.supportsOpenAIAdvancedOptions.value
+    return options.channelType.value === 'responses'
+      && options.form.serviceType !== 'claude'
+      && options.supportsOpenAIAdvancedOptions.value
   })
 
   const applyCodexResponsesChannelPreset = (preset: string) => {
