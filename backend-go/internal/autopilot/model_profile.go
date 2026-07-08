@@ -54,6 +54,38 @@ const (
 	CostTierExpensive CostTier = "expensive" // 其他
 )
 
+// ── 任务域 ──
+
+// TaskDomain 表示请求的内容领域（审美、代码审核、算法等）。
+// 与 TaskClass 正交：TaskClass 回答"谁在干活"，TaskDomain 回答"干的是什么活"。
+type TaskDomain string
+
+const (
+	TaskDomainAestheticsUI TaskDomain = "aesthetics_ui" // 前端 UI/视觉设计/审美
+	TaskDomainCodeReview   TaskDomain = "code_review"   // 代码审核/找 bug
+	TaskDomainCoding       TaskDomain = "coding"        // 通用编码实现
+	TaskDomainReasoning    TaskDomain = "reasoning"     // 算法/数学/复杂推理
+	TaskDomainWriting      TaskDomain = "writing"       // 文案/长文写作
+	TaskDomainTranslation  TaskDomain = "translation"   // 翻译
+	TaskDomainAgentic      TaskDomain = "agentic"       // 多步工具调用/agent 编排
+	TaskDomainGeneral      TaskDomain = "general"       // 无法判定，中性
+)
+
+// ── 思考等级 ──
+
+// EffortLevel 表示模型的统一思考能力档位。
+// 调度时翻译为各派系原生参数（thinking.budget_tokens / reasoning_effort 等）。
+type EffortLevel string
+
+const (
+	EffortOff     EffortLevel = "off"     // 不开思考
+	EffortMinimal EffortLevel = "minimal" // 最低思考
+	EffortLow     EffortLevel = "low"     // 低思考
+	EffortMedium  EffortLevel = "medium"  // 中等思考
+	EffortHigh    EffortLevel = "high"    // 高思考
+	EffortMax     EffortLevel = "max"     // 最大思考
+)
+
 // ── ModelFamily 模型派系 ──
 
 // ModelFamily 表示模型派系（厂商系列）。
@@ -269,6 +301,14 @@ type ModelProfile struct {
 	ProviderQualityScore      float64 `json:"providerQualityScore,omitempty"`      // 0.0-1.0
 	ProviderQualitySource     string  `json:"providerQualitySource,omitempty"`     // probe | user_feedback | inferred | default
 	ProviderQualityConfidence float64 `json:"providerQualityConfidence,omitempty"` // 置信度
+
+	// ── 任务域优势（不同模型的强项任务不同）──
+	// 缺省时回退到 ModelFamily 级种子矩阵（§5.7），0.5 = 中性
+	TaskDomainStrengths map[TaskDomain]float64 `json:"taskDomainStrengths,omitempty"`
+
+	// ── 思考等级（同模型不同思考档位的智商差异，§5.8）──
+	SupportsEffortControl bool          `json:"supportsEffortControl,omitempty"` // 上游是否可控思考等级
+	SupportedEffortLevels []EffortLevel `json:"supportedEffortLevels,omitempty"` // 可用档位（按派系映射）
 
 	// ── 探测结果 ──
 	ProbeSuccess    bool      `json:"probeSuccess"`

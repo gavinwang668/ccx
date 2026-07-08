@@ -1,0 +1,379 @@
+package autopilot
+
+import (
+	"path/filepath"
+	"strings"
+)
+
+// ── 种子矩阵（§5.7.3）──
+
+// seedDomainKey 是种子矩阵的查找键，格式 "family/majorVersion"。
+type seedDomainKey string
+
+// seedDomainMatrix 是 ModelFamily + 主版本 级别的任务域优势种子值。
+// 设计文档 §5.7.3：同族不同版本的域优势也会漂移，因此按 family + 主版本建键。
+// 未列出的族/域一律 0.5 中性。
+var seedDomainMatrix = map[seedDomainKey]map[TaskDomain]float64{
+	// ── 国际 ──
+	"claude/fable": {
+		TaskDomainAestheticsUI: 0.90, TaskDomainCodeReview: 0.90, TaskDomainCoding: 0.85,
+		TaskDomainReasoning: 0.90, TaskDomainWriting: 0.85,
+	},
+	"claude/opus": {
+		TaskDomainAestheticsUI: 0.90, TaskDomainCodeReview: 0.85, TaskDomainCoding: 0.85,
+		TaskDomainReasoning: 0.85, TaskDomainWriting: 0.85,
+	},
+	"openai/gpt-5": {
+		TaskDomainAestheticsUI: 0.60, TaskDomainCodeReview: 0.90, TaskDomainCoding: 0.80,
+		TaskDomainReasoning: 0.85, TaskDomainWriting: 0.70,
+	},
+	"gemini/gemini-2": {
+		TaskDomainAestheticsUI: 0.85, TaskDomainCodeReview: 0.75, TaskDomainCoding: 0.75,
+		TaskDomainReasoning: 0.80, TaskDomainWriting: 0.75,
+	},
+	// ── 国产 ──
+	"glm/glm-5": {
+		TaskDomainAestheticsUI: 0.80, TaskDomainCodeReview: 0.70, TaskDomainCoding: 0.75,
+		TaskDomainReasoning: 0.70, TaskDomainWriting: 0.75,
+	},
+	"deepseek/v4": {
+		TaskDomainAestheticsUI: 0.55, TaskDomainCodeReview: 0.75, TaskDomainCoding: 0.80,
+		TaskDomainReasoning: 0.85, TaskDomainWriting: 0.65,
+	},
+	"deepseek/v3": {
+		TaskDomainAestheticsUI: 0.50, TaskDomainCodeReview: 0.70, TaskDomainCoding: 0.75,
+		TaskDomainReasoning: 0.80, TaskDomainWriting: 0.60,
+	},
+}
+
+// ── 域推导（§5.7.2）──
+
+// DomainHints 是脱敏后的请求特征，用于确定性域推导。
+// 不存储原始请求体，只提取推导所需的关键信号。
+type DomainHints struct {
+	ExplicitDomain string   // X-Task-Domain 头（最高优先级）
+	SystemPrompt   string   // system prompt 文本（关键词匹配）
+	ToolNames      []string // 请求携带的工具名列表
+	FileExtensions []string // 首条 user 消息中出现的文件扩展名
+	HasDiffContext bool     // 是否包含 diff 上下文
+}
+
+// domainKeywordRule 定义 system prompt 关键词到 TaskDomain 的映射。
+// 按匹配顺序排列，首个命中的规则生效。
+type domainKeywordRule struct {
+	domain   TaskDomain
+	keywords []string // 全部转小写后匹配
+}
+
+// domainKeywords 是系统提示词关键词匹配表。
+var domainKeywords = []domainKeywordRule{
+	{TaskDomainCodeReview, []string{"code review", "审查代码", "代码审核", "code audit", "代码审计", "find bugs", "找bug", "找 bug"}},
+	{TaskDomainAestheticsUI, []string{"ui", "ux", "设计", "样式", "tailwind", "css", "前端设计", "visual design", "审美", "界面"}},
+	{TaskDomainTranslation, []string{"翻译", "translate", "localization", "本地化", "i18n"}},
+	{TaskDomainReasoning, []string{"算法", "数学", "证明", "algorithm", "math", "prove", "推理", "reasoning", "逻辑"}},
+	{TaskDomainWriting, []string{"写作", "文案", "文章", "blog", "writing", "copywriting", "长文", "文档撰写"}},
+	{TaskDomainCoding, []string{"实现", "编码", "代码", "implement", "coding", "programming", "开发", "function", "函数"}},
+	{TaskDomainAgentic, []string{"agent", "工具调用", "tool use", "workflow", "工作流", "多步", "multi-step", "编排"}},
+}
+
+// readOnlyToolNames 是只读工具的集合，用于 code_review 域推导。
+var readOnlyToolNames = map[string]bool{
+	"read":       true,
+	"grep":       true,
+	"search":     true,
+	"find":       true,
+	"list":       true,
+	"glob":       true,
+	"rg":         true,
+	"cat":        true,
+	"head":       true,
+	"tail":       true,
+	"git_diff":   true,
+	"git_log":    true,
+	"git_show":   true,
+	"git_status": true,
+}
+
+// aestheticsExtensions 是与审美/UI 相关的文件扩展名。
+var aestheticsExtensions = map[string]bool{
+	".vue": true, ".css": true, ".scss": true, ".sass": true, ".less": true,
+	".styl": true, ".html": true, ".jsx": true, ".tsx": true,
+	".svelte": true, ".astro": true, ".blade.php": true,
+}
+
+// InferTaskDomain 根据 DomainHints 确定性推导请求的 TaskDomain。
+// 优先级（§5.7.2）：
+//  1. 显式 header（X-Task-Domain）
+//  2. system prompt 关键词
+//  3. 工具集特征
+//  4. 文件扩展名
+//  5. 回退到 general
+func InferTaskDomain(hints DomainHints) TaskDomain {
+	// 优先级 1：显式声明
+	if d := normalizeDomain(hints.ExplicitDomain); d != "" {
+		return d
+	}
+
+	// 优先级 2：system prompt 关键词
+	if d := matchSystemPromptKeywords(hints.SystemPrompt); d != TaskDomainGeneral {
+		return d
+	}
+
+	// 优先级 3：工具集特征（只读工具 + diff 上下文 → code_review）
+	if d := inferFromToolSet(hints.ToolNames, hints.HasDiffContext); d != TaskDomainGeneral {
+		return d
+	}
+
+	// 优先级 4：文件扩展名
+	if d := inferFromExtensions(hints.FileExtensions); d != TaskDomainGeneral {
+		return d
+	}
+
+	return TaskDomainGeneral
+}
+
+// normalizeDomain 将用户输入的 domain 字符串标准化为 TaskDomain 枚举值。
+// 返回空串表示无法识别。
+func normalizeDomain(raw string) TaskDomain {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	switch TaskDomain(normalized) {
+	case TaskDomainAestheticsUI, TaskDomainCodeReview, TaskDomainCoding,
+		TaskDomainReasoning, TaskDomainWriting, TaskDomainTranslation,
+		TaskDomainAgentic, TaskDomainGeneral:
+		return TaskDomain(normalized)
+	default:
+		return ""
+	}
+}
+
+// matchSystemPromptKeywords 在 system prompt 中匹配关键词表，返回首个命中的域。
+// 短关键词（<=3 字符）使用单词边界匹配，避免 "ui" 匹配到 "Build" 中的子串。
+func matchSystemPromptKeywords(prompt string) TaskDomain {
+	if prompt == "" {
+		return TaskDomainGeneral
+	}
+	lower := strings.ToLower(prompt)
+	for _, rule := range domainKeywords {
+		for _, kw := range rule.keywords {
+			if len(kw) <= 3 {
+				// 短关键词使用单词边界匹配
+				if matchWordBoundary(lower, kw) {
+					return rule.domain
+				}
+			} else {
+				if strings.Contains(lower, kw) {
+					return rule.domain
+				}
+			}
+		}
+	}
+	return TaskDomainGeneral
+}
+
+// matchWordBoundary 检查 kw 是否作为完整单词出现在 text 中。
+// 单词边界由非字母数字字符或字符串首尾界定。
+func matchWordBoundary(text, kw string) bool {
+	idx := 0
+	for {
+		pos := strings.Index(text[idx:], kw)
+		if pos == -1 {
+			return false
+		}
+		pos += idx
+		// 检查前边界
+		if pos > 0 {
+			prev := rune(text[pos-1])
+			if isAlphaNumeric(prev) {
+				idx = pos + 1
+				continue
+			}
+		}
+		// 检查后边界
+		end := pos + len(kw)
+		if end < len(text) {
+			next := rune(text[end])
+			if isAlphaNumeric(next) {
+				idx = pos + 1
+				continue
+			}
+		}
+		return true
+	}
+}
+
+// isAlphaNumeric 判断字符是否为字母或数字。
+func isAlphaNumeric(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
+// inferFromToolSet 从工具集特征推导域。
+// 只读工具 + diff 上下文 → code_review；仅此条件命中。
+func inferFromToolSet(toolNames []string, hasDiff bool) TaskDomain {
+	if !hasDiff || len(toolNames) == 0 {
+		return TaskDomainGeneral
+	}
+	allReadOnly := true
+	for _, name := range toolNames {
+		if !readOnlyToolNames[strings.ToLower(name)] {
+			allReadOnly = false
+			break
+		}
+	}
+	if allReadOnly {
+		return TaskDomainCodeReview
+	}
+	return TaskDomainGeneral
+}
+
+// inferFromExtensions 从文件扩展名分布推导域。
+// aestheticsExtensions 命中 → aesthetics_ui。
+func inferFromExtensions(exts []string) TaskDomain {
+	for _, ext := range exts {
+		normalized := strings.ToLower(ext)
+		if !strings.HasPrefix(normalized, ".") {
+			normalized = "." + normalized
+		}
+		if aestheticsExtensions[normalized] {
+			return TaskDomainAestheticsUI
+		}
+	}
+	return TaskDomainGeneral
+}
+
+// ── DomainStrength 查询（§5.7.3）──
+
+// DomainStrength 返回指定模型在给定任务域的优势分。
+// 覆盖优先级：ModelProfile 级值 > 种子矩阵 > 0.5 中性。
+func DomainStrength(profile *ModelProfile, domain TaskDomain) float64 {
+	// 优先级 1：ModelProfile 级覆盖
+	if profile.TaskDomainStrengths != nil {
+		if score, ok := profile.TaskDomainStrengths[domain]; ok {
+			return score
+		}
+	}
+
+	// 优先级 2：种子矩阵（family + 主版本）
+	if score := seedLookup(profile.ModelFamily, profile.ModelID, domain); score > 0 {
+		return score
+	}
+
+	// 优先级 3：中性默认
+	return 0.5
+}
+
+// seedLookup 从种子矩阵中查找 family + 主版本 对应的域优势值。
+// 未命中返回 0，由调用方回退到 0.5。
+func seedLookup(family ModelFamily, modelID string, domain TaskDomain) float64 {
+	key := buildSeedKey(family, modelID)
+	matrix, ok := seedDomainMatrix[key]
+	if !ok {
+		return 0
+	}
+	if score, ok := matrix[domain]; ok {
+		return score
+	}
+	return 0
+}
+
+// buildSeedKey 从 ModelFamily 和 modelID 构建种子矩阵查找键。
+// 格式："family/majorVersionSegment"。
+func buildSeedKey(family ModelFamily, modelID string) seedDomainKey {
+	lower := strings.ToLower(modelID)
+
+	switch family {
+	case ModelFamilyClaude:
+		// 区分 fable/opus/sonnet/haiku 子系列
+		if strings.Contains(lower, "fable") {
+			return "claude/fable"
+		}
+		if strings.Contains(lower, "opus") || strings.Contains(lower, "mythos") {
+			return "claude/opus"
+		}
+		// sonnet/haiku 不在种子矩阵中，回退到通用 claude
+
+	case ModelFamilyOpenAI:
+		// gpt-5.x 系列
+		if strings.Contains(lower, "gpt-5") {
+			return "openai/gpt-5"
+		}
+
+	case ModelFamilyGemini:
+		if strings.Contains(lower, "gemini-2") {
+			return "gemini/gemini-2"
+		}
+
+	case ModelFamilyDeepSeek:
+		if strings.Contains(lower, "v4") || strings.Contains(lower, "deepseek-v4") {
+			return "deepseek/v4"
+		}
+		if strings.Contains(lower, "v3") || strings.Contains(lower, "deepseek-v3") {
+			return "deepseek/v3"
+		}
+
+	case ModelFamilyGLM:
+		if strings.Contains(lower, "glm-5") {
+			return "glm/glm-5"
+		}
+	}
+
+	return ""
+}
+
+// ── 思考等级质量加分（§5.8.2）──
+
+// effortBonusTable 定义各 EffortLevel 对质量分的加分值。
+// 设计文档 §5.8.2：off=0, minimal=+0.2, low=+0.4, medium=+0.6, high=+0.9, max=+1.0。
+var effortBonusTable = map[EffortLevel]float64{
+	EffortOff:     0.0,
+	EffortMinimal: 0.2,
+	EffortLow:     0.4,
+	EffortMedium:  0.6,
+	EffortHigh:    0.9,
+	EffortMax:     1.0,
+}
+
+// EffortQualityBonus 返回指定思考等级对质量评分的加分值。
+// 上限钳制在 premium=4，避免"低档模型开满思考"虚标超过高档模型（§5.8.2）。
+func EffortQualityBonus(level EffortLevel) float64 {
+	if bonus, ok := effortBonusTable[level]; ok {
+		return bonus
+	}
+	return 0.0
+}
+
+// AllEffortLevels 返回所有可用的 EffortLevel（按档位升序）。
+func AllEffortLevels() []EffortLevel {
+	return []EffortLevel{
+		EffortOff, EffortMinimal, EffortLow, EffortMedium, EffortHigh, EffortMax,
+	}
+}
+
+// AllTaskDomains 返回所有可用的 TaskDomain。
+func AllTaskDomains() []TaskDomain {
+	return []TaskDomain{
+		TaskDomainAestheticsUI, TaskDomainCodeReview, TaskDomainCoding,
+		TaskDomainReasoning, TaskDomainWriting, TaskDomainTranslation,
+		TaskDomainAgentic, TaskDomainGeneral,
+	}
+}
+
+// SeedDomainKeys 返回种子矩阵中所有已注册的 seed key（用于调试/展示）。
+func SeedDomainKeys() []seedDomainKey {
+	keys := make([]seedDomainKey, 0, len(seedDomainMatrix))
+	for k := range seedDomainMatrix {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// resolveFileExtension 从文件路径中提取扩展名，兼容 "path/to/file.go" 和 ".go"。
+func resolveFileExtension(path string) string {
+	ext := filepath.Ext(path)
+	if ext == "" {
+		// filepath.Ext 对无扩展名路径返回空，尝试直接匹配
+		if strings.HasPrefix(path, ".") {
+			return strings.ToLower(path)
+		}
+	}
+	return strings.ToLower(ext)
+}
