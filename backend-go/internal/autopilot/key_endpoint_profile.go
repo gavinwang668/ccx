@@ -225,6 +225,13 @@ type KeyEndpointProfile struct {
 	// ── 用量窗口（§3.2.4）──
 	UsageWindows []UsageWindow `json:"usageWindows,omitempty"` // 该 endpoint 的用量窗口列表
 
+	// ── L2 探测结果 ──
+	LastProbeAt     *time.Time `json:"lastProbeAt,omitempty"`     // 最近一次 L2 探测时间
+	ProbeSuccess    bool       `json:"probeSuccess"`              // 最近一次 L2 探测是否成功
+	ProbeLatencyMs  int64      `json:"probeLatencyMs"`            // 最近一次 L2 探测延迟（ms）
+	ProbeConfidence float64    `json:"probeConfidence,omitempty"` // 探测置信度 0.0-1.0
+	ProbeStatusCode int        `json:"probeStatusCode,omitempty"` // 最近一次 L2 探测 HTTP 状态码
+
 	// ── 诊断 ──
 	HealthEvidence          []string                `json:"healthEvidence"` // 诊断证据列表
 	SuggestedAction         SuggestedAction         `json:"suggestedAction"`
