@@ -105,6 +105,9 @@ type UpstreamConfig struct {
 	HistoricalImageTurnLimit int `json:"historicalImageTurnLimit,omitempty"` // 超过此轮次的历史图片替换为占位符（0=不限制，2-10=限制轮次）
 	// Compact 专用模型配置
 	CompactModel string `json:"compactModel,omitempty"` // 本地 compact 时使用的上游模型名（不经过 modelMapping，为空则使用原始请求的模型）
+	// AutoManaged 自动托管标记
+	AutoManaged   bool       `json:"autoManaged,omitempty"`   // 渠道是否由自动托管流程创建
+	AutoManagedAt *time.Time `json:"autoManagedAt,omitempty"` // 自动托管设置时间
 }
 
 // APIKeyConfig 描述单个 API Key 的附加调度配置。
@@ -476,6 +479,9 @@ type UpstreamUpdate struct {
 	VisionFallbackModel *string  `json:"visionFallbackModel"`
 	// 历史图片轮次限制（0=不限制，2-10=限制轮次）
 	HistoricalImageTurnLimit *int `json:"historicalImageTurnLimit"`
+	// 自动托管字段
+	AutoManaged   *bool      `json:"autoManaged"`
+	AutoManagedAt *time.Time `json:"autoManagedAt"`
 }
 
 // Config 配置结构

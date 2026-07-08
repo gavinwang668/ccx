@@ -81,6 +81,23 @@
             <v-icon start size="12">{{ tag.icon }}</v-icon>
             {{ tag.label }}
           </v-chip>
+          <!-- 自动托管徽标 -->
+          <v-tooltip v-if="channel.autoManaged" :text="t('autopilot.badge.tooltip')" location="top" :open-delay="150" content-class="ccx-tooltip">
+            <template #activator="{ props: autoProps }">
+              <v-chip
+                v-bind="autoProps"
+                color="primary"
+                size="x-small"
+                variant="tonal"
+                density="comfortable"
+                rounded="pill"
+                class="auto-managed-chip"
+              >
+                <v-icon start size="12">mdi-auto-fix</v-icon>
+                {{ t('autopilot.badge.label') }}
+              </v-chip>
+            </template>
+          </v-tooltip>
           <!-- Vision 能力按钮 -->
           <v-tooltip location="top" :text="channel.noVision ? t('channelCard.noVision') : t('channelCard.hasVision')" :open-delay="150" content-class="ccx-tooltip">
             <template #activator="{ props: tip }">
@@ -692,6 +709,13 @@ const serviceStyle = computed(() => {
   font-weight: 600;
   letter-spacing: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.auto-managed-chip {
+  font-weight: 600;
+  letter-spacing: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  cursor: help;
 }
 
 /* --- INDICATORS (LIGHT) --- */

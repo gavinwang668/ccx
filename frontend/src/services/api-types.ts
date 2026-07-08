@@ -196,6 +196,8 @@ export interface Channel {
   rateLimitAutoFromHeaders?: boolean         // 自动从上游响应头解析限流信息并动态调速（默认 true）
   historicalImageTurnLimit?: number          // 历史图片轮次限制（0=不限制，2-10=裁剪历史图片）
   compactModel?: string                      // 本地 compact 时使用的上游模型名（不经过 modelMapping，为空则使用原始请求的模型）
+  autoManaged?: boolean                      // 启用自动托管
+  autoManagedAt?: string                     // 开始托管时间（ISO 格式）
   rpm?: number                // 能力测试发送速率（仅影响能力测试）
 }
 
@@ -985,4 +987,113 @@ export interface CockpitOverviewResponse {
   localRuntimes: CockpitLocalRuntimeSummary
   manualIntents: CockpitManualIntentSummary
   todoItems: CockpitTodoItem[]
+}
+
+// ============== Autopilot 智能路由类型 ==============
+
+export interface SmartRoutingCostPreference {
+  mode: 'quality_first' | 'balanced' | 'cost_first' | 'custom'
+}
+
+export interface SmartRoutingConfig {
+  mode: 'off' | 'shadow' | 'assist' | 'auto'
+  killSwitchActive: boolean
+  costPreference: string
+  l2ProbeEnabled?: boolean
+}
+
+export interface CandidateScore {
+  dimension: string
+  score: number
+  weight: number
+}
+
+export interface RoutingCandidate {
+  channelUid: string
+  metricsKey?: string
+  originTier?: string
+  channelKind?: string
+  healthState?: string
+  totalScore: number
+  scores?: CandidateScore[]
+  selected: boolean
+  filterReasons?: string[]
+}
+
+export interface RoutingDecisionTrace {
+  traceUid: string
+  requestKind: string
+  taskClass: string
+  taskDomain?: string
+  requestedModel?: string
+  agentRole?: string
+  candidates: RoutingCandidate[]
+  candidatesBefore: number
+  candidatesAfter: number
+  globalFilterReasons?: Record<string, string[]>
+  sortReasons?: string[]
+  selectedChannelUid?: string
+  selectedMetricsKey?: string
+  selectedOriginTier?: string
+  estimatedCost?: number
+  costConfidence?: number
+  fallbackUsed: boolean
+  shadowChannelUid?: string
+  actualChannelUid?: string
+  match: boolean
+  mode: 'off' | 'shadow' | 'assist' | 'auto' | 'active' | 'dry_run'
+  durationMs: number
+  createdAt: string
+}
+
+export interface AutopilotTraceListResponse {
+  traces: RoutingDecisionTrace[]
+  total: number
+}
+
+export interface AutopilotTraceStats {
+  totalCount: number
+  mismatchCount: number
+  mismatchRate: number
+  taskClassDist: Record<string, number>
+  modeDist: Record<string, number>
+}
+
+// 自动添加渠道请求
+export interface AutoAddChannelRequest {
+  name?: string
+  baseUrls: string[]
+  apiKeys: string[]
+  subscriptionUid?: string
+}
+
+// 自动添加渠道响应
+export interface AutoAddChannelResponse {
+  channelUid: string
+  index: number
+  discoveryStarted: boolean
+}
+
+// Endpoint 发现信息
+export interface EndpointDiscoveryInfo {
+  keyMask: string
+  baseUrl: string
+  modelsCount: number
+  protocolOk: boolean
+}
+
+// 发现状态信息
+export interface DiscoveryStatusInfo {
+  status: 'pending' | 'running' | 'done' | 'failed'
+  startedAt?: string
+  finishedAt?: string
+  error?: string
+  endpoints?: EndpointDiscoveryInfo[]
+}
+
+// 自动托管状态响应
+export interface ChannelAutoStatusResponse {
+  autoManaged: boolean
+  autoManagedAt?: string
+  discovery?: DiscoveryStatusInfo
 }

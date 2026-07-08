@@ -346,6 +346,12 @@ func (cm *ConfigManager) UpdateChatUpstream(index int, updates UpstreamUpdate) (
 	if updates.HistoricalImageTurnLimit != nil {
 		upstream.HistoricalImageTurnLimit = NormalizeChannelHistoricalImageTurnLimit(*updates.HistoricalImageTurnLimit)
 	}
+	if updates.AutoManaged != nil {
+		upstream.AutoManaged = *updates.AutoManaged
+	}
+	if updates.AutoManagedAt != nil {
+		upstream.AutoManagedAt = updates.AutoManagedAt
+	}
 
 	// 检测配置是否真的发生了变化
 	if !cm.hasConfigChanged(originalConfig, cm.config) {

@@ -286,6 +286,90 @@ func (r *SmartRouter) executeFilter(
 		return scoredEntries[i].scored.Score > scoredEntries[j].scored.Score
 	})
 
+	// ── 人工意图匹配（设计 §4.6.4）──
+	// 在评分排序后、构建结果前执行；shadow 模式只标注不影响输出。
+	var matchedIntent *IntentMatchResult
+	var intentTargetUID string
+	if r.intentStore != nil && len(scoredEntries) > 1 {
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("[SmartRouter-IntentMatch] panic recovered (fail-open): %v", rec)
+				}
+			}()
+
+			activeIntents := r.intentStore.ListActive()
+			if len(activeIntents) == 0 {
+				return
+			}
+
+			matchCtx := &IntentMatchContext{
+				ChannelKind: profile.ChannelKind,
+				Model:       profile.Model,
+				TaskClass:   profile.TaskClass,
+				AgentRole:   profile.AgentRole,
+				SessionID:   profile.SessionID,
+				PromptHash:  profile.PromptHash,
+			}
+			matchedIntent = MatchIntent(matchCtx, activeIntents)
+			if matchedIntent == nil || matchedIntent.ChannelUID == "" {
+				matchedIntent = nil
+				return
+			}
+			intentTargetUID = matchedIntent.ChannelUID
+
+			// supervisor 保护：third-party 渠道的 model_trial 不覆盖 supervisor，
+			// 除非意图 TaskClasses 显式包含 supervisor。
+			if profile.TaskClass == TaskClassSupervisor &&
+				matchedIntent.Intent.IntentType == IntentTypeModelTrial &&
+				!intentExplicitlyTargetsSupervisor(matchedIntent.Intent) {
+				for _, se := range scoredEntries {
+					if se.entry.ChannelUID == intentTargetUID &&
+						se.entry.OriginTier == OriginTierThird {
+						log.Printf("[SmartRouter-SupervisorProtect] third-party 渠道 %s 的 model_trial 不覆盖 supervisor (intent=%s)",
+							intentTargetUID, matchedIntent.Intent.IntentUID)
+						trace.GlobalFilterReasons["supervisor_protect"] = []string{
+							fmt.Sprintf("intent=%s: third-party model_trial blocked for supervisor", matchedIntent.Intent.IntentUID),
+						}
+						matchedIntent = nil
+						intentTargetUID = ""
+						return
+					}
+				}
+			}
+
+			// 将目标渠道提升到 scoredEntries 首位（protected candidate）
+			targetIdx := -1
+			for i, se := range scoredEntries {
+				if se.entry.ChannelUID == intentTargetUID {
+					targetIdx = i
+					break
+				}
+			}
+			if targetIdx < 0 {
+				// 目标渠道不在候选中
+				trace.GlobalFilterReasons["intent_target_missing"] = []string{
+					fmt.Sprintf("intent=%s: target channel %s not in candidates", matchedIntent.Intent.IntentUID, intentTargetUID),
+				}
+				matchedIntent = nil
+				intentTargetUID = ""
+				return
+			}
+			if targetIdx > 0 {
+				promoted := scoredEntries[targetIdx]
+				copy(scoredEntries[1:targetIdx+1], scoredEntries[0:targetIdx])
+				scoredEntries[0] = promoted
+			}
+
+			trace.ManualIntentUID = matchedIntent.Intent.IntentUID
+			trace.GlobalFilterReasons["intent_match"] = matchedIntent.Reasons
+
+			log.Printf("[SmartRouter-IntentMatch] uid=%s type=%s target=%s specificity=%d",
+				matchedIntent.Intent.IntentUID, string(matchedIntent.Intent.IntentType),
+				intentTargetUID, matchedIntent.Specificity)
+		}()
+	}
+
 	// 从已排序的 scoredEntries 构建 trace 候选和结果列表
 	result := make([]scheduler.ChannelInfo, 0, len(scoredEntries))
 	candidates := make([]RoutingCandidate, 0, len(scoredEntries))
@@ -371,14 +455,57 @@ func (r *SmartRouter) executeFilter(
 			log.Printf("[SmartRouter-AutoFailOpen] taskClass=%s 全部候选被过滤，回退到重排", string(profile.TaskClass))
 			// result 保持重排后的完整列表
 		}
+
+		// 人工意图效果检查：目标渠道是否通过了硬约束过滤
+		if matchedIntent != nil && intentTargetUID != "" {
+			targetSurvived := false
+			for _, ch := range result {
+				upstream := upstreamFor(ch)
+				matchUID := fmt.Sprintf("ch_%d", ch.Index)
+				if upstream != nil && upstream.ChannelUID != "" {
+					matchUID = upstream.ChannelUID
+				}
+				if matchUID == intentTargetUID {
+					targetSurvived = true
+					break
+				}
+			}
+			if !targetSurvived {
+				// 意图目标被硬约束过滤：回退到过滤后的默认排序
+				result = filteredResult
+				trace.FallbackUsed = true
+				trace.GlobalFilterReasons["intent_fallback"] = []string{
+					fmt.Sprintf("intent=%s: target %s filtered by hard constraints, fallback to score order",
+						matchedIntent.Intent.IntentUID, intentTargetUID),
+				}
+				matchedIntent.FallbackUsed = true
+				if r.intentStore != nil {
+					r.intentStore.RecordFallback(matchedIntent.Intent.IntentUID)
+				}
+				log.Printf("[SmartRouter-IntentFallback] uid=%s target=%s filtered by hard constraints",
+					matchedIntent.Intent.IntentUID, intentTargetUID)
+			} else if r.intentStore != nil {
+				r.intentStore.RecordHit(matchedIntent.Intent.IntentUID, true, 0)
+			}
+		}
 	}
 
 	// 记录 trace 信息
 	trace.Candidates = candidates
 	trace.CandidatesAfter = len(candidates)
 	trace.SortReasons = []string{"smart_routing_score"}
+	if matchedIntent != nil {
+		trace.SortReasons = append(trace.SortReasons, "intent_promote")
+		if matchedIntent.FallbackUsed {
+			trace.SortReasons = append(trace.SortReasons, "intent_fallback")
+		}
+	}
 	if mode == RoutingModeAssist {
 		trace.SortReasons = append(trace.SortReasons, "assist_reorder")
+		// assist 模式下意图命中即生效（无硬约束过滤），记录 RecordHit
+		if matchedIntent != nil && !matchedIntent.FallbackUsed && r.intentStore != nil {
+			r.intentStore.RecordHit(matchedIntent.Intent.IntentUID, true, 0)
+		}
 	} else if mode == RoutingModeAuto {
 		if fallbackUsed {
 			trace.SortReasons = append(trace.SortReasons, "auto_failopen_reorder")
@@ -408,9 +535,13 @@ func (r *SmartRouter) executeFilter(
 		traceStore.Record(trace)
 	}
 
-	log.Printf("[SmartRouter-Filter] taskClass=%s mode=%s candidates=%d fallback=%v shadow=%s duration=%dms",
+	intentUID := ""
+	if matchedIntent != nil {
+		intentUID = matchedIntent.Intent.IntentUID
+	}
+	log.Printf("[SmartRouter-Filter] taskClass=%s mode=%s candidates=%d fallback=%v intent=%s shadow=%s duration=%dms",
 		string(profile.TaskClass), string(mode), len(candidates), fallbackUsed,
-		trace.ShadowChannelUID, trace.DurationMs)
+		intentUID, trace.ShadowChannelUID, trace.DurationMs)
 
 	// shadow/dryrun 模式：返回原始候选列表（不影响真实调度）
 	if mode == RoutingModeShadow || mode == RoutingModeDryRun {

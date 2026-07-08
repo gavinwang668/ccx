@@ -16,7 +16,30 @@
       </v-card-title>
 
       <v-card-text class="pa-6">
-        <div class="d-flex flex-column ga-3">
+        <!-- 模式切换 -->
+        <div class="d-flex justify-center mb-4">
+          <v-btn-toggle v-model="quickAddMode" mandatory density="compact" rounded="lg" color="primary" variant="outlined">
+            <v-btn :value="false" size="small">
+              <v-icon start size="small">mdi-text</v-icon>
+              {{ t('autopilot.quickAdd.modeStandard') }}
+            </v-btn>
+            <v-btn :value="true" size="small">
+              <v-icon start size="small">mdi-auto-fix</v-icon>
+              {{ t('autopilot.quickAdd.modeQuick') }}
+            </v-btn>
+          </v-btn-toggle>
+        </div>
+
+        <!-- 快速添加模式 -->
+        <QuickAddChannelForm
+          v-if="quickAddMode"
+          ref="quickAddFormRef"
+          :channel-type="channelType"
+          @added="onQuickAddSuccess"
+        />
+
+        <!-- 标准模式（现有 textarea 解析） -->
+        <div v-else class="d-flex flex-column ga-3">
           <v-textarea
             v-model="quickInput"
             :label="t('addChannel.quickInputLabel')"
@@ -160,9 +183,10 @@
         <v-btn
           color="primary"
           variant="elevated"
-          :disabled="!isQuickFormValid"
+          :disabled="quickAddMode ? !quickAddFormRef?.isFormValid : !isQuickFormValid"
+          :loading="quickAddMode ? quickAddFormRef?.submitting : false"
           prepend-icon="mdi-check"
-          @click="handleQuickSubmit"
+          @click="handleSubmitByMode"
         >
           {{ t('addChannel.createChannel') }}
           <span class="shortcut-hint ml-2 text-xs opacity-50">{{ isMac ? '⌘Enter' : 'Ctrl+Enter' }}</span>
@@ -181,6 +205,7 @@ import { extractChannelNamePrefix } from '../utils/add-channel-modal-state'
 import { parseQuickInput as parseQuickInputUtil } from '../utils/quickInputParser'
 import { useI18n } from '../i18n'
 import { usePreferencesStore } from '../stores/preferences'
+import QuickAddChannelForm from './QuickAddChannelForm.vue'
 
 type ServiceType = 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot'
 type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
@@ -198,6 +223,7 @@ const emit = defineEmits<{
   'update:show': [value: boolean]
   save: [channel: Omit<Channel, 'index' | 'latency' | 'status'>, options?: { isQuickAdd?: boolean; triggerCapabilityTest?: boolean }]
   error: [message: string]
+  autoAdded: [channelId: number]
 }>()
 
 const { t } = useI18n()
@@ -214,6 +240,10 @@ const quickServiceTypeTouched = ref(false)
 const quickServiceType = ref<ServiceType>(getDefaultServiceTypeValue())
 const randomSuffix = ref(generateRandomString(6))
 const copilotDefaultBaseUrl = 'https://api.githubcopilot.com'
+
+// 快速添加模式
+const quickAddMode = ref(false)
+const quickAddFormRef = ref<InstanceType<typeof QuickAddChannelForm> | null>(null)
 
 const isMac = computed(() => typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform))
 
@@ -448,9 +478,24 @@ function handleQuickSubmit() {
   emit('save', channel, { isQuickAdd: true })
 }
 
+function handleSubmitByMode() {
+  if (quickAddMode.value) {
+    quickAddFormRef.value?.handleSubmit()
+  } else {
+    handleQuickSubmit()
+  }
+}
+
+function onQuickAddSuccess(channelId: number) {
+  emit('autoAdded', channelId)
+  // 快速添加模式下不自动关闭弹窗，保留发现状态面板供用户查看进度
+}
+
 function handleCancel() {
   emit('update:show', false)
   resetQuickState()
+  quickAddMode.value = false
+  quickAddFormRef.value?.resetForm()
 }
 
 function onMenuUpdate(open: boolean) {
@@ -470,7 +515,7 @@ function handleKeydown(event: KeyboardEvent) {
 
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
     event.preventDefault()
-    handleQuickSubmit()
+    handleSubmitByMode()
   }
 }
 

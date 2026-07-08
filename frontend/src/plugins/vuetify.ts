@@ -22,6 +22,7 @@ import { VTextarea } from 'vuetify/components/VTextarea'
 import { VSelect } from 'vuetify/components/VSelect'
 import { VCombobox } from 'vuetify/components/VCombobox'
 import { VSwitch } from 'vuetify/components/VSwitch'
+import { VCheckbox } from 'vuetify/components/VCheckbox'
 import { VBtn } from 'vuetify/components/VBtn'
 import { VBtnToggle } from 'vuetify/components/VBtnToggle'
 
@@ -226,6 +227,7 @@ import {
   mdiHandHeart,
   mdiGift,
   mdiClockAlert,
+  mdiSteering,
 } from '@mdi/js'
 
 // 图标名称到 SVG path 的映射 (使用 kebab-case)
@@ -457,6 +459,7 @@ const iconMap: Record<string, string> = {
   'hand-heart': mdiHandHeart,
   'gift': mdiGift,
   'clock-alert': mdiClockAlert,
+  'steering': mdiSteering,
 }
 
 // 自定义 SVG iconset - 处理 mdi-xxx 字符串格式
@@ -575,6 +578,7 @@ export default createVuetify({
     VSelect,
     VCombobox,
     VSwitch,
+    VCheckbox,
     VBtn,
     VBtnToggle,
     // 列表

@@ -1,0 +1,116 @@
+<template>
+  <div class="autopilot-view">
+    <!-- 标题栏 -->
+    <div class="d-flex align-center justify-space-between mb-4">
+      <div class="d-flex align-center">
+        <v-icon size="28" class="mr-2" color="primary">mdi-steering</v-icon>
+        <span class="text-h5 font-weight-bold">{{ t('autopilot.title') }}</span>
+      </div>
+      <v-btn
+        variant="tonal"
+        prepend-icon="mdi-refresh"
+        :loading="loading"
+        @click="fetchAll"
+      >
+        {{ t('app.actions.refresh') }}
+      </v-btn>
+    </div>
+
+    <!-- 加载态 -->
+    <div v-if="loading && !config" class="text-center py-12">
+      <v-progress-circular indeterminate color="primary" size="48" />
+    </div>
+
+    <!-- 内容 -->
+    <template v-else-if="config">
+      <!-- 全局策略面板 -->
+      <AutopilotModePanel
+        :config="config"
+        :saving="saving"
+        @update:config="handleConfigUpdate"
+      />
+
+      <!-- Trace 统计 -->
+      <AutopilotTraceStats
+        v-if="traceStats"
+        :stats="traceStats"
+        class="mt-6"
+      />
+
+      <!-- Trace 列表 -->
+      <AutopilotTraceTable
+        :traces="traces"
+        :loading="tracesLoading"
+        @refresh="fetchTraces"
+        class="mt-4"
+      />
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useI18n } from '@/i18n'
+import { api } from '@/services/api'
+import AutopilotModePanel from '@/components/AutopilotModePanel.vue'
+import AutopilotTraceStats from '@/components/AutopilotTraceStats.vue'
+import AutopilotTraceTable from '@/components/AutopilotTraceTable.vue'
+import type {
+  SmartRoutingConfig,
+  AutopilotTraceStats as TraceStatsType,
+  RoutingDecisionTrace,
+} from '@/services/api-types'
+
+const { t } = useI18n()
+
+const config = ref<SmartRoutingConfig | null>(null)
+const traceStats = ref<TraceStatsType | null>(null)
+const traces = ref<RoutingDecisionTrace[]>([])
+const loading = ref(true)
+const saving = ref(false)
+const tracesLoading = ref(false)
+
+async function fetchAll() {
+  loading.value = true
+  try {
+    const [cfg, stats, traceResp] = await Promise.all([
+      api.getSmartRoutingConfig(),
+      api.getAutopilotTraceStats(),
+      api.getAutopilotTraces({ limit: 50 }),
+    ])
+    config.value = cfg
+    traceStats.value = stats
+    traces.value = traceResp.traces
+  } catch (e) {
+    console.error('[Autopilot-View] 加载失败:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchTraces() {
+  tracesLoading.value = true
+  try {
+    const resp = await api.getAutopilotTraces({ limit: 50 })
+    traces.value = resp.traces
+  } catch (e) {
+    console.error('[Autopilot-View] Trace 刷新失败:', e)
+  } finally {
+    tracesLoading.value = false
+  }
+}
+
+async function handleConfigUpdate(updated: SmartRoutingConfig) {
+  saving.value = true
+  try {
+    const resp = await api.updateSmartRoutingConfig(updated)
+    config.value = resp
+  } catch (e) {
+    console.error('[Autopilot-View] 配置保存失败:', e)
+  } finally {
+    saving.value = false
+  }
+}
+
+onMounted(fetchAll)
+</script>

@@ -42,7 +42,13 @@ import type {
   CompatDiagnoseResult,
   HealthCenterOverview,
   HealthCenterChannelsResponse,
-  HealthCenterEndpointsResponse
+  HealthCenterEndpointsResponse,
+  SmartRoutingConfig,
+  AutopilotTraceListResponse,
+  AutopilotTraceStats,
+  AutoAddChannelRequest,
+  AutoAddChannelResponse,
+  ChannelAutoStatusResponse
 } from './api-types'
 
 export * from './api-helpers'
@@ -1190,6 +1196,48 @@ export class ApiService {
 
   async getCockpitOverview(): Promise<CockpitOverviewResponse> {
     return this.request('/cockpit/overview')
+  }
+
+  // ============== Autopilot 智能路由 API ==============
+
+  /** 获取智能路由全局配置 */
+  async getSmartRoutingConfig(): Promise<SmartRoutingConfig> {
+    return this.request('/smart-routing/config')
+  }
+
+  /** 更新智能路由全局配置 */
+  async updateSmartRoutingConfig(data: Partial<SmartRoutingConfig>): Promise<SmartRoutingConfig> {
+    return this.request('/smart-routing/config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  /** 获取路由决策追踪列表 */
+  async getAutopilotTraces(params?: { limit?: number; mismatch?: boolean }): Promise<AutopilotTraceListResponse> {
+    const query = new URLSearchParams()
+    if (params?.limit) query.set('limit', String(params.limit))
+    if (params?.mismatch) query.set('mismatch', 'true')
+    const qs = query.toString()
+    return this.request(`/traces${qs ? '?' + qs : ''}`)
+  }
+
+  /** 获取路由追踪统计汇总 */
+  async getAutopilotTraceStats(): Promise<AutopilotTraceStats> {
+    return this.request('/traces/stats')
+  }
+
+  /** 快速添加渠道（自动托管模式） */
+  async autoAddChannel(kind: string, data: AutoAddChannelRequest): Promise<AutoAddChannelResponse> {
+    return this.request(`/${kind}/channels/auto-add`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  /** 查询渠道自动托管状态 */
+  async getChannelAutoStatus(kind: string, channelId: number): Promise<ChannelAutoStatusResponse> {
+    return this.request(`/${kind}/channels/${channelId}/auto-status`)
   }
 
 }

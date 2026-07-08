@@ -350,8 +350,14 @@ func (cm *ConfigManager) UpdateUpstream(index int, updates UpstreamUpdate) (shou
 		upstream.RateLimitAutoFromHeaders = &v
 	}
 	if updates.HistoricalImageTurnLimit != nil {
-		upstream.HistoricalImageTurnLimit = NormalizeChannelHistoricalImageTurnLimit(*updates.HistoricalImageTurnLimit)
+				upstream.HistoricalImageTurnLimit = NormalizeChannelHistoricalImageTurnLimit(*updates.HistoricalImageTurnLimit)
 
+	}
+	if updates.AutoManaged != nil {
+		upstream.AutoManaged = *updates.AutoManaged
+	}
+	if updates.AutoManagedAt != nil {
+		upstream.AutoManagedAt = updates.AutoManagedAt
 	}
 
 	// 检测配置是否真的发生了变化

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"log"
 	"os"
 	"strings"
 )
@@ -547,6 +549,37 @@ func (cm *ConfigManager) GetAutopilotRouting() AutopilotRoutingConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.AutopilotRouting
+}
+
+// SetAutopilotRoutingMode 更新智能路由运行模式并持久化。
+// mode 经 normalizeAutopilotMode 规范化后写入（空字符串回退到 shadow）。
+func (cm *ConfigManager) SetAutopilotRoutingMode(mode string) error {
+	if mode == "" {
+		return fmt.Errorf("mode 不能为空")
+	}
+	normalized := normalizeAutopilotMode(mode)
+	cm.mu.Lock()
+	cm.config.AutopilotRouting.RoutingMode = normalized
+	if err := cm.saveConfigLocked(cm.config); err != nil {
+		cm.mu.Unlock()
+		return err
+	}
+	log.Printf("[Config-Autopilot] 路由模式已更新: %s", normalized)
+	cm.fireConfigChangeCallbacks()
+	return nil
+}
+
+// SetAutopilotCostPreference 更新价格偏向并持久化。
+func (cm *ConfigManager) SetCostPreference(cp CostPreferenceConfig) error {
+	cm.mu.Lock()
+	cm.config.AutopilotRouting.CostPreference = cp
+	if err := cm.saveConfigLocked(cm.config); err != nil {
+		cm.mu.Unlock()
+		return err
+	}
+	log.Printf("[Config-Autopilot] 价格偏向已更新: %s", cp.Mode)
+	cm.fireConfigChangeCallbacks()
+	return nil
 }
 
 // GetEffectiveRoutingMode 获取智能路由生效模式。

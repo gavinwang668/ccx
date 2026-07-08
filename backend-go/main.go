@@ -1016,6 +1016,18 @@ func main() {
 			if autopilotManager.SmartRouter() != nil {
 				autopilot.RegisterDryRunRoutes(apiGroup, autopilotManager.SmartRouter())
 			}
+
+			// Phase 2 第三批：自动托管 API
+			autoDiscoveryRunner := autopilot.NewAutoDiscoveryRunner(autopilotManager.ProfileStore())
+			autopilot.RegisterAutoManagedRoutes(apiGroup, &autopilot.AutoManagedDeps{
+				CfgManager: cfgManager,
+				Runner:     autoDiscoveryRunner,
+			})
+
+			// Phase 2 第三批：智能路由配置 API
+			autopilot.RegisterRoutingConfigRoutes(apiGroup, &autopilot.RoutingConfigDeps{
+				CfgManager: cfgManager,
+			})
 		}
 
 		// Fuzzy 模式设置
