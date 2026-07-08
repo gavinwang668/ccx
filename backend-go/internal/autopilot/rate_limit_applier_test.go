@@ -12,13 +12,13 @@ import (
 // newTestApplier 创建用于测试的 RateLimitApplier。
 // 返回 applier、discoverer、limiterMgr 以便测试前喂入数据。
 func newTestApplier(
-	cfg config.AutopilotRoutingConfig,
+	cfg *config.AutopilotRoutingConfig,
 	quietLogs bool,
 ) (*RateLimitApplier, *RateLimitDiscoverer, *ratelimit.Manager) {
 	discoverer := NewRateLimitDiscoverer(RateLimitDiscovererConfig{QuietLogs: true})
 	limiterMgr := ratelimit.NewManager()
 	configGetter := func() config.AutopilotRoutingConfig {
-		return cfg
+		return *cfg
 	}
 	applier := NewRateLimitApplier(discoverer, limiterMgr, configGetter, quietLogs)
 	return applier, discoverer, limiterMgr
@@ -118,7 +118,7 @@ func TestRateLimitApplier_Gating(t *testing.T) {
 			cfg.RateLimitDiscovery.Enabled = tt.enabled
 			cfg.RateLimitDiscovery.ConfidenceThreshold = tt.threshold
 
-			applier, discoverer, limiterMgr := newTestApplier(cfg, true)
+			applier, discoverer, limiterMgr := newTestApplier(&cfg, true)
 
 			// 创建 limiter 并设置映射
 			endpointUID := "ep-test-uid"
@@ -191,7 +191,7 @@ func TestRateLimitApplier_KillSwitchClearsExistingDiscovery(t *testing.T) {
 	cfg.RateLimitDiscovery.Enabled = true
 	cfg.RateLimitDiscovery.ConfidenceThreshold = 0.7
 
-	applier, discoverer, limiterMgr := newTestApplier(cfg, true)
+	applier, discoverer, limiterMgr := newTestApplier(&cfg, true)
 
 	endpointUID := "ep-kill-test"
 	limiterKey := "messages:0"
@@ -284,7 +284,7 @@ func TestRateLimitApplier_ApplyNoMappings(t *testing.T) {
 	cfg.RateLimitDiscovery.Enabled = true
 	cfg.RateLimitDiscovery.ConfidenceThreshold = 0.7
 
-	applier, discoverer, _ := newTestApplier(cfg, true)
+	applier, discoverer, _ := newTestApplier(&cfg, true)
 
 	// 不调用 SetEndpointMappings，直接 Apply
 	discoverer.Observe("ep-orphan", RateLimitSignal{
