@@ -115,6 +115,29 @@ func (s *FastDecayScorer) Score(endpointUID string) float64 {
 	return s.baseScore * st.DecayFactor
 }
 
+// Scores 批量返回指定 endpoint 的当前有效衰减分数。
+// 对于未被记录的 endpoint，返回 1.0（无衰减）。
+// 返回值 key 为 endpointUID，value 为衰减分数。
+// uids 为空时返回空 map。
+func (s *FastDecayScorer) Scores(uids []string) map[string]float64 {
+	if len(uids) == 0 {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]float64, len(uids))
+	for _, uid := range uids {
+		st, exists := s.states[uid]
+		if !exists {
+			result[uid] = maxDecayScore
+		} else {
+			result[uid] = s.baseScore * st.DecayFactor
+		}
+	}
+	return result
+}
+
 // RawState 返回指定 endpoint 的原始衰减因子和连续失败次数（供 UI 展示）。
 // 如果 endpoint 未被记录过，返回 (1.0, 0)。
 func (s *FastDecayScorer) RawState(endpointUID string) (decayFactor float64, consecutiveFail int) {

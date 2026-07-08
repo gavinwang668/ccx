@@ -413,6 +413,145 @@ func TestLimiter_NilSafety(t *testing.T) {
 	}
 }
 
+// ── 发现 RPM 覆盖 ──
+
+func TestLimiter_DiscoveredRPM_AppliedWhenNotExplicit(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{}, base) // 无显式 RPM
+
+	// 初始不限速
+	if l.GetRPM() != 0 {
+		t.Fatalf("initial RPM = %d, want 0", l.GetRPM())
+	}
+
+	// 设置发现 RPM
+	l.SetDiscoveredRPM(30)
+	if l.GetRPM() != 30 {
+		t.Fatalf("after SetDiscoveredRPM(30): RPM = %d, want 30", l.GetRPM())
+	}
+	if !l.HasDiscoveredRPM() {
+		t.Fatal("HasDiscoveredRPM = false, want true")
+	}
+}
+
+func TestLimiter_DiscoveredRPM_BlockedByExplicit(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{RPM: 60}, base) // 有显式 RPM=60
+	l.SetExplicitRPM()
+
+	// 尝试设置发现 RPM → 应被忽略
+	l.SetDiscoveredRPM(30)
+	if l.GetRPM() != 60 {
+		t.Fatalf("after SetDiscoveredRPM(30) with explicit: RPM = %d, want 60", l.GetRPM())
+	}
+	if l.HasDiscoveredRPM() {
+		t.Fatal("HasDiscoveredRPM = true, want false (blocked by explicit)")
+	}
+	if !l.IsExplicitRPM() {
+		t.Fatal("IsExplicitRPM = false, want true")
+	}
+}
+
+func TestLimiter_DiscoveredRPM_ClearWhenNotExplicit(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{}, base)
+
+	l.SetDiscoveredRPM(50)
+	if l.GetRPM() != 50 {
+		t.Fatalf("after SetDiscoveredRPM(50): RPM = %d, want 50", l.GetRPM())
+	}
+
+	// 清除发现 RPM → 恢复不限速
+	l.ClearDiscoveredRPM()
+	if l.GetRPM() != 0 {
+		t.Fatalf("after ClearDiscoveredRPM: RPM = %d, want 0", l.GetRPM())
+	}
+	if l.HasDiscoveredRPM() {
+		t.Fatal("HasDiscoveredRPM = true after Clear")
+	}
+}
+
+func TestLimiter_DiscoveredRPM_ClearIgnoredWhenExplicit(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{RPM: 60}, base)
+	l.SetExplicitRPM()
+
+	// ClearDiscoveredRPM 不影响显式配置
+	l.ClearDiscoveredRPM()
+	if l.GetRPM() != 60 {
+		t.Fatalf("after ClearDiscoveredRPM with explicit: RPM = %d, want 60", l.GetRPM())
+	}
+}
+
+func TestLimiter_DiscoveredRPM_NilSafety(t *testing.T) {
+	var l *ChannelLimiter
+	l.SetDiscoveredRPM(30)
+	l.ClearDiscoveredRPM()
+	l.SetExplicitRPM()
+	if l.IsExplicitRPM() {
+		t.Fatal("nil limiter IsExplicitRPM = true")
+	}
+	if l.GetRPM() != 0 {
+		t.Fatal("nil limiter GetRPM != 0")
+	}
+	if l.HasDiscoveredRPM() {
+		t.Fatal("nil limiter HasDiscoveredRPM = true")
+	}
+}
+
+func TestLimiter_DiscoveredRPM_AcquireRespectsDiscovery(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{}, base) // 无显式配置
+
+	// 设置发现 RPM=2
+	l.SetDiscoveredRPM(2)
+
+	// 前 2 次请求应成功
+	for i := 0; i < 2; i++ {
+		release, err := l.Acquire(context.Background(), 100*time.Millisecond, base)
+		if err != nil {
+			t.Fatalf("request %d: unexpected error: %v", i, err)
+		}
+		release()
+	}
+
+	// 第 3 次应失败（窗口满）
+	_, err := l.Acquire(context.Background(), 100*time.Millisecond, base)
+	if err != ErrWindowFull {
+		t.Fatalf("expected ErrWindowFull after discovered RPM limit, got %v", err)
+	}
+}
+
+func TestLimiter_DiscoveredRPM_UpdateToNewValue(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{}, base)
+
+	l.SetDiscoveredRPM(30)
+	if l.GetRPM() != 30 {
+		t.Fatalf("first SetDiscoveredRPM(30): RPM = %d, want 30", l.GetRPM())
+	}
+
+	// 更新为新值
+	l.SetDiscoveredRPM(50)
+	if l.GetRPM() != 50 {
+		t.Fatalf("second SetDiscoveredRPM(50): RPM = %d, want 50", l.GetRPM())
+	}
+}
+
+func TestLimiter_DiscoveredRPM_ZeroClears(t *testing.T) {
+	base := time.Now()
+	l := NewChannelLimiter(Config{}, base)
+
+	l.SetDiscoveredRPM(30)
+	l.SetDiscoveredRPM(0) // rpm <= 0 清除
+	if l.HasDiscoveredRPM() {
+		t.Fatal("HasDiscoveredRPM = true after SetDiscoveredRPM(0)")
+	}
+	if l.GetRPM() != 0 {
+		t.Fatalf("after SetDiscoveredRPM(0): RPM = %d, want 0", l.GetRPM())
+	}
+}
+
 // ── Status ──
 
 func TestLimiter_Status(t *testing.T) {

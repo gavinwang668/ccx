@@ -29,6 +29,13 @@ type ChannelLimiter struct {
 	cooldownUntil time.Time
 
 	lastActivity time.Time
+
+	// --- 发现 RPM 覆盖 ---
+	// explicitRPM 标记 RPM 是否由用户在 config.json 中显式配置。
+	// 当 explicitRPM=true 时，SetDiscoveredRPM 不生效（显式配置永远优先）。
+	explicitRPM      bool
+	discoveredRPM    int  // 由 autopilot 运行态注入的发现 RPM（0=无覆盖）
+	discoveredRPMSet bool // discoveredRPM 是否已被设置
 }
 
 // Config 是 ChannelLimiter 的创建/更新配置。
@@ -163,6 +170,103 @@ func (l *ChannelLimiter) LastActivity() time.Time {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.lastActivity
+}
+
+// ── 显式 RPM 与发现 RPM 管理 ──
+
+// SetExplicitRPM 标记该 limiter 的 RPM 来自用户显式配置。
+// 后续 SetDiscoveredRPM 调用将被忽略（显式配置永远优先）。
+func (l *ChannelLimiter) SetExplicitRPM() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.explicitRPM = true
+}
+
+// IsExplicitRPM 返回 RPM 是否由用户显式配置。
+func (l *ChannelLimiter) IsExplicitRPM() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.explicitRPM
+}
+
+// GetRPM 返回当前生效的 RPM 值（maxRequests）。
+// 0 表示不限速。
+func (l *ChannelLimiter) GetRPM() int {
+	if l == nil {
+		return 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.maxRequests
+}
+
+// SetDiscoveredRPM 应用 autopilot 发现的 RPM 到运行态 limiter。
+// 如果 RPM 由用户显式配置（explicitRPM=true），此调用被忽略。
+// rpm <= 0 表示清除发现覆盖（与 ClearDiscoveredRPM 等效）。
+func (l *ChannelLimiter) SetDiscoveredRPM(rpm int) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.explicitRPM {
+		return // 显式配置优先，不覆盖
+	}
+
+	if rpm <= 0 {
+		// 清除发现覆盖并恢复不限速状态
+		l.discoveredRPM = 0
+		l.discoveredRPMSet = false
+		l.maxRequests = 0
+		l.window = 0
+		return
+	}
+
+	l.discoveredRPM = rpm
+	l.discoveredRPMSet = true
+
+	// 立即应用到滑动窗口（保留窗口大小和并发信号量不变）
+	l.maxRequests = rpm
+	if l.window <= 0 {
+		l.window = 60 * time.Second
+	}
+}
+
+// ClearDiscoveredRPM 清除发现 RPM 覆盖，恢复到非限速状态（如果无显式配置）。
+// 如果有显式配置，此调用无效（显式配置不受发现覆盖清除影响）。
+func (l *ChannelLimiter) ClearDiscoveredRPM() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.explicitRPM {
+		return
+	}
+
+	l.discoveredRPM = 0
+	l.discoveredRPMSet = false
+	// 清除发现覆盖后，如果没有显式配置，恢复不限速状态
+	l.maxRequests = 0
+	l.window = 0
+}
+
+// HasDiscoveredRPM 返回当前是否有活跃的发现 RPM 覆盖。
+func (l *ChannelLimiter) HasDiscoveredRPM() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.discoveredRPMSet
 }
 
 // Acquire 尝试获取一个请求许可。返回 release 函数（必须在请求完成后调用以释放并发信号量）。

@@ -296,6 +296,108 @@ func TestFastDecay_ConcurrentSafety(t *testing.T) {
 	}
 }
 
+// ── Scores 批量查询 ──
+
+func TestFastDecay_Scores_Batch(t *testing.T) {
+	scorer := NewFastDecayScorer()
+
+	// ep-a 失败 3 次
+	for i := 0; i < 3; i++ {
+		scorer.RecordResult("ep-a", false)
+	}
+	// ep-b 无操作（未被记录）
+	// ep-c 失败 1 次
+	scorer.RecordResult("ep-c", false)
+
+	uids := []string{"ep-a", "ep-b", "ep-c", "ep-unknown"}
+	scores := scorer.Scores(uids)
+
+	if scores == nil {
+		t.Fatal("Scores returned nil for non-empty uids")
+	}
+	if len(scores) != 4 {
+		t.Fatalf("Scores len = %d, want 4", len(scores))
+	}
+
+	// ep-a: 3 fails → pow(0.85, 3)
+	expectedA := math.Pow(0.85, 3)
+	if math.Abs(scores["ep-a"]-expectedA) > 1e-6 {
+		t.Errorf("ep-a Score = %.6f, want %.6f", scores["ep-a"], expectedA)
+	}
+
+	// ep-b: 未记录 → 1.0
+	if scores["ep-b"] != 1.0 {
+		t.Errorf("ep-b Score = %.6f, want 1.0", scores["ep-b"])
+	}
+
+	// ep-c: 1 fail → 0.85
+	expectedC := 0.85
+	if math.Abs(scores["ep-c"]-expectedC) > 1e-6 {
+		t.Errorf("ep-c Score = %.6f, want %.6f", scores["ep-c"], expectedC)
+	}
+
+	// ep-unknown: 未记录 → 1.0
+	if scores["ep-unknown"] != 1.0 {
+		t.Errorf("ep-unknown Score = %.6f, want 1.0", scores["ep-unknown"])
+	}
+}
+
+func TestFastDecay_Scores_EmptyUIDs(t *testing.T) {
+	scorer := NewFastDecayScorer()
+	scorer.RecordResult("ep-a", false)
+
+	scores := scorer.Scores(nil)
+	if scores != nil {
+		t.Errorf("Scores(nil) = %v, want nil", scores)
+	}
+
+	scores = scorer.Scores([]string{})
+	if scores != nil {
+		t.Errorf("Scores([]) = %v, want nil", scores)
+	}
+}
+
+func TestFastDecay_Scores_ConcurrentSafety(t *testing.T) {
+	scorer := NewFastDecayScorer()
+	const goroutines = 20
+	const opsPerGoroutine = 50
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < opsPerGoroutine; j++ {
+				scorer.RecordResult("ep-concurrent", false)
+			}
+		}()
+	}
+
+	// 并发 Scores 查询
+	wg2 := sync.WaitGroup{}
+	wg2.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg2.Done()
+			for j := 0; j < opsPerGoroutine; j++ {
+				scores := scorer.Scores([]string{"ep-concurrent", "ep-unknown"})
+				if scores == nil {
+					t.Error("Scores returned nil")
+				}
+				for _, v := range scores {
+					if v < 0 || v > 1.0 {
+						t.Errorf("Score out of range [0,1]: %.6f", v)
+					}
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	wg2.Wait()
+}
+
 // ── 非白嫖池恒为 1.0（通过 IsFastDecayEligible 判断）──
 
 func TestIsFastDecayEligible_OnlyTemp(t *testing.T) {
