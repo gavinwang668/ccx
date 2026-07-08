@@ -393,6 +393,11 @@ func generateChannelUID() string {
 	return "ch_" + hex.EncodeToString(b)
 }
 
+// GenerateChannelUID 生成渠道稳定身份 ID（公开版，供 autopilot 等包在创建渠道时预分配）。
+func GenerateChannelUID() string {
+	return generateChannelUID()
+}
+
 // ensureChannelUIDs 为所有缺失 ChannelUID 的渠道补齐稳定身份标识。
 // 已有 ChannelUID 的渠道不会被修改，保证渠道重排、改名、改 baseURL 后身份不变。
 // 覆盖全部六类渠道：Messages / Responses / Gemini / Chat / Images / Vectors。

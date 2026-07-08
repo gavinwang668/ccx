@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
@@ -61,10 +62,16 @@ type AutoManagedDeps struct {
 
 // RegisterAutoManagedRoutes 注册自动托管 API 路由。
 // 路由直接挂载到 apiGroup（不创建子组），与现有渠道管理路由共存。
+//
+// 注意：必须为每个 kind 显式注册静态路径，不能用 `:kind` 参数，
+// 否则会与现有的 `/messages/channels/...` 等静态路由在 Gin radix tree 中冲突。
 func RegisterAutoManagedRoutes(apiGroup *gin.RouterGroup, deps *AutoManagedDeps) {
-	apiGroup.POST("/:kind/channels/auto-add", handleAutoAdd(deps))
-	apiGroup.POST("/:kind/channels/:id/auto-discover", handleAutoDiscover(deps))
-	apiGroup.GET("/:kind/channels/:id/auto-status", handleAutoStatus(deps))
+	kinds := []string{"messages", "chat", "responses", "gemini", "images", "vectors"}
+	for _, kind := range kinds {
+		apiGroup.POST("/"+kind+"/channels/auto-add", handleAutoAdd(deps))
+		apiGroup.POST("/"+kind+"/channels/:id/auto-discover", handleAutoDiscover(deps))
+		apiGroup.GET("/"+kind+"/channels/:id/auto-status", handleAutoStatus(deps))
+	}
 }
 
 // validChannelKinds 合法的渠道类型集合。
@@ -77,13 +84,28 @@ var validChannelKinds = map[string]bool{
 	"vectors":   true,
 }
 
+// ─── 辅助函数 ─────────────────────────────────────────────────────────────────────────
+
+// extractKindFromPath 从请求路径中提取 kind。
+// 路径格式：/api/{kind}/channels/...
+func extractKindFromPath(c *gin.Context) string {
+	path := c.Request.URL.Path
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	// 路径格式：api/{kind}/channels/...
+	// parts[0]="api", parts[1]=kind
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return ""
+}
+
 // ─── 处理函数 ─────────────────────────────────────────────────────────────────────────
 
-// handleAutoAdd POST /:kind/channels/auto-add
+// handleAutoAdd POST /{kind}/channels/auto-add
 // 创建自动托管渠道并异步触发发现。
 func handleAutoAdd(deps *AutoManagedDeps) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		kind := c.Param("kind")
+		kind := extractKindFromPath(c)
 		if !validChannelKinds[kind] {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("不支持的渠道类型: %s", kind)})
 			return
@@ -113,13 +135,14 @@ func handleAutoAdd(deps *AutoManagedDeps) gin.HandlerFunc {
 		// 构建 UpstreamConfig
 		now := time.Now()
 		upstream := config.UpstreamConfig{
-			Name:         name,
-			BaseURL:      req.BaseURLs[0],
-			BaseURLs:     req.BaseURLs,
-			APIKeys:      req.APIKeys,
-			ServiceType:  serviceType,
-			Status:       "active",
-			AutoManaged:  true,
+			Name:          name,
+			ChannelUID:    config.GenerateChannelUID(), // 预分配 channelUID，避免竞态
+			BaseURL:       req.BaseURLs[0],
+			BaseURLs:      req.BaseURLs,
+			APIKeys:       req.APIKeys,
+			ServiceType:   serviceType,
+			Status:        "active",
+			AutoManaged:   true,
 			AutoManagedAt: &now,
 		}
 
@@ -179,25 +202,20 @@ func handleAutoAdd(deps *AutoManagedDeps) gin.HandlerFunc {
 	}
 }
 
-// handleAutoDiscover POST /:kind/channels/:id/auto-discover
+// handleAutoDiscover POST /{kind}/channels/:id/auto-discover
 // 重新触发发现。
 func handleAutoDiscover(deps *AutoManagedDeps) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		kind := c.Param("kind")
+		kind := extractKindFromPath(c)
 		if !validChannelKinds[kind] {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("不支持的渠道类型: %s", kind)})
 			return
 		}
 
-		id, err := parseChannelID(c.Param("id"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的渠道索引"})
-			return
-		}
-
 		cfg := deps.CfgManager.GetConfig()
 		channels := getChannelSlice(cfg, kind)
-		if id < 0 || id >= len(channels) {
+		id, found := findChannelIndex(channels, c.Param("id"))
+		if !found {
 			c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在"})
 			return
 		}
@@ -223,25 +241,20 @@ func handleAutoDiscover(deps *AutoManagedDeps) gin.HandlerFunc {
 	}
 }
 
-// handleAutoStatus GET /:kind/channels/:id/auto-status
+// handleAutoStatus GET /{kind}/channels/:id/auto-status
 // 返回自动托管状态和发现结果。
 func handleAutoStatus(deps *AutoManagedDeps) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		kind := c.Param("kind")
+		kind := extractKindFromPath(c)
 		if !validChannelKinds[kind] {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("不支持的渠道类型: %s", kind)})
 			return
 		}
 
-		id, err := parseChannelID(c.Param("id"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的渠道索引"})
-			return
-		}
-
 		cfg := deps.CfgManager.GetConfig()
 		channels := getChannelSlice(cfg, kind)
-		if id < 0 || id >= len(channels) {
+		id, found := findChannelIndex(channels, c.Param("id"))
+		if !found {
 			c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在"})
 			return
 		}
@@ -318,14 +331,25 @@ func getChannelSlice(cfg config.Config, kind string) []config.UpstreamConfig {
 	}
 }
 
-// parseChannelID 解析渠道索引参数。
-func parseChannelID(idStr string) (int, error) {
+// findChannelIndex 按 channelUID 或整数索引在渠道列表中查找。
+// `:id` 参数可以是 channelUID（ch_xxx）或整数下标，优先匹配 channelUID。
+func findChannelIndex(channels []config.UpstreamConfig, idStr string) (int, bool) {
+	// 先尝试按 channelUID 匹配
+	for i, ch := range channels {
+		if ch.ChannelUID == idStr {
+			return i, true
+		}
+	}
+	// 再尝试整数下标
 	id := 0
 	for _, ch := range idStr {
 		if ch < '0' || ch > '9' {
-			return 0, fmt.Errorf("无效的索引")
+			return 0, false
 		}
 		id = id*10 + int(ch-'0')
 	}
-	return id, nil
+	if id >= 0 && id < len(channels) {
+		return id, true
+	}
+	return 0, false
 }

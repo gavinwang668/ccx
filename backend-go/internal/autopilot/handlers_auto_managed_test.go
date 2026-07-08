@@ -222,8 +222,9 @@ func TestAutoAddHandler_InvalidKind(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("期望 400, 实际=%d", w.Code)
+	// 静态路由注册后，无效 kind 直接返回 404（路由不存在）
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("期望 404, 实际=%d", w.Code)
 	}
 }
 
@@ -239,8 +240,9 @@ func TestAutoDiscoverHandler_InvalidKind(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("期望 400, 实际=%d", w.Code)
+	// 静态路由注册后，无效 kind 直接返回 404（路由不存在）
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("期望 404, 实际=%d", w.Code)
 	}
 }
 
@@ -256,7 +258,8 @@ func TestAutoStatusHandler_InvalidKind(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("期望 400, 实际=%d", w.Code)
+	// 静态路由注册后，无效 kind 直接返回 404（路由不存在）
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("期望 404, 实际=%d", w.Code)
 	}
 }
