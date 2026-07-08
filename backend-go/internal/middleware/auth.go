@@ -142,6 +142,13 @@ func getAPIKey(c *gin.Context) string {
 		return key
 	}
 
+	// 浏览器原生 WebSocket API 无法设置自定义请求头，只能通过握手阶段的
+	// Sec-WebSocket-Protocol 传递鉴权信息（客户端将 key 作为子协议传入）。
+	// 仅作为最后一个回退来源，不影响其他认证方式的行为。
+	if proto := c.GetHeader("Sec-WebSocket-Protocol"); proto != "" {
+		return proto
+	}
+
 	return ""
 }
 

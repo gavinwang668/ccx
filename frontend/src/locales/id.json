@@ -929,6 +929,16 @@
   "healthCenter.kind.images": "Images",
   "healthCenter.kind.vectors": "Vectors",
 
+  "healthCenter.changelog.title": "Perubahan Terbaru",
+  "healthCenter.changelog.empty": "Belum ada perubahan",
+  "healthCenter.changelog.live": "Langsung",
+  "healthCenter.changelog.connecting": "Menghubungkan…",
+  "healthCenter.changelog.disconnected": "Pembaruan langsung terputus, menyambung ulang…",
+  "healthCenter.changelog.type.healthChanged": "Status kesehatan berubah",
+  "healthCenter.changelog.type.profileUpdated": "Profil diperbarui",
+  "healthCenter.changelog.type.discoveryCompleted": "Penemuan otomatis selesai",
+  "healthCenter.changelog.type.autoMappingApplied": "Pemetaan model otomatis diterapkan",
+
   "channelHealth.stateLabel": "Kesehatan",
   "channelHealth.endpointsHealthy": "endpoint sehat",
   "channelHealth.avgSuccessRate": "Rata-rata tingkat keberhasilan",

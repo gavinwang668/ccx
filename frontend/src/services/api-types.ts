@@ -1097,3 +1097,29 @@ export interface ChannelAutoStatusResponse {
   autoManagedAt?: string
   discovery?: DiscoveryStatusInfo
 }
+
+// ============== 画像变更事件（Phase 3A） ==============
+
+export type ProfileChangeEventType =
+  | 'profile_updated'
+  | 'health_changed'
+  | 'discovery_completed'
+  | 'auto_mapping_applied'
+
+export interface ProfileChangeEvent {
+  eventUid: string
+  channelUid: string
+  channelKind: string
+  endpointUid?: string
+  metricsKey?: string
+  eventType: ProfileChangeEventType
+  summary: string
+  oldValue?: string
+  newValue?: string
+  createdAt: string
+}
+
+export interface ProfileChangelogResponse {
+  events: ProfileChangeEvent[]
+  total: number
+}

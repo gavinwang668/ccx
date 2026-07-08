@@ -56,16 +56,19 @@ type AutoDiscoveryRunner struct {
 	mu      sync.Mutex
 	tasks   map[string]*DiscoveryTask // channelUID -> task
 	store   *ProfileStore             // nil 时不写画像，只记录结果
+	hub     *EventHub                 // nil 时不发布 discovery_completed/auto_mapping_applied 事件
 	client  *http.Client              // nil 时使用默认 client
 	timeout time.Duration             // 单次请求超时，默认 10s
 }
 
 // NewAutoDiscoveryRunner 创建发现执行器。
 // store 可为 nil（仅记录内存结果，不写持久化画像）。
-func NewAutoDiscoveryRunner(store *ProfileStore) *AutoDiscoveryRunner {
+// hub 可为 nil（不发布 Phase 3A 画像变更事件，向后兼容旧调用点）。
+func NewAutoDiscoveryRunner(store *ProfileStore, hub *EventHub) *AutoDiscoveryRunner {
 	return &AutoDiscoveryRunner{
 		tasks:   make(map[string]*DiscoveryTask),
 		store:   store,
+		hub:     hub,
 		timeout: 10 * time.Second,
 	}
 }
@@ -159,6 +162,28 @@ func (r *AutoDiscoveryRunner) runDiscovery(ctx context.Context, task *DiscoveryT
 	// 探测完成后尝试自动写入 SupportedModels（安全守则：仅一致结果且用户未手动配置时写入）
 	if cfgManager != nil {
 		r.maybeAutoWriteChannelConfig(task.ChannelUID, channel, endpoints, cfgManager)
+	}
+
+	// Phase 3A：发布 discovery_completed 事件（只读展示，不影响调度）
+	if r.hub != nil {
+		channelKind := ""
+		if cfgManager != nil {
+			_, channelKind = findChannelIndexAndKind(cfgManager.GetConfig(), task.ChannelUID)
+		}
+		summary := fmt.Sprintf("%d/%d 端点可达", len(endpoints)-failedCount, len(endpoints))
+		if task.Status == DiscoveryStatusFailed {
+			summary = "发现失败: " + task.Error
+		}
+		now := time.Now()
+		ev := ProfileChangeEvent{
+			ChannelUID:  task.ChannelUID,
+			ChannelKind: channelKind,
+			EventType:   EventTypeDiscoveryComplete,
+			Summary:     summary,
+			CreatedAt:   now,
+		}
+		ev.EventUID = GenerateChangeEventUID(task.ChannelUID, ev.EventType, now)
+		r.hub.Publish(ev)
 	}
 
 	log.Printf("[AutoDiscovery-Run] 渠道 %s 发现完成: %d/%d 端点可达",
@@ -399,6 +424,20 @@ func (r *AutoDiscoveryRunner) maybeAutoWriteChannelConfig(channelUID string, cha
 
 	log.Printf("[AutoDiscovery-ConfigWrite] 渠道 %s: 已自动写入 SupportedModels（%d 项模型）",
 		channelUID, len(sorted))
+
+	// Phase 3A：发布 auto_mapping_applied 事件（只读展示，不影响调度）
+	if r.hub != nil {
+		now := time.Now()
+		ev := ProfileChangeEvent{
+			ChannelUID:  channelUID,
+			ChannelKind: kind,
+			EventType:   EventTypeAutoMappingApply,
+			Summary:     fmt.Sprintf("自动写入 SupportedModels（%d 项模型）", len(sorted)),
+			CreatedAt:   now,
+		}
+		ev.EventUID = GenerateChangeEventUID(channelUID, ev.EventType, now)
+		r.hub.Publish(ev)
+	}
 }
 
 // modelsSetConsistent 检查所有 endpoint 的模型列表是否集合相等。

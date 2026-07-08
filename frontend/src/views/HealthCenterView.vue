@@ -25,6 +25,9 @@
       <span>{{ t('healthCenter.totalEndpoints') }}: {{ overview.totalEndpoints }}</span>
     </div>
 
+    <!-- Recent changes timeline (Phase 3A) -->
+    <ProfileChangelogTimeline class="mb-4" />
+
     <!-- Loading state -->
     <div v-if="loading && !overview" class="text-center py-12">
       <v-progress-circular indeterminate color="primary" size="48" />
@@ -41,6 +44,7 @@ import { useI18n } from '@/i18n'
 import { api } from '@/services/api'
 import HealthCenterStats from '@/components/HealthCenterStats.vue'
 import HealthChannelTable from '@/components/HealthChannelTable.vue'
+import ProfileChangelogTimeline from '@/components/ProfileChangelogTimeline.vue'
 import type { HealthCenterOverview, ChannelHealthItem } from '@/services/api-types'
 
 const { t } = useI18n()

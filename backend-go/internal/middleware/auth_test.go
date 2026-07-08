@@ -92,6 +92,54 @@ func TestWebAuthMiddleware_APIRequiresKey(t *testing.T) {
 	})
 }
 
+// TestWebAuthMiddleware_SecWebSocketProtocolFallback 验证浏览器原生 WebSocket
+// 无法设置自定义 header 时，可通过 Sec-WebSocket-Protocol 子协议传递鉴权 key
+// （Phase 3A：/api/health-center/events 的鉴权基础）。
+func TestWebAuthMiddleware_SecWebSocketProtocolFallback(t *testing.T) {
+	envCfg := &config.EnvConfig{
+		ProxyAccessKey: "secret-key",
+		EnableWebUI:    true,
+	}
+	router := setupRouterWithAuth(envCfg)
+
+	t.Run("valid key via Sec-WebSocket-Protocol allows access", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+		req.Header.Set("Sec-WebSocket-Protocol", envCfg.ProxyAccessKey)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("invalid key via Sec-WebSocket-Protocol returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+		req.Header.Set("Sec-WebSocket-Protocol", "wrong")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("x-api-key takes priority over Sec-WebSocket-Protocol", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+		req.Header.Set("x-api-key", envCfg.ProxyAccessKey)
+		req.Header.Set("Sec-WebSocket-Protocol", "garbage-that-would-fail")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d (x-api-key 应优先生效)", w.Code, http.StatusOK)
+		}
+	})
+}
+
 func TestWebAuthMiddleware_SPAPassesThrough(t *testing.T) {
 	envCfg := &config.EnvConfig{
 		ProxyAccessKey: "secret-key",

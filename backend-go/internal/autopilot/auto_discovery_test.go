@@ -12,7 +12,7 @@ import (
 // ── 已有测试（保留原样） ─────────────────────────────────────────────────────
 
 func TestAutoDiscoveryRunner_TriggerRejectsDuplicate(t *testing.T) {
-	runner := NewAutoDiscoveryRunner(nil)
+	runner := NewAutoDiscoveryRunner(nil, nil)
 
 	ch := &config.UpstreamConfig{
 		ChannelUID: "ch_test_001",
@@ -31,7 +31,7 @@ func TestAutoDiscoveryRunner_TriggerRejectsDuplicate(t *testing.T) {
 }
 
 func TestAutoDiscoveryRunner_GetTaskNil(t *testing.T) {
-	runner := NewAutoDiscoveryRunner(nil)
+	runner := NewAutoDiscoveryRunner(nil, nil)
 	task := runner.GetTask("nonexistent")
 	if task != nil {
 		t.Fatal("从未触发的渠道应返回 nil")
@@ -39,7 +39,7 @@ func TestAutoDiscoveryRunner_GetTaskNil(t *testing.T) {
 }
 
 func TestAutoDiscoveryRunner_TriggerCreatesTask(t *testing.T) {
-	runner := NewAutoDiscoveryRunner(nil)
+	runner := NewAutoDiscoveryRunner(nil, nil)
 
 	ch := &config.UpstreamConfig{
 		ChannelUID: "ch_test_002",
@@ -120,7 +120,7 @@ func TestDiscoveryStatus_Constants(t *testing.T) {
 }
 
 func TestAutoDiscoveryRunner_ConcurrentTriggers(t *testing.T) {
-	runner := NewAutoDiscoveryRunner(nil)
+	runner := NewAutoDiscoveryRunner(nil, nil)
 
 	ch := &config.UpstreamConfig{
 		ChannelUID: "ch_concurrent",
@@ -323,7 +323,7 @@ func TestMaybeAutoWriteChannelConfig_TableDriven(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfgManager := setupTestConfigManagerForDiscovery(t, tt.channelUID, tt.supportedModels, tt.modelMapping)
-			runner := NewAutoDiscoveryRunner(nil)
+			runner := NewAutoDiscoveryRunner(nil, nil)
 			channel := &config.UpstreamConfig{
 				ChannelUID:      tt.channelUID,
 				SupportedModels: tt.supportedModels,
@@ -586,7 +586,7 @@ func TestFindChannelIndexAndKind(t *testing.T) {
 
 func TestMaybeAutoWriteChannelConfig_NilCfgManager(t *testing.T) {
 	// cfgManager 为 nil 时不 panic，不写入（runDiscovery 入口已 guard，此处测直接调用行为）
-	runner := NewAutoDiscoveryRunner(nil)
+	runner := NewAutoDiscoveryRunner(nil, nil)
 	channel := &config.UpstreamConfig{
 		ChannelUID: "ch_nil_cfg",
 	}

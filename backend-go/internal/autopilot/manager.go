@@ -136,6 +136,10 @@ type Manager struct {
 	probeWorker      *ProbeWorker
 	rateLimitApplier *RateLimitApplier
 
+	// Phase 3A：画像变更事件（只读展示，不影响调度）
+	changelogStore *ProfileChangelogStore
+	eventHub       *EventHub
+
 	cancel func()
 	wg     sync.WaitGroup
 }
@@ -176,6 +180,11 @@ func NewManager(
 		return nil, fmt.Errorf("[Autopilot-NewManager] 初始化 AdvisorDecisionStore 失败: %w", asErr)
 	}
 
+	changelogStore, clErr := NewProfileChangelogStoreWithDB(db)
+	if clErr != nil {
+		return nil, fmt.Errorf("[Autopilot-NewManager] 初始化 ProfileChangelogStore 失败: %w", clErr)
+	}
+
 	// 初始化 Phase 1 新组件（shadow/read-only，不修改调度链路）
 	timeBucketStore := NewTimeBucketStore()
 	return &Manager{
@@ -199,6 +208,9 @@ func NewManager(
 		advisorStore: advisorStore,
 		advisor:      NewTrustedRoutingAdvisor(),
 		usageMeter:   NewUsageMeter(UsageMeterConfig{QuietLogs: cfg.QuietLogs}, timeBucketStore),
+
+		changelogStore: changelogStore,
+		eventHub:       NewEventHub(),
 	}, nil
 }
 
@@ -468,6 +480,16 @@ func (m *Manager) RateLimitApplier() *RateLimitApplier {
 	return m.rateLimitApplier
 }
 
+// ChangelogStore 返回内部 ProfileChangelogStore 引用（供 API handler 读取历史）。
+func (m *Manager) ChangelogStore() *ProfileChangelogStore {
+	return m.changelogStore
+}
+
+// EventHub 返回内部 EventHub 引用（供 WebSocket handler 订阅、AutoDiscoveryRunner 发布）。
+func (m *Manager) EventHub() *EventHub {
+	return m.eventHub
+}
+
 // SetRateLimitApplier 设置 RateLimitApplier（由 main.go 在 NewManager 后调用）。
 func (m *Manager) SetRateLimitApplier(rla *RateLimitApplier) {
 	m.rateLimitApplier = rla
@@ -567,6 +589,7 @@ func (m *Manager) collectAll() {
 			}
 
 			// 分组变更检测
+			groupChanged := false
 			if m.groupChangeDetector != nil {
 				changed, changeResult := m.groupChangeDetector.CheckGroupChange(
 					entry.ChannelUID,
@@ -574,6 +597,7 @@ func (m *Manager) collectAll() {
 					profile.MetricsKey,
 					profile.AvailableModels,
 				)
+				groupChanged = changed
 				if changed {
 					now := time.Now()
 					profile.GroupChangedAt = &now
@@ -594,6 +618,10 @@ func (m *Manager) collectAll() {
 			if m.usageMeter != nil {
 				profile.UsageWindows = m.usageMeter.ComputeWindows(profile.EndpointUID)
 			}
+
+			// ── Phase 3A：画像变更事件检测（只读展示，不影响调度）──
+			// 必须在 Upsert 覆盖缓存之前读取旧值，否则 diff 永远为空。
+			m.emitProfileChangeEvents(profile.EndpointUID, &profile, groupChanged)
 
 			if err := m.store.Upsert(&profile); err != nil {
 				log.Printf("[Autopilot-Worker] 警告: 写入画像失败 endpoint=%s: %v", profile.EndpointUID, err)
@@ -618,6 +646,26 @@ func (m *Manager) collectAll() {
 	if !m.cfg.QuietLogs {
 		log.Printf("[Autopilot-Worker] 本轮完成: 渠道=%d, 画像=%d, 诊断=%d, 耗时=%s",
 			len(entries), profiled, diagnosed, elapsed.Truncate(time.Millisecond))
+	}
+}
+
+// emitProfileChangeEvents 对比 endpointUID 的旧画像与本轮新画像，
+// 将检测到的变更写入 changelog 并广播给事件订阅者。
+// 必须在调用方执行 m.store.Upsert 之前调用，否则 store.Get 拿到的就是新值，diff 恒为空。
+// nil-safe：changelogStore/eventHub 未初始化时静默跳过，不影响 collectAll 主流程。
+func (m *Manager) emitProfileChangeEvents(endpointUID string, current *KeyEndpointProfile, groupChanged bool) {
+	if m.changelogStore == nil && m.eventHub == nil {
+		return
+	}
+	old := m.store.Get(endpointUID)
+	events := DetectProfileChanges(old, current, groupChanged, time.Now())
+	for _, ev := range events {
+		if m.changelogStore != nil {
+			m.changelogStore.Record(ev)
+		}
+		if m.eventHub != nil {
+			m.eventHub.Publish(ev)
+		}
 	}
 }
 

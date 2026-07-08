@@ -1022,7 +1022,7 @@ func main() {
 			}
 
 			// Phase 2 第三批：自动托管 API
-			autoDiscoveryRunner := autopilot.NewAutoDiscoveryRunner(autopilotManager.ProfileStore())
+			autoDiscoveryRunner := autopilot.NewAutoDiscoveryRunner(autopilotManager.ProfileStore(), autopilotManager.EventHub())
 			autopilot.RegisterAutoManagedRoutes(apiGroup, &autopilot.AutoManagedDeps{
 				CfgManager: cfgManager,
 				Runner:     autoDiscoveryRunner,

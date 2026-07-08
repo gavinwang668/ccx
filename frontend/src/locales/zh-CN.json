@@ -929,6 +929,16 @@
   "healthCenter.kind.images": "Images",
   "healthCenter.kind.vectors": "Vectors",
 
+  "healthCenter.changelog.title": "最近变更",
+  "healthCenter.changelog.empty": "暂无变更记录",
+  "healthCenter.changelog.live": "实时",
+  "healthCenter.changelog.connecting": "连接中…",
+  "healthCenter.changelog.disconnected": "实时更新已断开，正在重连…",
+  "healthCenter.changelog.type.healthChanged": "健康状态变化",
+  "healthCenter.changelog.type.profileUpdated": "画像更新",
+  "healthCenter.changelog.type.discoveryCompleted": "自动发现完成",
+  "healthCenter.changelog.type.autoMappingApplied": "自动写入模型配置",
+
   "channelHealth.stateLabel": "健康状态",
   "channelHealth.endpointsHealthy": "个端点健康",
   "channelHealth.avgSuccessRate": "平均成功率",

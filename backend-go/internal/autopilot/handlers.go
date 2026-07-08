@@ -95,6 +95,10 @@ func RegisterRoutes(router gin.IRouter, mgr *Manager) {
 		group.GET("/overview", handleOverview(mgr))
 		group.GET("/channels", handleChannels(mgr))
 		group.GET("/channels/:channelUid/endpoints", handleEndpoints(mgr))
+
+		// Phase 3A：画像变更事件（只读展示，不影响调度）
+		group.GET("/changelog", handleChangelog(mgr))
+		group.GET("/events", handleChangelogEvents(mgr))
 	}
 }
 

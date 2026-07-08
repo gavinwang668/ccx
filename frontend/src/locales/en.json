@@ -929,6 +929,16 @@
   "healthCenter.kind.images": "Images",
   "healthCenter.kind.vectors": "Vectors",
 
+  "healthCenter.changelog.title": "Recent Changes",
+  "healthCenter.changelog.empty": "No changes yet",
+  "healthCenter.changelog.live": "Live",
+  "healthCenter.changelog.connecting": "Connecting…",
+  "healthCenter.changelog.disconnected": "Live updates disconnected, reconnecting…",
+  "healthCenter.changelog.type.healthChanged": "Health state changed",
+  "healthCenter.changelog.type.profileUpdated": "Profile updated",
+  "healthCenter.changelog.type.discoveryCompleted": "Auto-discovery completed",
+  "healthCenter.changelog.type.autoMappingApplied": "Auto model mapping applied",
+
   "channelHealth.stateLabel": "Health",
   "channelHealth.endpointsHealthy": "endpoints healthy",
   "channelHealth.avgSuccessRate": "Avg success rate",
