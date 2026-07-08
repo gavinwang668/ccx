@@ -430,6 +430,15 @@ type ModelProfile struct {
     ProviderQualitySource string `json:"providerQualitySource,omitempty"` // probe | user_feedback | inferred | default
     ProviderQualityConfidence float64 `json:"providerQualityConfidence,omitempty"` // 置信度
 
+    // ── 任务域优势（不同模型的强项任务不同）──
+    // 解决问题：opus/fable/gemini/glm 的审美明显好于 gpt，但 gpt 的代码审核堪比 fable
+    // 缺省时回退到 ModelFamily 级种子矩阵（§5.7），0.5 = 中性
+    TaskDomainStrengths map[TaskDomain]float64 `json:"taskDomainStrengths,omitempty"`
+
+    // ── 思考等级（同模型不同思考档位的智商差异，§5.8）──
+    SupportsEffortControl bool          `json:"supportsEffortControl,omitempty"` // 上游是否可控思考等级
+    SupportedEffortLevels []EffortLevel `json:"supportedEffortLevels,omitempty"` // 可用档位（按派系映射）
+
     // ── 探测结果 ──
     ProbeSuccess    bool      `json:"probeSuccess"`
     LastProbeAt     time.Time `json:"lastProbeAt"`
@@ -1874,6 +1883,7 @@ Score = w_quality * qualityScore
       + w_tier_match * tierMatchBonus
       + w_family * familyPreferenceScore   // 新增：模型派系偏好软约束
       + w_provider_quality * providerQualityScore  // 新增：同模型上游供应商质量差异
+      + w_domain * domainStrengthScore     // 新增：任务域优势（审美/代码审核等强项差异）
       - penalty
 
 其中：
@@ -1884,6 +1894,7 @@ Score = w_quality * qualityScore
   savingsScore:          normalizeCheapest(estimatedRequestCost)，越便宜越高，仅在满足硬约束后参与
   familyPreferenceScore: 见下方"模型派系偏好"章节
   providerQualityScore:  该endpoint对该模型的实现质量，0.0-1.0（1.0=最优实现）
+  domainStrengthScore:   模型在当前任务域的优势分，0.0-1.0（0.5=中性），见 §5.7
 
   tierMatchBonus: 渠道画像标签匹配策略优先标签时 +10
   penalty:        healthState=degraded 时 -5, limited 时 -20
@@ -1901,6 +1912,8 @@ Score = w_quality * qualityScore
 **w_family 权重约束验证**：`w_stability × (stable=2 − unstable=0) = 2.0`，而 `w_family × max(familyPreferenceScore) ≤ 0.2 × 3 = 0.6`。因此 stable 的非偏好派系（+2.0）始终胜过 unstable 的偏好派系（+0.6），派系偏好只在同等稳定性下才决定顺序。
 
 **w_provider_quality 权重约束验证**：`w_provider_quality × (1.0 − 0.0) = 1.0`，而 `w_stability × 2.0 = 2.0`。因此 stable 的低供应商质量实现仍优于 unstable 的高质量实现，供应商质量只在同等稳定性内打破平局。
+
+**w_domain 权重约束验证**：`w_domain` 统一取 0.5（embedding/image_generation 取 0），`w_domain × (1.0 − 0.0) = 0.5 < w_stability × 2.0`。任务域优势只在同等稳定性/健康度内影响排序，不会让"审美好但不稳定"的渠道胜出。TaskDomain 无法确定时 domainStrengthScore 一律取 0.5 中性值，该项对所有候选贡献相同、等效于不存在。
 
 **ProviderQualityScore 推导规则**：
 
@@ -2153,6 +2166,144 @@ embedding:
 - 用户手动配置的 `GroupMultipliers` / `RechargeMultiplier` 仍生效。
 - 成本置信度低于阈值时只做展示，不参与强排序。
 - vectors 可用最近同模型/同维度请求均价作为 shadow 估算；images 不用 chat token 价格替代生图价格。
+
+### 5.7 任务域优势矩阵 (Task-Domain Strength)
+
+模型质量不是标量：不同模型的强项任务不同。典型例子：opus / fable / gemini / glm 的审美（前端 UI、视觉设计）明显好于 gpt，但 gpt 的代码审核能力堪比 fable。单一 QualityTier 无法表达这种"按任务域各有胜负"的差异，本章引入 TaskDomain 维度。
+
+#### 5.7.1 TaskDomain 与 TaskClass 的区别
+
+```text
+TaskClass  回答"谁在干活/资源档位"：supervisor / worker / lightweight / vision / …
+TaskDomain 回答"干的是什么活/内容领域"：审美、代码审核、算法、写作、翻译…
+
+两者正交：一个 worker（TaskClass）可能在写前端 UI（aesthetics_ui 域），
+也可能在做代码审核（code_review 域），最优模型完全不同。
+```
+
+```go
+type TaskDomain string
+
+const (
+    TaskDomainAestheticsUI TaskDomain = "aesthetics_ui" // 前端 UI/视觉设计/审美
+    TaskDomainCodeReview   TaskDomain = "code_review"   // 代码审核/找 bug
+    TaskDomainCoding       TaskDomain = "coding"        // 通用编码实现
+    TaskDomainReasoning    TaskDomain = "reasoning"     // 算法/数学/复杂推理
+    TaskDomainWriting      TaskDomain = "writing"       // 文案/长文写作
+    TaskDomainTranslation  TaskDomain = "translation"   // 翻译
+    TaskDomainAgentic      TaskDomain = "agentic"       // 多步工具调用/agent 编排
+    TaskDomainGeneral      TaskDomain = "general"       // 无法判定，中性
+)
+```
+
+#### 5.7.2 域推导（确定性规则）
+
+与 P0.3 确定性 TaskClassifier 相同约束：域推导必须是确定性规则，不引入 LLM 判断，同一请求永远推导出同一 TaskDomain。
+
+```text
+信号来源（按优先级）：
+1. 请求头显式声明：X-Task-Domain（客户端/上层 agent 直接指定，最高优先级）
+2. system prompt 关键词匹配：固定关键词表（"code review"/"审查代码"→code_review；
+   "UI"/"设计"/"样式"/"Tailwind"→aesthetics_ui；"翻译"→translation…）
+3. 工具集特征：请求携带的 tools 列表特征（如仅有 read/grep 类只读工具 + diff 上下文→code_review）
+4. 消息内容特征：首条 user 消息的文件扩展名分布（.vue/.css→aesthetics_ui）
+
+任何信号都不足时 → general（中性），domainStrengthScore 对所有候选取 0.5，该项失效。
+误判代价有界：w_domain=0.5 上限远低于稳定性/质量权重，误判最多影响同档候选的相对顺序。
+```
+
+#### 5.7.3 种子矩阵与覆盖
+
+内置 ModelFamily 级种子矩阵（出厂默认，随版本更新），ModelProfile 级 `TaskDomainStrengths` 可覆盖单个模型：
+
+```text
+              aesthetics_ui  code_review  coding  reasoning  writing
+claude(fable)      0.90          0.90      0.85     0.90       0.85
+claude(opus)       0.90          0.85      0.85     0.85       0.85
+openai(gpt)        0.60          0.90      0.80     0.85       0.70
+gemini             0.85          0.75      0.75     0.80       0.75
+glm                0.80          0.70      0.75     0.70       0.75
+deepseek           0.55          0.75      0.80     0.85       0.65
+（未列出的族/域一律 0.5 中性；数值为种子先验，允许用户在配置中整体替换）
+```
+
+```text
+domainStrengthScore = ModelProfile.TaskDomainStrengths[domain]
+                      ?? seedMatrix[family][domain]
+                      ?? 0.5
+
+来源优先级：用户配置覆盖 > ModelProfile 探测/反馈值 > 种子矩阵 > 0.5
+用户反馈通路与 ProviderQualityScore 相同：UI 标记"这个模型做 X 类任务很好/很差"，
+写入 ModelProfile.TaskDomainStrengths，TTL 90 天（域优势比供应商质量稳定，衰减更慢）。
+```
+
+同版本迭代说明：同族不同版本的域优势也会漂移（如 gpt 新版审美追上），因此种子矩阵按 `family + 主版本` 建键（如 `openai/gpt-5.x`），注册表更新时同步刷新种子值。
+
+### 5.8 思考等级差异 (Reasoning Effort Levels)
+
+同一个模型在不同思考能力等级（thinking budget / reasoning effort）下的有效智商差异显著，代价是少量额外的 think 输出 token 开销。调度不应只在"选哪个模型"上做文章——"同一个模型开多大思考"是一个更便宜的质量杠杆：把 medium 提到 high 的成本增量通常远小于换到更贵一档的模型。
+
+#### 5.8.1 EffortLevel 档位与派系映射
+
+```go
+type EffortLevel string
+
+const (
+    EffortOff     EffortLevel = "off"     // 不开思考
+    EffortMinimal EffortLevel = "minimal"
+    EffortLow     EffortLevel = "low"
+    EffortMedium  EffortLevel = "medium"
+    EffortHigh    EffortLevel = "high"
+    EffortMax     EffortLevel = "max"
+)
+```
+
+统一档位到各派系原生参数的映射（发请求时翻译，画像/评分只用统一档位）：
+
+```text
+claude:   thinking.budget_tokens（off=不带 thinking 块；minimal≈1k/low≈4k/medium≈10k/high≈32k/max=模型上限）
+openai:   reasoning_effort = minimal|low|medium|high（无 max 的模型 high 封顶）
+gemini:   thinkingConfig.thinkingBudget（同 claude 按 token 预算映射）
+deepseek/glm/qwen…: 各自 thinking 开关/预算参数，映射表放模型注册表，缺省 SupportsEffortControl=false
+```
+
+#### 5.8.2 候选变体展开与评分影响
+
+对 `SupportsEffortControl=true` 的候选，SmartRouter 按 TaskClass 策略展开思考档位变体 `(endpoint, model, effort)`，同一模型的不同档位作为不同候选参与同一套评分：
+
+```text
+effort 不是新的权重项，它修改既有两个输入：
+  qualityScore(variant)         = baseQualityScore + effortQualityBonus(effort)
+                                  （off=0 / minimal=+0.2 / low=+0.4 / medium=+0.6 / high=+0.9 / max=+1.0，
+                                   上限钳制在 premium=4，避免"低档模型开满思考"虚标超过高档模型）
+  estimatedRequestCost(variant) += estimatedThinkTokens(effort) × effectiveOutputCostPerMTok / 1e6
+                                  （think token 按档位经验均值估算，来源于历史同档位请求的 p50）
+
+净效果：quality_first/supervisor 自然偏向高思考档；cost_first/lightweight 自然偏向 off/minimal——
+不需要独立的 effort 策略引擎，成本偏好（§5.6）的乘数直接作用于 think 开销。
+```
+
+每 TaskClass 的展开范围（避免候选爆炸，每模型最多展开 2 个档位）：
+
+```text
+supervisor:   [high, max]        worker:      [medium]
+lightweight:  [off, minimal]     vision:      [medium]
+long_context: [medium, high]     image_generation/embedding: 不展开
+```
+
+#### 5.8.3 不可突破的边界
+
+```text
+1. 客户端显式 thinking 配置永远优先：请求体已带 thinking/reasoning_effort 参数时，
+   CCX 忠实转发，不展开变体、不改档（代理诚实性原则）
+2. 只对 autoManaged 且渠道允许注入思考参数的 endpoint 展开；
+   现有渠道级思考配置（如 PassbackReasoningContent）语义不变
+3. 升档受成本边界约束：estimatedRequestCost 含 think 开销后仍需通过 §5.6 的排序，
+   不允许"为了质量分虚增思考预算"绕过 cost_first
+4. effortQualityBonus 不改变 CapabilityFloor 判定：质量下界按 baseQualityTier 评估，
+   "低档模型 + max 思考"不能顶替下界要求的高档模型
+5. 上游不支持该档位时就近降档（max→high），但绝不低于客户端等效请求的档位
+```
 
 ### 5.4 模型自动映射 (ModelResolver)
 
@@ -2980,6 +3131,26 @@ SmartRouter：按任务类型、硬约束、实时质量和有效成本排序
         "savingsMultiplier": 1.0,
         "providerQualityMultiplier": 1.0
       }
+    },
+
+    "taskDomainStrength": {
+      "enabled": true,
+      "weight": 0.5,
+      "seedMatrixOverrides": {
+        "openai/gpt-5.x": { "aesthetics_ui": 0.6, "code_review": 0.9 }
+      }
+    },
+
+    "reasoningEffort": {
+      "enabled": true,
+      "expandVariants": true,
+      "perTaskClass": {
+        "supervisor": ["high", "max"],
+        "worker": ["medium"],
+        "lightweight": ["off", "minimal"],
+        "long_context": ["medium", "high"]
+      },
+      "respectClientThinking": true
     },
 
     "manualIntent": {
