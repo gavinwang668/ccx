@@ -928,6 +928,18 @@
   "healthCenter.kind.gemini": "Gemini",
   "healthCenter.kind.images": "Images",
   "healthCenter.kind.vectors": "Vectors",
+
+  "channelHealth.stateLabel": "Health",
+  "channelHealth.endpointsHealthy": "endpoints healthy",
+  "channelHealth.avgSuccessRate": "Avg success rate",
+  "channelHealth.inconsistentWarning": "{count} endpoint(s) inconsistent",
+  "channelHealth.originOfficial": "Official API",
+  "channelHealth.originRelay": "Relay",
+  "channelHealth.originCommunity": "Community",
+  "channelHealth.originUnknown": "Unknown origin",
+  "channelHealth.poolFree": "Free pool",
+  "channelHealth.poolTemp": "Temp pool",
+
   "app.tabs.subscriptions": "Subscriptions",
   "app.tabs.cockpitOverview": "Cockpit",
   "subscription.title": "Subscriptions",

@@ -8,6 +8,7 @@
     :dashboard-metrics="channelStore.currentDashboardMetrics as any"
     :dashboard-stats="channelStore.currentDashboardStats as any"
     :dashboard-recent-activity="channelStore.currentDashboardRecentActivity as any"
+    :health-map="healthMap"
     class="mb-6"
     v-bind="$attrs"
   />
@@ -28,9 +29,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useChannelStore } from '@/stores/channel'
 import { useDialogStore } from '@/stores/dialog'
+import { api } from '@/services/api'
+import type { ChannelHealthItem } from '@/services/api-types'
 import ChannelOrchestration from '@/components/ChannelOrchestration.vue'
 import { useI18n } from '@/i18n'
 
@@ -45,6 +48,28 @@ const channelType = computed(() =>
 const channelStore = useChannelStore()
 const dialogStore = useDialogStore()
 const { t } = useI18n()
+
+// Health center data: channelId → health item (§8.2 badge integration).
+// Matching strategy: ChannelHealthItem.channelId is the 0-based index
+// that matches Channel.index in the backend config array.
+const healthMap = ref<Map<number, ChannelHealthItem>>(new Map())
+
+const loadHealthData = async () => {
+  try {
+    const resp = await api.getHealthCenterChannels()
+    const map = new Map<number, ChannelHealthItem>()
+    for (const item of resp.channels) {
+      map.set(item.channelId, item)
+    }
+    healthMap.value = map
+  } catch {
+    // Silently ignore: badge rendering is optional; no health data = no badge shown.
+  }
+}
+
+onMounted(() => {
+  loadHealthData()
+})
 
 const emitAddChannel = () => {
   // 打开添加渠道对话框

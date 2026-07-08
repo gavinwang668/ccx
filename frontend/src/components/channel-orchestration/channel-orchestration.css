@@ -175,6 +175,7 @@
   display: flex;
   align-items: center;
   align-self: center;
+  gap: 6px;
 }
 
 .v-theme--dark .priority-number {
@@ -555,4 +556,10 @@
 .metrics-tooltip-row span:last-child {
   font-weight: 500;
   color: rgb(var(--v-theme-on-surface));
+}
+
+/* Origin / pool tag chips in the list row (§8.2) */
+.origin-tag-chip-orch {
+  font-weight: 600;
+  letter-spacing: 0;
 }

@@ -65,6 +65,22 @@
           >
             <span class="font-weight-bold">{{ channel.serviceType.toUpperCase() }}</span>
           </v-chip>
+          <!-- 健康状态 badge（§8.2） -->
+          <ChannelHealthBadge :health="healthInfo ?? null" />
+          <!-- 来源标签 chips（§8.2 标签系统） -->
+          <v-chip
+            v-for="tag in originTags"
+            :key="tag.label"
+            :color="tag.color"
+            size="x-small"
+            variant="tonal"
+            density="comfortable"
+            rounded="pill"
+            class="origin-tag-chip"
+          >
+            <v-icon start size="12">{{ tag.icon }}</v-icon>
+            {{ tag.label }}
+          </v-chip>
           <!-- Vision 能力按钮 -->
           <v-tooltip location="top" :text="channel.noVision ? t('channelCard.noVision') : t('channelCard.hasVision')" :open-delay="150" content-class="ccx-tooltip">
             <template #activator="{ props: tip }">
@@ -350,8 +366,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Channel } from '../services/api'
+import type { ChannelHealthItem } from '../services/api-types'
 import { useI18n } from '../i18n'
 import { maskApiKey } from '../utils/apiKeyMask'
+import ChannelHealthBadge from './ChannelHealthBadge.vue'
 
 const disabledKeyReasonLabelMap = {
   insufficient_balance: 'channelCard.blacklistReason.insufficient_balance',
@@ -365,6 +383,7 @@ const disabledKeyReasonLabelMap = {
 
 interface Props {
   channel: Channel
+  healthInfo?: ChannelHealthItem | null
 }
 
 const props = defineProps<Props>()
@@ -537,6 +556,43 @@ const keyChipStyle = computed(() => {
   }
 })
 
+// Origin / pool tags derived from health info (§8.2 标签系统).
+// originTier and poolTag may be absent in current API; tags render only when present.
+interface OriginTag { label: string; color: string; icon: string }
+
+const originTags = computed<OriginTag[]>(() => {
+  const tags: OriginTag[] = []
+  const h = props.healthInfo
+  if (!h) return tags
+
+  // Origin tier tag
+  if (h.originTier && h.originTier !== 'unknown') {
+    const tierMap: Record<string, { key: string; color: string; icon: string }> = {
+      first:  { key: 'channelHealth.originOfficial', color: 'blue',   icon: 'mdi-shield-check' },
+      second: { key: 'channelHealth.originRelay',    color: 'indigo', icon: 'mdi-account-group' },
+      third:  { key: 'channelHealth.originCommunity', color: 'green',  icon: 'mdi-hand-heart' },
+    }
+    const cfg = tierMap[h.originTier]
+    if (cfg) {
+      tags.push({ label: t(cfg.key), color: cfg.color, icon: cfg.icon })
+    }
+  }
+
+  // Pool tag
+  if (h.poolTag) {
+    const poolMap: Record<string, { key: string; color: string; icon: string }> = {
+      free: { key: 'channelHealth.poolFree', color: 'green',  icon: 'mdi-gift' },
+      temp: { key: 'channelHealth.poolTemp', color: 'orange', icon: 'mdi-clock-alert' },
+    }
+    const cfg = poolMap[h.poolTag]
+    if (cfg) {
+      tags.push({ label: t(cfg.key), color: cfg.color, icon: cfg.icon })
+    }
+  }
+
+  return tags
+})
+
 // 根据服务类型设置卡片强调色（明暗模式自动随主题变量变更）
 const serviceStyle = computed(() => {
   const map: Record<string, string> = {
@@ -630,6 +686,12 @@ const serviceStyle = computed(() => {
 .service-chip {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   border: none;
+}
+
+.origin-tag-chip {
+  font-weight: 600;
+  letter-spacing: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 /* --- INDICATORS (LIGHT) --- */

@@ -928,6 +928,18 @@
   "healthCenter.kind.gemini": "Gemini",
   "healthCenter.kind.images": "Images",
   "healthCenter.kind.vectors": "Vectors",
+
+  "channelHealth.stateLabel": "Kesehatan",
+  "channelHealth.endpointsHealthy": "endpoint sehat",
+  "channelHealth.avgSuccessRate": "Rata-rata tingkat keberhasilan",
+  "channelHealth.inconsistentWarning": "{count} endpoint tidak konsisten",
+  "channelHealth.originOfficial": "API Resmi",
+  "channelHealth.originRelay": "Relay",
+  "channelHealth.originCommunity": "Komunitas",
+  "channelHealth.originUnknown": "Asal tidak diketahui",
+  "channelHealth.poolFree": "Kolam gratis",
+  "channelHealth.poolTemp": "Kolam sementara",
+
   "app.tabs.subscriptions": "Langganan",
   "app.tabs.cockpitOverview": "Kokpit",
   "subscription.title": "Pusat Langganan",

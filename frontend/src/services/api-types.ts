@@ -851,6 +851,10 @@ export interface ChannelHealthItem {
   deadCount: number
   unknownCount: number
   avgSuccessRate?: number
+  // Forward-compat: origin/pool tags for card badge system (§8.2).
+  // These fields may not be present in all API versions; consumers must null-check.
+  originTier?: 'first' | 'second' | 'third' | 'unknown'
+  poolTag?: 'free' | 'temp' | ''
 }
 
 export interface HealthCenterChannelsResponse {

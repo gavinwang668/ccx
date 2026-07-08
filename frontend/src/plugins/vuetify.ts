@@ -221,6 +221,11 @@ import {
   mdiShapeOutline,
   mdiVectorPoint,
   mdiVectorPolyline,
+  mdiShieldCheck,
+  mdiAccountGroup,
+  mdiHandHeart,
+  mdiGift,
+  mdiClockAlert,
 } from '@mdi/js'
 
 // 图标名称到 SVG path 的映射 (使用 kebab-case)
@@ -447,6 +452,11 @@ const iconMap: Record<string, string> = {
   'cached': mdiCached,
   'auto-fix': mdiAutoFix,
   'radar': mdiRadar,
+  'shield-check': mdiShieldCheck,
+  'account-group': mdiAccountGroup,
+  'hand-heart': mdiHandHeart,
+  'gift': mdiGift,
+  'clock-alert': mdiClockAlert,
 }
 
 // 自定义 SVG iconset - 处理 mdi-xxx 字符串格式

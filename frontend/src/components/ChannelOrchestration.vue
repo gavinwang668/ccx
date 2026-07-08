@@ -140,6 +140,8 @@
             <!-- Status indicator -->
             <div class="status-badge-wrapper" @click.stop>
               <ChannelStatusBadge :status="element.status || 'active'" :metrics="getChannelMetrics(element.index)" />
+              <!-- Health badge (§8.2) -->
+              <ChannelHealthBadge :health="getChannelHealth(element.index) ?? null" />
             </div>
 
             <!-- Channel name and description -->
@@ -180,6 +182,20 @@
               </v-btn>
               <span class="text-caption text-medium-emphasis ml-2">{{ element.serviceType }}</span>
               <v-icon v-if="element.noVision" size="14" color="warning" class="ml-1">mdi-eye-off</v-icon>
+              <!-- Origin / pool tags (§8.2 标签系统) - only rendered when health data includes originTier/poolTag -->
+              <v-chip
+                v-for="tag in getOriginTags(element.index)"
+                :key="tag.label"
+                :color="tag.color"
+                size="x-small"
+                variant="tonal"
+                density="comfortable"
+                rounded="pill"
+                class="ml-1 origin-tag-chip-orch"
+              >
+                <v-icon start size="11">{{ tag.icon }}</v-icon>
+                {{ tag.label }}
+              </v-chip>
               <span v-if="element.description" class="text-caption text-disabled ml-3 channel-description">{{ element.description }}</span>
               <!-- Expand icon -->
               <v-icon
@@ -639,6 +655,8 @@ import { useI18n } from '../i18n'
 import { useGlobalTick } from '../composables/useGlobalTick'
 import { useChannelActivity } from '../composables/useChannelActivity'
 import ChannelStatusBadge from './ChannelStatusBadge.vue'
+import ChannelHealthBadge from './ChannelHealthBadge.vue'
+import type { ChannelHealthItem } from '../services/api-types'
 // Lazy-load chart components to reduce initial JS bundle size
 const KeyTrendChart = defineAsyncComponent(() => import('./KeyTrendChart.vue'))
 import ChannelLogsDialog from './ChannelLogsDialog.vue'
@@ -653,6 +671,8 @@ const props = defineProps<{
   dashboardStats?: SchedulerStatsResponse
   // Optional: realtime activity data passed from the parent component
   dashboardRecentActivity?: ChannelRecentActivity[]
+  // Optional: channelId → health data mapping (§8.2 badge integration)
+  healthMap?: Map<number, ChannelHealthItem>
 }>()
 
 const emit = defineEmits<{
@@ -958,6 +978,37 @@ watch(() => props.channelType, () => {
 // Fetch channel metrics
 const getChannelMetrics = (channelIndex: number): ChannelMetrics | undefined => {
   return metrics.value.find(m => m.channelIndex === channelIndex)
+}
+
+// Fetch channel health (§8.2): channelId matches channel.index in the backend config.
+const getChannelHealth = (channelIndex: number): ChannelHealthItem | undefined => {
+  return props.healthMap?.get(channelIndex)
+}
+
+// Origin / pool tags for a channel (§8.2 标签系统)
+interface OriginTag { label: string; color: string; icon: string }
+const getOriginTags = (channelIndex: number): OriginTag[] => {
+  const h = getChannelHealth(channelIndex)
+  if (!h) return []
+  const tags: OriginTag[] = []
+  if (h.originTier && h.originTier !== 'unknown') {
+    const tierMap: Record<string, { key: string; color: string; icon: string }> = {
+      first:  { key: 'channelHealth.originOfficial', color: 'blue',   icon: 'mdi-shield-check' },
+      second: { key: 'channelHealth.originRelay',    color: 'indigo', icon: 'mdi-account-group' },
+      third:  { key: 'channelHealth.originCommunity', color: 'green',  icon: 'mdi-hand-heart' },
+    }
+    const cfg = tierMap[h.originTier]
+    if (cfg) tags.push({ label: t(cfg.key), color: cfg.color, icon: cfg.icon })
+  }
+  if (h.poolTag) {
+    const poolMap: Record<string, { key: string; color: string; icon: string }> = {
+      free: { key: 'channelHealth.poolFree', color: 'green',  icon: 'mdi-gift' },
+      temp: { key: 'channelHealth.poolTemp', color: 'orange', icon: 'mdi-clock-alert' },
+    }
+    const cfg = poolMap[h.poolTag]
+    if (cfg) tags.push({ label: t(cfg.key), color: cfg.color, icon: cfg.icon })
+  }
+  return tags
 }
 
 // Helper method for fetching time-sliced statistics

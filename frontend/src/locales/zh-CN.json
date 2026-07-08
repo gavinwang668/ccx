@@ -928,6 +928,18 @@
   "healthCenter.kind.gemini": "Gemini",
   "healthCenter.kind.images": "Images",
   "healthCenter.kind.vectors": "Vectors",
+
+  "channelHealth.stateLabel": "健康状态",
+  "channelHealth.endpointsHealthy": "个端点健康",
+  "channelHealth.avgSuccessRate": "平均成功率",
+  "channelHealth.inconsistentWarning": "{count} 个端点状态不一致",
+  "channelHealth.originOfficial": "官方 API",
+  "channelHealth.originRelay": "中转",
+  "channelHealth.originCommunity": "公益",
+  "channelHealth.originUnknown": "来源未知",
+  "channelHealth.poolFree": "白嫖池",
+  "channelHealth.poolTemp": "临时池",
+
   "app.tabs.subscriptions": "订阅中心",
   "app.tabs.cockpitOverview": "驾驶舱",
   "subscription.title": "订阅中心",
