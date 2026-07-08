@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -115,7 +116,7 @@ func (r *AutoDiscoveryRunner) TriggerDiscovery(channelUID string, channel *confi
 }
 
 // runDiscovery 执行发现逻辑（在后台 goroutine 中运行）。
-func (r *AutoDiscoveryRunner) runDiscovery(ctx context.Context, task *DiscoveryTask, channel *config.UpstreamConfig, _ *config.ConfigManager) {
+func (r *AutoDiscoveryRunner) runDiscovery(ctx context.Context, task *DiscoveryTask, channel *config.UpstreamConfig, cfgManager *config.ConfigManager) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			r.mu.Lock()
@@ -153,6 +154,11 @@ func (r *AutoDiscoveryRunner) runDiscovery(ctx context.Context, task *DiscoveryT
 	// 写画像到 ProfileStore（在锁外执行，避免阻塞其他操作）
 	if r.store != nil {
 		r.writeProfiles(task.ChannelUID, channel, endpoints)
+	}
+
+	// 探测完成后尝试自动写入 SupportedModels（安全守则：仅一致结果且用户未手动配置时写入）
+	if cfgManager != nil {
+		r.maybeAutoWriteChannelConfig(task.ChannelUID, channel, endpoints, cfgManager)
 	}
 
 	log.Printf("[AutoDiscovery-Run] 渠道 %s 发现完成: %d/%d 端点可达",
@@ -321,5 +327,171 @@ func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.U
 		if err := r.store.Upsert(&profile); err != nil {
 			log.Printf("[AutoDiscovery-Profile] 写入画像失败 endpoint=%s: %v", endpointUID, err)
 		}
+	}
+}
+
+// maybeAutoWriteChannelConfig 在发现完成后，检查是否可以将一致模型列表写入渠道配置。
+// 安全守则：
+//   1. 仅当所有成功探测的 endpoint 返回完全相同的模型列表（集合相等，顺序无关）时才写入
+//   2. 不覆盖用户已有的手动配置（SupportedModels 或 ModelMapping 非空时不写入）
+//   3. ModelMapping 不自动写入（比 SupportedModels 更容易出错，留给用户手动确认）
+func (r *AutoDiscoveryRunner) maybeAutoWriteChannelConfig(channelUID string, channel *config.UpstreamConfig, endpoints []EndpointDiscoveryResult, cfgManager *config.ConfigManager) {
+	// cfgManager 为 nil 时直接返回（runDiscovery 入口已有 guard，此处防御直接调用）
+	if cfgManager == nil {
+		return
+	}
+
+	// 收集所有成功探测的 endpoint 的模型列表
+	var okEndpoints []EndpointDiscoveryResult
+	for _, ep := range endpoints {
+		if ep.ProtocolOk && len(ep.Models) > 0 {
+			okEndpoints = append(okEndpoints, ep)
+		}
+	}
+
+	// 无成功探测结果，不写
+	if len(okEndpoints) == 0 {
+		log.Printf("[AutoDiscovery-ConfigSkip] 渠道 %s: 无可达端点或模型列表为空，跳过自动写入", channelUID)
+		return
+	}
+
+	// 检查一致性：所有成功探测的 endpoint 返回的模型列表集合必须完全相同
+	consistentModels := modelsSetConsistent(okEndpoints)
+	if consistentModels == nil {
+		log.Printf("[AutoDiscovery-ConfigSkip] 渠道 %s: 端点模型列表不一致（%d 个可达端点），跳过自动写入",
+			channelUID, len(okEndpoints))
+		return
+	}
+
+	// 检查用户已有配置：SupportedModels 或 ModelMapping 非空时不覆盖
+	if len(channel.SupportedModels) > 0 {
+		log.Printf("[AutoDiscovery-ConfigSkip] 渠道 %s: 用户已配置 SupportedModels（%d 项），不覆盖",
+			channelUID, len(channel.SupportedModels))
+		return
+	}
+	if len(channel.ModelMapping) > 0 {
+		log.Printf("[AutoDiscovery-ConfigSkip] 渠道 %s: 用户已配置 ModelMapping（%d 项），不覆盖 SupportedModels",
+			channelUID, len(channel.ModelMapping))
+		return
+	}
+
+	// 通过 ConfigManager 更新 SupportedModels
+	// 先从当前配置中找到该渠道的 index 和 kind
+	cfg := cfgManager.GetConfig()
+	index, kind := findChannelIndexAndKind(cfg, channelUID)
+	if index < 0 || kind == "" {
+		log.Printf("[AutoDiscovery-ConfigSkip] 渠道 %s: 在当前配置中未找到对应渠道，跳过写入", channelUID)
+		return
+	}
+
+	// 排序后写入，确保结果稳定可读
+	sorted := sortModels(consistentModels)
+
+	update := config.UpstreamUpdate{
+		SupportedModels: sorted,
+	}
+
+	_, err := updateChannelByKind(cfgManager, kind, index, update)
+	if err != nil {
+		log.Printf("[AutoDiscovery-ConfigWrite] 渠道 %s: 写入 SupportedModels 失败: %v", channelUID, err)
+		return
+	}
+
+	log.Printf("[AutoDiscovery-ConfigWrite] 渠道 %s: 已自动写入 SupportedModels（%d 项模型）",
+		channelUID, len(sorted))
+}
+
+// modelsSetConsistent 检查所有 endpoint 的模型列表是否集合相等。
+// 如果一致，返回任意一个端点的模型列表作为代表；如果不一致，返回 nil。
+func modelsSetConsistent(endpoints []EndpointDiscoveryResult) []string {
+	if len(endpoints) == 0 {
+		return nil
+	}
+
+	// 将第一个端点的模型列表转为 set 作为基准
+	baseSet := makeStringSet(endpoints[0].Models)
+
+	for _, ep := range endpoints[1:] {
+		candidateSet := makeStringSet(ep.Models)
+		if !stringSetsEqual(baseSet, candidateSet) {
+			return nil
+		}
+	}
+
+	return endpoints[0].Models
+}
+
+// makeStringSet 将字符串列表转为 set（map[string]bool）。
+func makeStringSet(items []string) map[string]bool {
+	set := make(map[string]bool, len(items))
+	for _, item := range items {
+		set[item] = true
+	}
+	return set
+}
+
+// stringSetsEqual 判断两个 string set 是否完全相同。
+func stringSetsEqual(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// sortModels 对模型列表排序，确保写入结果稳定可读。
+func sortModels(models []string) []string {
+	sorted := make([]string, len(models))
+	copy(sorted, models)
+	sort.Strings(sorted)
+	return sorted
+}
+
+// findChannelIndexAndKind 在当前配置中根据 channelUID 找到该渠道的 index 和 kind（渠道类型）。
+// 返回 (-1, "") 表示未找到。
+func findChannelIndexAndKind(cfg config.Config, channelUID string) (int, string) {
+	type sliceKind struct {
+		channels []config.UpstreamConfig
+		kind     string
+	}
+	slices := []sliceKind{
+		{cfg.Upstream, "messages"},
+		{cfg.ChatUpstream, "chat"},
+		{cfg.ResponsesUpstream, "responses"},
+		{cfg.GeminiUpstream, "gemini"},
+		{cfg.ImagesUpstream, "images"},
+		{cfg.VectorsUpstream, "vectors"},
+	}
+	for _, sk := range slices {
+		for i, ch := range sk.channels {
+			if ch.ChannelUID == channelUID {
+				return i, sk.kind
+			}
+		}
+	}
+	return -1, ""
+}
+
+// updateChannelByKind 根据渠道类型调用对应的 ConfigManager 更新方法。
+func updateChannelByKind(cfgManager *config.ConfigManager, kind string, index int, update config.UpstreamUpdate) (bool, error) {
+	switch kind {
+	case "messages":
+		return cfgManager.UpdateUpstream(index, update)
+	case "chat":
+		return cfgManager.UpdateChatUpstream(index, update)
+	case "responses":
+		return cfgManager.UpdateResponsesUpstream(index, update)
+	case "gemini":
+		return cfgManager.UpdateGeminiUpstream(index, update)
+	case "images":
+		return cfgManager.UpdateImagesUpstream(index, update)
+	case "vectors":
+		return cfgManager.UpdateVectorsUpstream(index, update)
+	default:
+		return false, fmt.Errorf("不支持的渠道类型: %s", kind)
 	}
 }

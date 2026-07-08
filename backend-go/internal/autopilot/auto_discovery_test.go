@@ -1,10 +1,15 @@
 package autopilot
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/BenedictKing/ccx/internal/config"
 )
+
+// ── 已有测试（保留原样） ─────────────────────────────────────────────────────
 
 func TestAutoDiscoveryRunner_TriggerRejectsDuplicate(t *testing.T) {
 	runner := NewAutoDiscoveryRunner(nil)
@@ -158,5 +163,460 @@ func TestEndpointDiscoveryResult_KeyMask(t *testing.T) {
 	}
 	if len(result.KeyMask) < 4 {
 		t.Fatal("KeyMask 长度过短")
+	}
+}
+
+// ── maybeAutoWriteChannelConfig 测试 ──────────────────────────────────────────
+
+// setupTestConfigManagerForDiscovery 创建带指定 messages 渠道的临时 ConfigManager。
+func setupTestConfigManagerForDiscovery(t *testing.T, channelUID string, supportedModels []string, modelMapping map[string]string) *config.ConfigManager {
+	t.Helper()
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				ChannelUID:      channelUID,
+				Name:            "test-channel",
+				ServiceType:     "claude",
+				BaseURL:         "https://api.example.com",
+				BaseURLs:        []string{"https://api.example.com"},
+				APIKeys:         []string{"sk-test-key"},
+				SupportedModels: supportedModels,
+				ModelMapping:    modelMapping,
+				Status:          "active",
+			},
+		},
+		AutopilotRouting: config.AutopilotRoutingConfig{
+			RoutingMode: "shadow",
+			KillSwitch:  false,
+		},
+	}
+
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	err := os.WriteFile(configPath, data, 0600)
+	if err != nil {
+		t.Fatalf("写入临时配置失败: %v", err)
+	}
+
+	cfgManager, err := config.NewConfigManager(configPath, "")
+	if err != nil {
+		t.Fatalf("创建 ConfigManager 失败: %v", err)
+	}
+	return cfgManager
+}
+
+// getChannelSupportedModels 从 ConfigManager 读取指定渠道的 SupportedModels。
+func getChannelSupportedModels(t *testing.T, cfgManager *config.ConfigManager, channelUID string) []string {
+	t.Helper()
+	cfg := cfgManager.GetConfig()
+	for _, ch := range cfg.Upstream {
+		if ch.ChannelUID == channelUID {
+			return ch.SupportedModels
+		}
+	}
+	return nil
+}
+
+func TestMaybeAutoWriteChannelConfig_TableDriven(t *testing.T) {
+	tests := []struct {
+		name            string
+		channelUID      string
+		supportedModels []string                // 渠道当前 SupportedModels
+		modelMapping    map[string]string        // 渠道当前 ModelMapping
+		endpoints       []EndpointDiscoveryResult
+		wantWritten     bool                     // 是否应写入
+		wantModels      []string                 // 期望写入的模型（wantWritten=true 时检查）
+	}{
+		{
+			name:            "全部一致且配置为空 -> 写入 SupportedModels",
+			channelUID:      "ch_auto_write_001",
+			supportedModels: nil,
+			modelMapping:    nil,
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{"gpt-4o", "gpt-3.5-turbo"}, ModelsCount: 2},
+				{KeyMask: "sk-****b", BaseURL: "https://b.example.com", ProtocolOk: true, Models: []string{"gpt-3.5-turbo", "gpt-4o"}, ModelsCount: 2},
+			},
+			wantWritten: true,
+			wantModels:  []string{"gpt-3.5-turbo", "gpt-4o"}, // 字母排序
+		},
+		{
+			name:            "模型列表不一致 -> 不写入",
+			channelUID:      "ch_auto_write_002",
+			supportedModels: nil,
+			modelMapping:    nil,
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{"gpt-4o"}, ModelsCount: 1},
+				{KeyMask: "sk-****b", BaseURL: "https://b.example.com", ProtocolOk: true, Models: []string{"gpt-4o-mini"}, ModelsCount: 1},
+			},
+			wantWritten: false,
+		},
+		{
+			name:            "用户已有 SupportedModels -> 即使新探测一致也不覆盖",
+			channelUID:      "ch_auto_write_003",
+			supportedModels: []string{"old-model-1"},
+			modelMapping:    nil,
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{"gpt-4o"}, ModelsCount: 1},
+				{KeyMask: "sk-****b", BaseURL: "https://b.example.com", ProtocolOk: true, Models: []string{"gpt-4o"}, ModelsCount: 1},
+			},
+			wantWritten: false,
+		},
+		{
+			name:            "用户已有 ModelMapping -> 即使新探测一致也不写 SupportedModels",
+			channelUID:      "ch_auto_write_004",
+			supportedModels: nil,
+			modelMapping:    map[string]string{"old-model": "new-model"},
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{"gpt-4o"}, ModelsCount: 1},
+				{KeyMask: "sk-****b", BaseURL: "https://b.example.com", ProtocolOk: true, Models: []string{"gpt-4o"}, ModelsCount: 1},
+			},
+			wantWritten: false,
+		},
+		{
+			name:            "单 endpoint 渠道（天然一致） -> 正确写入",
+			channelUID:      "ch_auto_write_005",
+			supportedModels: nil,
+			modelMapping:    nil,
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{"claude-3-opus", "claude-3-sonnet"}, ModelsCount: 2},
+			},
+			wantWritten: true,
+			wantModels:  []string{"claude-3-opus", "claude-3-sonnet"}, // 已排序
+		},
+		{
+			name:            "所有 endpoint 不可达 -> 不写入",
+			channelUID:      "ch_auto_write_006",
+			supportedModels: nil,
+			modelMapping:    nil,
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: false, ErrorMessage: "连接失败"},
+				{KeyMask: "sk-****b", BaseURL: "https://b.example.com", ProtocolOk: false, ErrorMessage: "连接失败"},
+			},
+			wantWritten: false,
+		},
+		{
+			name:            "部分 endpoint 不可达但可达的一致 -> 正确写入",
+			channelUID:      "ch_auto_write_007",
+			supportedModels: nil,
+			modelMapping:    nil,
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{"gpt-4o", "gpt-3.5-turbo"}, ModelsCount: 2},
+				{KeyMask: "sk-****b", BaseURL: "https://b.example.com", ProtocolOk: false, ErrorMessage: "连接失败"},
+			},
+			wantWritten: true,
+			wantModels:  []string{"gpt-3.5-turbo", "gpt-4o"}, // 字母排序
+		},
+		{
+			name:            "endpoint 模型列表为空 -> 不写入",
+			channelUID:      "ch_auto_write_008",
+			supportedModels: nil,
+			modelMapping:    nil,
+			endpoints: []EndpointDiscoveryResult{
+				{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{}, ModelsCount: 0},
+			},
+			wantWritten: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfgManager := setupTestConfigManagerForDiscovery(t, tt.channelUID, tt.supportedModels, tt.modelMapping)
+			runner := NewAutoDiscoveryRunner(nil)
+			channel := &config.UpstreamConfig{
+				ChannelUID:      tt.channelUID,
+				SupportedModels: tt.supportedModels,
+				ModelMapping:    tt.modelMapping,
+			}
+
+			runner.maybeAutoWriteChannelConfig(tt.channelUID, channel, tt.endpoints, cfgManager)
+
+			// 从配置中读取实际 SupportedModels
+			actualModels := getChannelSupportedModels(t, cfgManager, tt.channelUID)
+
+			if tt.wantWritten {
+				if len(actualModels) == 0 {
+					t.Fatal("期望写入 SupportedModels，但实际为空")
+				}
+				if len(actualModels) != len(tt.wantModels) {
+					t.Fatalf("模型数量不匹配: 期望 %v, 实际 %v", tt.wantModels, actualModels)
+				}
+				for i := range tt.wantModels {
+					if actualModels[i] != tt.wantModels[i] {
+						t.Fatalf("模型列表不匹配: 期望 %v, 实际 %v", tt.wantModels, actualModels)
+					}
+				}
+			} else {
+				if tt.supportedModels == nil && len(actualModels) > 0 {
+					t.Fatalf("不期望写入，但 SupportedModels 非空: %v", actualModels)
+				}
+				if tt.supportedModels != nil && len(actualModels) != len(tt.supportedModels) {
+					t.Fatalf("不应覆盖已有 SupportedModels: 期望 %v, 实际 %v", tt.supportedModels, actualModels)
+				}
+			}
+		})
+	}
+}
+
+func TestModelsSetConsistent(t *testing.T) {
+	tests := []struct {
+		name      string
+		endpoints []EndpointDiscoveryResult
+		wantNil   bool
+		wantLen   int // 非 nil 时返回的列表长度
+	}{
+		{
+			name:      "空输入",
+			endpoints: nil,
+			wantNil:   true,
+		},
+		{
+			name: "单端点",
+			endpoints: []EndpointDiscoveryResult{
+				{Models: []string{"m1", "m2"}},
+			},
+			wantNil: false,
+			wantLen: 2,
+		},
+		{
+			name: "多端点一致（顺序不同）",
+			endpoints: []EndpointDiscoveryResult{
+				{Models: []string{"m1", "m2", "m3"}},
+				{Models: []string{"m3", "m1", "m2"}},
+				{Models: []string{"m2", "m3", "m1"}},
+			},
+			wantNil: false,
+			wantLen: 3,
+		},
+		{
+			name: "多端点不一致",
+			endpoints: []EndpointDiscoveryResult{
+				{Models: []string{"m1", "m2"}},
+				{Models: []string{"m1", "m3"}},
+			},
+			wantNil: true,
+		},
+		{
+			name: "数量不同",
+			endpoints: []EndpointDiscoveryResult{
+				{Models: []string{"m1"}},
+				{Models: []string{"m1", "m2"}},
+			},
+			wantNil: true,
+		},
+		{
+			name: "完全相同",
+			endpoints: []EndpointDiscoveryResult{
+				{Models: []string{"a", "b"}},
+				{Models: []string{"a", "b"}},
+			},
+			wantNil: false,
+			wantLen: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := modelsSetConsistent(tt.endpoints)
+			if tt.wantNil {
+				if result != nil {
+					t.Fatalf("期望 nil, 实际 %v", result)
+				}
+			} else {
+				if result == nil {
+					t.Fatal("期望非 nil, 实际 nil")
+				}
+				if len(result) != tt.wantLen {
+					t.Fatalf("长度不匹配: 期望 %d, 实际 %d", tt.wantLen, len(result))
+				}
+			}
+		})
+	}
+}
+
+func TestSortModels(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "已排序",
+			input:    []string{"a", "b", "c"},
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			name:     "逆序",
+			input:    []string{"c", "b", "a"},
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			name:     "空列表",
+			input:    []string{},
+			expected: []string{},
+		},
+		{
+			name:     "单元素",
+			input:    []string{"model-x"},
+			expected: []string{"model-x"},
+		},
+		{
+			name:     "不修改原切片",
+			input:    []string{"z", "a"},
+			expected: []string{"a", "z"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sortModels(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Fatalf("长度不匹配: 期望 %d, 实际 %d", len(tt.expected), len(result))
+			}
+			for i := range tt.expected {
+				if result[i] != tt.expected[i] {
+					t.Fatalf("结果不匹配: 期望 %v, 实际 %v", tt.expected, result)
+				}
+			}
+		})
+	}
+}
+
+func TestFindChannelIndexAndKind(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         config.Config
+		channelUID  string
+		wantIndex   int
+		wantKind    string
+	}{
+		{
+			name: "找到 messages 渠道",
+			cfg: config.Config{
+				Upstream: []config.UpstreamConfig{
+					{ChannelUID: "ch_001"},
+				},
+			},
+			channelUID: "ch_001",
+			wantIndex:  0,
+			wantKind:   "messages",
+		},
+		{
+			name: "找到 chat 渠道",
+			cfg: config.Config{
+				ChatUpstream: []config.UpstreamConfig{
+					{ChannelUID: "ch_chat_001"},
+				},
+			},
+			channelUID: "ch_chat_001",
+			wantIndex:  0,
+			wantKind:   "chat",
+		},
+		{
+			name: "找到 responses 渠道",
+			cfg: config.Config{
+				ResponsesUpstream: []config.UpstreamConfig{
+					{ChannelUID: "ch_resp_001"},
+				},
+			},
+			channelUID: "ch_resp_001",
+			wantIndex:  0,
+			wantKind:   "responses",
+		},
+		{
+			name: "找到 vectors 渠道",
+			cfg: config.Config{
+				VectorsUpstream: []config.UpstreamConfig{
+					{ChannelUID: "ch_vec_001"},
+				},
+			},
+			channelUID: "ch_vec_001",
+			wantIndex:  0,
+			wantKind:   "vectors",
+		},
+		{
+			name: "渠道在多个列表中",
+			cfg: config.Config{
+				Upstream: []config.UpstreamConfig{
+					{ChannelUID: "ch_001"},
+				},
+				ChatUpstream: []config.UpstreamConfig{
+					{ChannelUID: "ch_chat_001"},
+				},
+			},
+			channelUID: "ch_chat_001",
+			wantIndex:  0,
+			wantKind:   "chat",
+		},
+		{
+			name:       "未找到",
+			cfg:        config.Config{},
+			channelUID: "ch_nonexistent",
+			wantIndex:  -1,
+			wantKind:   "",
+		},
+		{
+			name: "多个渠道时找到正确索引",
+			cfg: config.Config{
+				Upstream: []config.UpstreamConfig{
+					{ChannelUID: "ch_a"},
+					{ChannelUID: "ch_b"},
+					{ChannelUID: "ch_c"},
+				},
+			},
+			channelUID: "ch_b",
+			wantIndex:  1,
+			wantKind:   "messages",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			index, kind := findChannelIndexAndKind(tt.cfg, tt.channelUID)
+			if index != tt.wantIndex {
+				t.Fatalf("index: 期望 %d, 实际 %d", tt.wantIndex, index)
+			}
+			if kind != tt.wantKind {
+				t.Fatalf("kind: 期望 %q, 实际 %q", tt.wantKind, kind)
+			}
+		})
+	}
+}
+
+func TestMaybeAutoWriteChannelConfig_NilCfgManager(t *testing.T) {
+	// cfgManager 为 nil 时不 panic，不写入（runDiscovery 入口已 guard，此处测直接调用行为）
+	runner := NewAutoDiscoveryRunner(nil)
+	channel := &config.UpstreamConfig{
+		ChannelUID: "ch_nil_cfg",
+	}
+	endpoints := []EndpointDiscoveryResult{
+		{KeyMask: "sk-****a", BaseURL: "https://a.example.com", ProtocolOk: true, Models: []string{"gpt-4o"}, ModelsCount: 1},
+	}
+
+	// 不应 panic
+	runner.maybeAutoWriteChannelConfig("ch_nil_cfg", channel, endpoints, nil)
+}
+
+func TestStringSetsEqual(t *testing.T) {
+	tests := []struct {
+		name string
+		a    map[string]bool
+		b    map[string]bool
+		want bool
+	}{
+		{"两个空 set", map[string]bool{}, map[string]bool{}, true},
+		{"相同内容", map[string]bool{"a": true, "b": true}, map[string]bool{"b": true, "a": true}, true},
+		{"不同内容", map[string]bool{"a": true}, map[string]bool{"b": true}, false},
+		{"不同长度", map[string]bool{"a": true}, map[string]bool{"a": true, "b": true}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stringSetsEqual(tt.a, tt.b)
+			if got != tt.want {
+				t.Fatalf("期望 %v, 实际 %v", tt.want, got)
+			}
+		})
 	}
 }
