@@ -572,6 +572,18 @@ func (c *AutopilotRoutingConfig) Validate() {
 	if c.SubscriptionAutoRefresh.RequestTimeoutSeconds <= 0 {
 		c.SubscriptionAutoRefresh.RequestTimeoutSeconds = 15
 	}
+
+	// 10. A/B 测试：参数兜底（含 0，与 SLORollback/SubscriptionAutoRefresh 的兜底模式一致；
+	// 0 与"字段缺失反序列化后的零值"不可区分，回退默认避免旧配置迁移后静默停止抽样）
+	if c.ABTest.SampleRatio <= 0 || c.ABTest.SampleRatio > 1 {
+		c.ABTest.SampleRatio = 0.01
+	}
+	if c.ABTest.MaxShadowRequestsPerHour <= 0 {
+		c.ABTest.MaxShadowRequestsPerHour = 60
+	}
+	if c.ABTest.ShadowCandidateCount <= 0 {
+		c.ABTest.ShadowCandidateCount = 1
+	}
 }
 
 // dedupeNonEmptyStrings 去除空白项（trim 后为空则丢弃）并去重，保持首次出现的顺序。

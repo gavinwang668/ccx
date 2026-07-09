@@ -651,3 +651,58 @@ func TestAutopilotRoutingConfig_Validate_SLORollbackConsecutiveWindows(t *testin
 		})
 	}
 }
+
+func TestAutopilotRoutingConfig_Validate_ABTestFallback(t *testing.T) {
+	tests := []struct {
+		name                 string
+		input                ABTestConfig
+		expectedSampleRatio  float64
+		expectedMaxPerHour   int
+		expectedCandidateCnt int
+	}{
+		{
+			name:                 "正常值保持不变",
+			input:                ABTestConfig{SampleRatio: 0.05, MaxShadowRequestsPerHour: 100, ShadowCandidateCount: 2},
+			expectedSampleRatio:  0.05,
+			expectedMaxPerHour:   100,
+			expectedCandidateCnt: 2,
+		},
+		{
+			name:                 "零值回退默认",
+			input:                ABTestConfig{SampleRatio: 0, MaxShadowRequestsPerHour: 0, ShadowCandidateCount: 0},
+			expectedSampleRatio:  0.01,
+			expectedMaxPerHour:   60,
+			expectedCandidateCnt: 1,
+		},
+		{
+			name:                 "负数回退默认",
+			input:                ABTestConfig{SampleRatio: -0.5, MaxShadowRequestsPerHour: -1, ShadowCandidateCount: -1},
+			expectedSampleRatio:  0.01,
+			expectedMaxPerHour:   60,
+			expectedCandidateCnt: 1,
+		},
+		{
+			name:                 "SampleRatio 超过 1 回退默认",
+			input:                ABTestConfig{SampleRatio: 1.5, MaxShadowRequestsPerHour: 60, ShadowCandidateCount: 1},
+			expectedSampleRatio:  0.01,
+			expectedMaxPerHour:   60,
+			expectedCandidateCnt: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := AutopilotRoutingConfig{ABTest: tt.input}
+			cfg.Validate()
+			if cfg.ABTest.SampleRatio != tt.expectedSampleRatio {
+				t.Errorf("Validate 后 SampleRatio = %v, 期望 %v", cfg.ABTest.SampleRatio, tt.expectedSampleRatio)
+			}
+			if cfg.ABTest.MaxShadowRequestsPerHour != tt.expectedMaxPerHour {
+				t.Errorf("Validate 后 MaxShadowRequestsPerHour = %d, 期望 %d", cfg.ABTest.MaxShadowRequestsPerHour, tt.expectedMaxPerHour)
+			}
+			if cfg.ABTest.ShadowCandidateCount != tt.expectedCandidateCnt {
+				t.Errorf("Validate 后 ShadowCandidateCount = %d, 期望 %d", cfg.ABTest.ShadowCandidateCount, tt.expectedCandidateCnt)
+			}
+		})
+	}
+}
