@@ -1085,6 +1085,12 @@ func main() {
 				"vectors":   vectorsMetricsManager,
 			},
 		}))
+			// Phase 4 Item 5: 批量渠道管理 API（导入/导出/模板）
+			apiGroup.POST("/channels/export", handlers.ExportChannels(envCfg, cfgManager))
+			apiGroup.GET("/channels/export", handlers.ExportAllChannels(envCfg, cfgManager))
+			apiGroup.POST("/channels/import", handlers.ImportChannels(cfgManager))
+			apiGroup.POST("/channels/import/confirm", handlers.ImportChannelsConfirm(cfgManager))
+			apiGroup.GET("/channels/templates", handlers.GetChannelTemplates())
 	}
 
 	// 代理端点 - Messages API
