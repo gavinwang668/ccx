@@ -59,6 +59,9 @@ type AutoDiscoveryRunner struct {
 	hub     *EventHub                 // nil 时不发布 discovery_completed/auto_mapping_applied 事件
 	client  *http.Client              // nil 时使用默认 client
 	timeout time.Duration             // 单次请求超时，默认 10s
+
+	// Phase 3B-2：自动发现时同步写入模型画像（nil 时不写 model_profiles，不影响现有功能）
+	ModelProfileStore *ModelProfileStore
 }
 
 // NewAutoDiscoveryRunner 创建发现执行器。
@@ -154,10 +157,8 @@ func (r *AutoDiscoveryRunner) runDiscovery(ctx context.Context, task *DiscoveryT
 	}
 	r.mu.Unlock()
 
-	// 写画像到 ProfileStore（在锁外执行，避免阻塞其他操作）
-	if r.store != nil {
-		r.writeProfiles(task.ChannelUID, channel, endpoints)
-	}
+	// 写画像到 ProfileStore + ModelProfileStore（在锁外执行，避免阻塞其他操作）
+	r.writeProfiles(task.ChannelUID, channel, endpoints, cfgManager)
 
 	// 探测完成后尝试自动写入 SupportedModels（安全守则：仅一致结果且用户未手动配置时写入）
 	if cfgManager != nil {
@@ -305,9 +306,24 @@ func parseModelsResponse(body []byte) []string {
 
 // writeProfiles 将发现结果写入 KeyEndpointProfile。
 // MVP：只更新 ModelListHash / AvailableModels / Source / UpdatedAt，不修改 modelMapping。
-func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.UpstreamConfig, endpoints []EndpointDiscoveryResult) {
+// Phase 3B-2：同时为 autoManaged 渠道写入每发现模型的 ModelProfile 行（仅当 modelProfileStore != nil）。
+func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.UpstreamConfig, endpoints []EndpointDiscoveryResult, cfgManager *config.ConfigManager) {
 	if r.store == nil {
 		return
+	}
+
+	// Phase 3B-2：准备全局 agentModelProfiles 和渠道类型（用于 model_profiles 填充）
+	var globalModelProfiles map[string]config.AgentModelProfile
+	var channelKind string
+	var channelID int
+	if cfgManager != nil {
+		cfg := cfgManager.GetConfig()
+		globalModelProfiles = cfg.AgentModelProfiles
+		var idx int
+		idx, channelKind = findChannelIndexAndKind(cfg, channelUID)
+		if idx >= 0 {
+			channelID = idx
+		}
 	}
 
 	for _, ep := range endpoints {
@@ -351,6 +367,51 @@ func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.U
 
 		if err := r.store.Upsert(&profile); err != nil {
 			log.Printf("[AutoDiscovery-Profile] 写入画像失败 endpoint=%s: %v", endpointUID, err)
+		}
+
+		// Phase 3B-2：写入每个发现模型的 ModelProfile 行
+		// 条件：modelProfileStore 非 nil + channel.AutoManaged == true + 有发现模型
+		if r.ModelProfileStore != nil && channel.AutoManaged && len(ep.Models) > 0 {
+			metricsKey := computeMetricsIdentityKey(ep.BaseURL, apiKey, channel.ServiceType)
+			now := time.Now()
+			for _, modelID := range ep.Models {
+				family := InferModelFamily(modelID, "")
+				qualityTier := ModelProfileQualityTierFromFamily(family, modelID)
+
+				// 从全局 agentModelProfile 解析上下文窗口和能力
+				contextTokens := 0
+				supportsVision := false
+				supportsToolCalls := false
+				supportsReasoning := false
+				if resolved := config.ResolveAgentModelProfile(modelID, globalModelProfiles); resolved.Known {
+					contextTokens = resolved.Profile.ContextWindowTokens
+					// ReasoningEfforts 非空表示该模型支持可控推理
+					supportsReasoning = len(resolved.Profile.ReasoningEfforts) > 0
+					// Vision / ToolCalls 不在 AgentModelProfile 中，保持 false（fail-closed，非 bug）
+				}
+
+				modelProfile := &ModelProfile{
+					ChannelUID:        channelUID,
+					ChannelID:         channelID,
+					ChannelKind:       channelKind,
+					ServiceType:       channel.ServiceType,
+					MetricsKey:        metricsKey,
+					ModelID:           modelID,
+					UpdatedAt:         now,
+					ModelFamily:       family,
+					QualityTier:       qualityTier,
+					ContextTokens:     contextTokens,
+					SupportsVision:    supportsVision,
+					SupportsToolCalls: supportsToolCalls,
+					SupportsReasoning: supportsReasoning,
+					ProbeSuccess:      true, // 出现在 GET /v1/models 响应视为存在
+					Source:            "auto_discovery",
+				}
+				if err := r.ModelProfileStore.Upsert(modelProfile); err != nil {
+					log.Printf("[AutoDiscovery-ModelProfile] 写入模型画像失败 channel=%s model=%s: %v",
+						channelUID, modelID, err)
+				}
+			}
 		}
 	}
 }
@@ -533,4 +594,13 @@ func updateChannelByKind(cfgManager *config.ConfigManager, kind string, index in
 	default:
 		return false, fmt.Errorf("不支持的渠道类型: %s", kind)
 	}
+}
+
+// computeMetricsIdentityKey 内联计算 MetricsIdentityKey，
+// 与 metrics.GenerateMetricsIdentityKey 逻辑完全一致，避免 autopilot → metrics 循环导入。
+func computeMetricsIdentityKey(baseURL, apiKey, serviceType string) string {
+	normalized := utils.MetricsIdentityBaseURL(baseURL, serviceType)
+	h := sha256.New()
+	h.Write([]byte(normalized + "|" + apiKey))
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }

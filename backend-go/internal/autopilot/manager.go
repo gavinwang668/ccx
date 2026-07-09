@@ -142,6 +142,12 @@ type Manager struct {
 	changelogStore *ProfileChangelogStore
 	eventHub       *EventHub
 
+	// Phase 3B-2：模型画像存储（用于 ModelResolver 查询）
+	modelProfileStore *ModelProfileStore
+
+	// Phase 3B-2：模型自动映射器（用于 resolveMappedModel + ResolveModelSupport）
+	modelResolver *ModelResolver
+
 	cancel func()
 	wg     sync.WaitGroup
 }
@@ -187,6 +193,11 @@ func NewManager(
 		return nil, fmt.Errorf("[Autopilot-NewManager] 初始化 ProfileChangelogStore 失败: %w", clErr)
 	}
 
+	modelProfileStore, mpErr := NewModelProfileStoreWithDB(db)
+	if mpErr != nil {
+		return nil, fmt.Errorf("[Autopilot-NewManager] 初始化 ModelProfileStore 失败: %w", mpErr)
+	}
+
 	// 初始化 Phase 1 新组件（shadow/read-only，不修改调度链路）
 	timeBucketStore := NewTimeBucketStore()
 	return &Manager{
@@ -213,6 +224,9 @@ func NewManager(
 
 		changelogStore: changelogStore,
 		eventHub:       NewEventHub(),
+
+		modelProfileStore: modelProfileStore,
+		modelResolver:     NewModelResolver(modelProfileStore, cfgManager),
 	}, nil
 }
 
@@ -511,6 +525,76 @@ func (m *Manager) ChangelogStore() *ProfileChangelogStore {
 // EventHub 返回内部 EventHub 引用（供 WebSocket handler 订阅、AutoDiscoveryRunner 发布）。
 func (m *Manager) EventHub() *EventHub {
 	return m.eventHub
+}
+
+// ModelProfileStore 返回内部 ModelProfileStore 引用（供 main.go 传入 AutoDiscoveryRunner）。
+func (m *Manager) ModelProfileStore() *ModelProfileStore {
+	return m.modelProfileStore
+}
+
+// ModelResolver 返回内部 ModelResolver 引用（供 EndpointPolicyDeps 和 main.go 接线）。
+func (m *Manager) ModelResolver() *ModelResolver {
+	return m.modelResolver
+}
+
+// ResolveModelSupport 判断 AutoManaged 渠道是否支持指定模型。
+// 签名匹配 scheduler.ModelSupportResolverFunc，供 main.go 通过
+// scheduler.SetModelSupportResolverProvider(mgr.ResolveModelSupport) 注册。
+//
+// 实现策略：
+//   - 非 AutoManaged 渠道：直接委托 ExplainModelSupport（零额外成本）
+//   - AutoManaged 渠道 + 三条件门控通过：ExplainModelSupport 命中则直接返回；
+//     未命中时调用 ModelResolver（最小 CapabilityFloor），fail-open 回退 ExplainModelSupport
+//   - 门控不满足（AutoResolve=false 或 mode=off/shadow 或 KillSwitch）：回退 ExplainModelSupport
+//
+// 安全不变量：
+//   - Resolver nil 时行为与原有路径字节级一致（fail-open）
+//   - 非 AutoManaged 渠道的 ExplainModelSupport/RedirectModel 路径完全不变
+func (m *Manager) ResolveModelSupport(kind string, upstream *config.UpstreamConfig, model string) (supported bool, actualModel string, source string, reason string) {
+	if upstream == nil || model == "" {
+		return false, "", "invalid_input", "upstream or model is nil/empty"
+	}
+
+	// 非 AutoManaged 渠道：直接走原有路径
+	if !upstream.AutoManaged {
+		sup, rsn := upstream.ExplainModelSupport(model)
+		return sup, "", "explain", rsn
+	}
+
+	// AutoManaged 渠道：先走 ExplainModelSupport（fast path，避免不必要的 resolver 调用）
+	sup, rsn := upstream.ExplainModelSupport(model)
+	if sup {
+		return true, "", "explain", ""
+	}
+
+	// ExplainModelSupport 拒绝：检查三条件门控
+	routingCfg := m.cfgManager.GetAutopilotRouting()
+	if !routingCfg.ModelMapping.AutoResolve {
+		return false, "", "explain", rsn
+	}
+	effectiveMode := routingCfg.EffectiveRoutingMode()
+	if effectiveMode != config.AutopilotModeAssist && effectiveMode != config.AutopilotModeAuto {
+		return false, "", "explain", rsn
+	}
+
+	// 门控通过：调用 ModelResolver（调度器候选筛选阶段，无具体 API Key）
+	if m.modelResolver == nil {
+		return false, "", "explain", rsn
+	}
+
+	// 使用 ResolveModelAnyEndpoint 查找渠道所有 endpoint 中是否存在该模型。
+	// 不做映射（映射在 resolveMappedModel 中用完整 metricsKey 完成）。
+	found, resolverReason := m.modelResolver.ResolveModelAnyEndpoint(
+		model,
+		upstream.ChannelUID,
+		kind,
+	)
+	if found {
+		return true, "", "auto_resolve", resolverReason
+	}
+
+	// Resolver 也未命中 → 回退到 ExplainModelSupport（fail-open）
+	return false, "", "explain", rsn
 }
 
 // SetRateLimitApplier 设置 RateLimitApplier（由 main.go 在 NewManager 后调用）。

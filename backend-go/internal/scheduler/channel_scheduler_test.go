@@ -855,3 +855,134 @@ func TestSelectChannelByName(t *testing.T) {
 		}
 	})
 }
+
+// TestModelSupportResolver_NilFallsBackToExplainModelSupport 验证 resolver 为 nil 时
+// 行为与注册前完全一致（回归 pin）。
+func TestModelSupportResolver_NilFallsBackToExplainModelSupport(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:            "claude-only",
+				BaseURL:         "https://claude.example.com",
+				APIKeys:         []string{"sk-1"},
+				Status:          "active",
+				Priority:        1,
+				SupportedModels: []string{"claude-*"},
+			},
+			{
+				Name:            "gpt-only",
+				BaseURL:         "https://gpt.example.com",
+				APIKeys:         []string{"sk-2"},
+				Status:          "active",
+				Priority:        2,
+				SupportedModels: []string{"gpt-*"},
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+	// 不注册 resolver，应与原有行为完全一致
+
+	// claude-3-opus → 只匹配 claude-only (index=0)
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "claude-3-opus", "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 0 {
+		t.Fatalf("期望选择 index=0 (claude-only)，实际为 %d", result.ChannelIndex)
+	}
+
+	// gpt-4o → 只匹配 gpt-only (index=1)
+	result, err = scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4o", "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 1 {
+		t.Fatalf("期望选择 index=1 (gpt-only)，实际为 %d", result.ChannelIndex)
+	}
+
+	// gemini-pro → 无渠道支持，应报错
+	_, err = scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gemini-pro", "", "")
+	if err == nil {
+		t.Fatal("期望返回错误，实际为 nil")
+	}
+}
+
+// TestModelSupportResolver_ResolverOverridesExplainModelSupport 验证 resolver 返回
+// supported=true 时，即使 ExplainModelSupport 会拒绝该模型，渠道仍被纳入候选。
+func TestModelSupportResolver_ResolverOverridesExplainModelSupport(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:            "strict-claude",
+				BaseURL:         "https://strict.example.com",
+				APIKeys:         []string{"sk-1"},
+				Status:          "active",
+				Priority:        1,
+				SupportedModels: []string{"claude-*"}, // ExplainModelSupport 会拒绝 gpt-4o
+			},
+			{
+				Name:            "fallback",
+				BaseURL:         "https://fallback.example.com",
+				APIKeys:         []string{"sk-2"},
+				Status:          "active",
+				Priority:        2,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	// 注册 resolver：对 strict-claude 始终返回 supported=true
+	scheduler.SetModelSupportResolverProvider(func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+		if upstream.Name == "strict-claude" {
+			return true, "mapped-model", "auto_resolve", ""
+		}
+		return false, "", "", "not handled by resolver"
+	})
+
+	// gpt-4o 本来会被 ExplainModelSupport 排除 strict-claude，但 resolver 覆盖了
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4o", "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 0 {
+		t.Fatalf("resolver 应覆盖 ExplainModelSupport，期望选择 index=0 (strict-claude)，实际为 %d", result.ChannelIndex)
+	}
+}
+
+// TestModelSupportResolver_ResolverFalseFallsBackToExplainModelSupport 验证 resolver
+// 返回 supported=false 时，回退到 ExplainModelSupport（不自动排除渠道）。
+func TestModelSupportResolver_ResolverFalseFallsBackToExplainModelSupport(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:            "open-channel",
+				BaseURL:         "https://open.example.com",
+				APIKeys:         []string{"sk-1"},
+				Status:          "active",
+				Priority:        1,
+				// 无 SupportedModels 限制 → ExplainModelSupport 始终返回 true
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	// resolver 对所有渠道返回 supported=false
+	scheduler.SetModelSupportResolverProvider(func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+		return false, "", "", "resolver says no"
+	})
+
+	// resolver 说不支持，但 ExplainModelSupport 无限制 → 渠道仍被纳入候选
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "claude-3-opus", "", "")
+	if err != nil {
+		t.Fatalf("期望 resolver=false 后回退到 ExplainModelSupport 并成功选择，实际错误: %v", err)
+	}
+	if result.ChannelIndex != 0 {
+		t.Fatalf("期望选择 index=0 (open-channel)，实际为 %d", result.ChannelIndex)
+	}
+}

@@ -33,7 +33,8 @@ type ChannelScheduler struct {
 	conversationTracker      *conversation.ConversationTracker
 	overrideManager          *conversation.OverrideManager
 	rateLimitManager         *ratelimit.Manager
-	candidateFilterProvider  CandidateFilterProvider // SmartRouter shadow 注入点
+	candidateFilterProvider   CandidateFilterProvider       // SmartRouter shadow 注入点
+	modelSupportResolverFunc  ModelSupportResolverFunc      // Autopilot 模型支持解析注入点
 	loadShedMu               sync.Mutex
 	loadShedStates           map[string]rateLimitLoadShedState
 	loadShedStopCh           chan struct{}
@@ -127,6 +128,26 @@ func (s *ChannelScheduler) SetCandidateFilterProvider(provider CandidateFilterPr
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.candidateFilterProvider = provider
+}
+
+// ModelSupportResolverFunc 自动解析模型是否被某渠道支持。
+// 返回值:
+//   - supported: 渠道是否支持该模型（由解析器裁决）
+//   - actualModel: 解析后的实际模型名（为空时调用方使用原始 model）
+//   - source: 解析来源标识（如 "manual_redirect" / "auto_resolve"）
+//   - reason: 不支持时的原因（仅日志/诊断用）
+//
+// 由 main.go 在 autopilot ModelResolver 初始化后注册。
+// 为 nil 时回退到 UpstreamConfig.ExplainModelSupport 原有路径（fail-open）。
+type ModelSupportResolverFunc func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (supported bool, actualModel string, source string, reason string)
+
+// SetModelSupportResolverProvider 设置模型支持解析提供器。
+// 由 main.go 在 autopilot ModelResolver 初始化后注册。
+// provider 为 nil 时清除（恢复默认行为：直接调用 UpstreamConfig.ExplainModelSupport）。
+func (s *ChannelScheduler) SetModelSupportResolverProvider(fn ModelSupportResolverFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.modelSupportResolverFunc = fn
 }
 
 // GetRateLimitManager 获取主动限速管理器

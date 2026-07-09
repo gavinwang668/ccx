@@ -349,7 +349,7 @@ func DefaultAutopilotRoutingConfig() AutopilotRoutingConfig {
 		},
 
 		ModelMapping: ModelMappingRoutingConfig{
-			AutoResolve:            true,
+			AutoResolve:            false, // 新开关默认关闭，需显式 opt-in（Phase 3B-2 安全守则）
 			CapabilityFloorEnabled: true,
 			EchoMappedModel:        true,
 			ForbidChainMapping:     true,

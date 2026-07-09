@@ -1077,7 +1077,7 @@ func (s *ChannelScheduler) getActiveChannelsWithTrace(kind ChannelKind, model st
 		if status != "disabled" {
 			// 过滤不支持当前模型的渠道
 			if model != "" {
-				supported, reason := upstream.ExplainModelSupport(model)
+				supported, reason := s.resolveModelSupport(kind, &upstream, model)
 				if !supported {
 					prefix := kindSchedulerLogPrefix(kind)
 					log.Printf("[%s-ModelFilter] 跳过渠道 [%d] %s: 模型 %q 不被 supportedModels 支持 (%s)", prefix, i, upstream.Name, model, reason)
@@ -1098,6 +1098,25 @@ func (s *ChannelScheduler) getActiveChannelsWithTrace(kind ChannelKind, model st
 	})
 
 	return activeChannels
+}
+
+// resolveModelSupport 判断渠道是否支持指定模型。
+// 优先调用 modelSupportResolverFunc（autopilot 注入），若未注册或返回不支持
+// 则回退到 UpstreamConfig.ExplainModelSupport 原有路径（fail-open）。
+func (s *ChannelScheduler) resolveModelSupport(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string) {
+	s.mu.RLock()
+	resolver := s.modelSupportResolverFunc
+	s.mu.RUnlock()
+
+	if resolver != nil {
+		supported, _, _, _ := resolver(kind, upstream, model)
+		if supported {
+			return true, ""
+		}
+		// resolver 未命中 → 回退到原有 ExplainModelSupport
+	}
+
+	return upstream.ExplainModelSupport(model)
 }
 
 // findBestAvailableChannelPriority 找到当前最佳可用渠道的优先级（用于 affinity 覆盖判断）

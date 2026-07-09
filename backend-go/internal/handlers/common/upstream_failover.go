@@ -371,6 +371,24 @@ func TryUpstreamWithAllKeys(
 			upstreamCopy := upstream.Clone()
 			upstreamCopy.BaseURL = currentBaseURL
 
+			// Phase 3B-2: 应用 EndpointAttemptPolicy 的自动模型映射。
+			// MappedModel 来自 ModelResolver（AutoManaged 渠道，三条件门控通过），
+			// 优先级低于 RedirectModel（手动配置短路后 MappedModel 恒为空，不会双重映射）。
+			var appliedMappedModel string
+			if endpointPolicy != nil && endpointPolicy.ResolvedModelByEndpointUID != nil {
+				keyHash := autopilot.KeyHashFromAPIKey(apiKey)
+				euid := autopilot.GenerateEndpointUID(upstream.ChannelUID, currentBaseURL, keyHash)
+				if mm := endpointPolicy.ResolvedModelByEndpointUID(euid); mm != "" {
+					if replaced, err := sjson.SetBytes(attemptBody, "model", mm); err == nil {
+						attemptBody = replaced
+						appliedMappedModel = mm
+						RestoreRequestBody(c, attemptBody)
+						c.Set("requestBodyBytes", attemptBody)
+						RequestLogf(c, "[%s-AutoModel] endpoint=%s model override: %s -> %s", apiType, euid, model, mm)
+					}
+				}
+			}
+
 			// 主动限速：在构建/发送请求前获取许可（渠道级 + Key/Quota scope）
 			if rateLimitMgr := channelScheduler.GetRateLimitManager(); rateLimitMgr != nil {
 				const maxRateLimitWait = 10 * time.Second
@@ -710,6 +728,17 @@ func TryUpstreamWithAllKeys(
 			}
 			// 记录渠道日志
 			CompleteLog(channelLogStore, metricsKey, logRequestID, http.StatusOK, true, "", isRetryAttempt)
+
+			// Phase 3B-2: 回显自动模型映射信息（受 EchoMappedModel 配置门控）。
+			if appliedMappedModel != "" {
+				routingCfg := cfgManager.GetAutopilotRouting()
+				if routingCfg.ModelMapping.EchoMappedModel {
+					c.Header("X-CCX-Mapped-Model", appliedMappedModel)
+					c.Header("X-CCX-Original-Model", model)
+					c.Header("X-CCX-Mapping-Source", "auto_resolve")
+				}
+			}
+
 			return true, apiKey, originalIdx, nil, usage, nil
 		}
 

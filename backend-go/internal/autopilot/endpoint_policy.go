@@ -4,6 +4,8 @@ import (
 	"log"
 	"sort"
 	"time"
+
+	"github.com/BenedictKing/ccx/internal/config"
 )
 
 // ── EndpointAttemptPolicy（设计 §4.6.2 + §4.6.2a）──
@@ -83,6 +85,12 @@ type EndpointAttemptPolicy struct {
 
 	// Mode 当前运行模式（用于 trace 记录）。
 	Mode RoutingMode
+
+	// ResolvedModelByEndpointUID 返回 endpointUID 的自动映射模型。
+	// 由 SortURLs/SortKeys 阶段在评分时顺带填充，handlers 层在构建请求前查询。
+	// 返回空串表示无映射（使用原始模型）。
+	// 签名：(endpointUID) → mappedModel（空串 = 无映射）
+	ResolvedModelByEndpointUID func(endpointUID string) string
 }
 
 // ── EndpointPolicyDeps 依赖注入 ──
@@ -90,9 +98,11 @@ type EndpointAttemptPolicy struct {
 // EndpointPolicyDeps 封装 EndpointAttemptPolicy 构建所需的依赖。
 // 通过依赖注入避免与 Manager 的循环引用。
 type EndpointPolicyDeps struct {
-	ProfileStore *ProfileStore    // endpoint 画像存储
-	FastDecay    *FastDecayScorer // 快速衰减评分器
-	TraceStore   *TraceStore      // 路由决策追踪存储
+	ProfileStore  *ProfileStore    // endpoint 画像存储
+	FastDecay     *FastDecayScorer // 快速衰减评分器
+	TraceStore    *TraceStore      // 路由决策追踪存储
+	ModelResolver *ModelResolver   // Phase 3B-2: 自动模型映射器（nil 时不触发自动映射）
+	GetRoutingCfg func() config.AutopilotRoutingConfig // Phase 3B-2: 路由配置读取（用于 AutoResolve 门控）
 }
 
 // ── 构建入口 ──
@@ -128,6 +138,8 @@ func BuildEndpointPolicy(deps EndpointPolicyDeps, req *RequestProfile, mode Rout
 // buildShadowPolicy 构建 shadow 模式的策略。
 // 计算评分 + 记录 trace，但原样返回输入。
 func buildShadowPolicy(deps EndpointPolicyDeps, req *RequestProfile) *EndpointAttemptPolicy {
+	modelByUID := make(map[string]string) // endpointUID → mappedModel
+
 	policy := &EndpointAttemptPolicy{
 		RequestModel: req.Model,
 		Mode:         RoutingModeShadow,
@@ -143,7 +155,7 @@ func buildShadowPolicy(deps EndpointPolicyDeps, req *RequestProfile) *EndpointAt
 		startTime := time.Now()
 		candidates := make([]EndpointCandidate, 0, len(urls))
 		for _, url := range urls {
-			cand := scoreEndpointForURL(deps.ProfileStore, deps.FastDecay, req.Model, url)
+			cand := scoreEndpointForURL(deps.ProfileStore, deps.FastDecay, req.Model, url, req, &deps)
 			candidates = append(candidates, cand)
 		}
 
@@ -155,6 +167,13 @@ func buildShadowPolicy(deps EndpointPolicyDeps, req *RequestProfile) *EndpointAt
 
 		log.Printf("[EndpointPolicy-Shadow] model=%s urls=%d scored=%d duration=%dms",
 			req.Model, len(urls), len(candidates), trace.DurationMs)
+
+		// 填充 MappedModel 映射（shadow 模式也需要，供 handlers 层读取）
+		for _, cand := range candidates {
+			if cand.MappedModel != "" && cand.EndpointUID != "" {
+				modelByUID[cand.EndpointUID] = cand.MappedModel
+			}
+		}
 
 		// 原样返回
 		return urls, candidates
@@ -170,7 +189,7 @@ func buildShadowPolicy(deps EndpointPolicyDeps, req *RequestProfile) *EndpointAt
 		startTime := time.Now()
 		candidates := make([]EndpointCandidate, 0, len(apiKeys))
 		for _, key := range apiKeys {
-			cand := scoreEndpointForKey(deps.ProfileStore, deps.FastDecay, req.Model, baseURL, key)
+			cand := scoreEndpointForKey(deps.ProfileStore, deps.FastDecay, req.Model, baseURL, key, req, &deps)
 			candidates = append(candidates, cand)
 		}
 
@@ -183,16 +202,26 @@ func buildShadowPolicy(deps EndpointPolicyDeps, req *RequestProfile) *EndpointAt
 		log.Printf("[EndpointPolicy-Shadow] model=%s baseURL=%s keys=%d scored=%d duration=%dms",
 			req.Model, baseURL, len(apiKeys), len(candidates), trace.DurationMs)
 
+		// 填充 MappedModel 映射（shadow 模式也需要，供 handlers 层读取）
+		for _, cand := range candidates {
+			if cand.MappedModel != "" && cand.EndpointUID != "" {
+				modelByUID[cand.EndpointUID] = cand.MappedModel
+			}
+		}
+
 		// 原样返回
 		return apiKeys, candidates
 	}
 
+	policy.ResolvedModelByEndpointUID = buildResolvedModelLookup(modelByUID)
 	return policy
 }
 
 // buildActivePolicy 构建 active 模式的策略。
 // enableFilter=false（assist）：只排序不删减；enableFilter=true（auto）：过滤+排序。
 func buildActivePolicy(deps EndpointPolicyDeps, req *RequestProfile, enableFilter bool) *EndpointAttemptPolicy {
+	modelByUID := make(map[string]string) // endpointUID → mappedModel
+
 	policy := &EndpointAttemptPolicy{
 		RequestModel: req.Model,
 		Mode:         RoutingModeActive,
@@ -242,7 +271,7 @@ func buildActivePolicy(deps EndpointPolicyDeps, req *RequestProfile, enableFilte
 			}()
 			cands := make([]EndpointCandidate, 0, len(urls))
 			for _, url := range urls {
-				cand := scoreEndpointForURL(deps.ProfileStore, deps.FastDecay, req.Model, url)
+				cand := scoreEndpointForURL(deps.ProfileStore, deps.FastDecay, req.Model, url, req, &deps)
 				cands = append(cands, cand)
 			}
 
@@ -270,6 +299,13 @@ func buildActivePolicy(deps EndpointPolicyDeps, req *RequestProfile, enableFilte
 
 		log.Printf("[EndpointPolicy-Active] model=%s urls=%d sorted top=%v duration=%dms",
 			req.Model, len(sortedURLs), topN(sortedURLs, 3), trace.DurationMs)
+
+		// 填充 MappedModel 映射（供 handlers 层读取）
+		for _, cand := range candidates {
+			if cand.MappedModel != "" && cand.EndpointUID != "" {
+				modelByUID[cand.EndpointUID] = cand.MappedModel
+			}
+		}
 
 		return sortedURLs, candidates
 	}
@@ -322,7 +358,7 @@ func buildActivePolicy(deps EndpointPolicyDeps, req *RequestProfile, enableFilte
 			}()
 			cands := make([]EndpointCandidate, 0, len(apiKeys))
 			for _, key := range apiKeys {
-				cand := scoreEndpointForKey(deps.ProfileStore, deps.FastDecay, req.Model, baseURL, key)
+				cand := scoreEndpointForKey(deps.ProfileStore, deps.FastDecay, req.Model, baseURL, key, req, &deps)
 				cands = append(cands, cand)
 			}
 
@@ -351,9 +387,17 @@ func buildActivePolicy(deps EndpointPolicyDeps, req *RequestProfile, enableFilte
 		log.Printf("[EndpointPolicy-Active] model=%s baseURL=%s keys=%d sorted top=%v duration=%dms",
 			req.Model, baseURL, len(sortedKeys), topN(sortedKeys, 3), trace.DurationMs)
 
+		// 填充 MappedModel 映射（供 handlers 层读取）
+		for _, cand := range candidates {
+			if cand.MappedModel != "" && cand.EndpointUID != "" {
+				modelByUID[cand.EndpointUID] = cand.MappedModel
+			}
+		}
+
 		return sortedKeys, candidates
 	}
 
+	policy.ResolvedModelByEndpointUID = buildResolvedModelLookup(modelByUID)
 	return policy
 }
 
@@ -496,7 +540,7 @@ func endpointCostScore(ct CostTier) float64 {
 
 // scoreEndpointForURL 为指定 baseURL 评分。
 // 从 ProfileStore 查找画像，无画像时返回中性分。
-func scoreEndpointForURL(store *ProfileStore, fastDecay *FastDecayScorer, model, baseURL string) EndpointCandidate {
+func scoreEndpointForURL(store *ProfileStore, fastDecay *FastDecayScorer, model, baseURL string, req *RequestProfile, deps *EndpointPolicyDeps) EndpointCandidate {
 	cand := EndpointCandidate{
 		BaseURL: baseURL,
 		Score:   neutralEndpointScore,
@@ -518,7 +562,7 @@ func scoreEndpointForURL(store *ProfileStore, fastDecay *FastDecayScorer, model,
 	cand.MetricsKey = profile.MetricsKey
 	cand.KeyMask = profile.KeyMask
 	cand.EndpointUID = profile.EndpointUID
-	cand.MappedModel = resolveMappedModel(profile, model)
+	cand.MappedModel = resolveMappedModel(profile, model, req, deps)
 
 	// 计算 FastDecay 分
 	fastDecayScore := 1.0
@@ -539,7 +583,7 @@ func scoreEndpointForURL(store *ProfileStore, fastDecay *FastDecayScorer, model,
 
 // scoreEndpointForKey 为指定 baseURL + apiKey 组合评分。
 // 从 ProfileStore 查找画像，无画像时返回中性分。
-func scoreEndpointForKey(store *ProfileStore, fastDecay *FastDecayScorer, model, baseURL, apiKey string) EndpointCandidate {
+func scoreEndpointForKey(store *ProfileStore, fastDecay *FastDecayScorer, model, baseURL, apiKey string, req *RequestProfile, deps *EndpointPolicyDeps) EndpointCandidate {
 	keyHash := KeyHashFromAPIKey(apiKey)
 	endpointUID := GenerateEndpointUID("", baseURL, keyHash)
 
@@ -568,7 +612,7 @@ func scoreEndpointForKey(store *ProfileStore, fastDecay *FastDecayScorer, model,
 	cand.ChannelKind = profile.ChannelKind
 	cand.OriginTier = ChannelOriginTier(profile.OriginTier)
 	cand.MetricsKey = profile.MetricsKey
-	cand.MappedModel = resolveMappedModel(profile, model)
+	cand.MappedModel = resolveMappedModel(profile, model, req, deps)
 
 	// 计算 FastDecay 分
 	fastDecayScore := 1.0
@@ -603,12 +647,45 @@ func findProfileByBaseURL(store *ProfileStore, baseURL string) *KeyEndpointProfi
 }
 
 // resolveMappedModel 解析 endpoint 的模型映射。
-// 如果 profile 的 ModelMapping 中有该模型的映射，返回映射后的模型名。
-func resolveMappedModel(profile *KeyEndpointProfile, model string) string {
-	if profile == nil || model == "" || len(profile.ModelMapping) == 0 {
+// 优先级：profile.ModelMapping（显式 per-endpoint 映射）> ModelResolver 自动映射。
+// ModelResolver 仅在 AutoResolve 门控通过时调用；返回空串表示无映射。
+func resolveMappedModel(profile *KeyEndpointProfile, model string, req *RequestProfile, deps *EndpointPolicyDeps) string {
+	if profile == nil || model == "" {
 		return ""
 	}
-	if mapped, ok := profile.ModelMapping[model]; ok {
+
+	// 优先级 1：显式 modelMapping（用户手动配置，视为已知正确）
+	if len(profile.ModelMapping) > 0 {
+		if mapped, ok := profile.ModelMapping[model]; ok {
+			return mapped
+		}
+	}
+
+	// 优先级 2：ModelResolver 自动映射（Phase 3B-2）
+	resolver := getModelResolverFromDeps(deps)
+	if resolver == nil || req == nil {
+		return ""
+	}
+
+	// 三条件门控：AutoResolve + RoutingMode in {assist, auto} + no KillSwitch
+	routingCfg := getRoutingCfgFromDeps(deps)
+	if routingCfg == nil || !routingCfg.ModelMapping.AutoResolve {
+		return ""
+	}
+	effectiveMode := routingCfg.EffectiveRoutingMode()
+	if effectiveMode != config.AutopilotModeAssist && effectiveMode != config.AutopilotModeAuto {
+		return ""
+	}
+
+	floor := BuildCapabilityFloorFromRequestProfile(req)
+	mapped, resolved, _ := resolver.ResolveModel(
+		model,
+		profile.ChannelUID,
+		profile.ChannelKind,
+		profile.MetricsKey,
+		floor,
+	)
+	if resolved {
 		return mapped
 	}
 	return ""
@@ -617,6 +694,25 @@ func resolveMappedModel(profile *KeyEndpointProfile, model string) string {
 // maskKeyForDisplay 对 API Key 做掩码（用于 EndpointCandidate.KeyMask）。
 func maskKeyForDisplay(key string) string {
 	return MaskKey(key)
+}
+
+// getModelResolverFromDeps 安全获取 deps 中的 ModelResolver。
+// deps 或 ModelResolver 为 nil 时返回 nil（调用方回退到原有逻辑）。
+func getModelResolverFromDeps(deps *EndpointPolicyDeps) *ModelResolver {
+	if deps == nil {
+		return nil
+	}
+	return deps.ModelResolver
+}
+
+// getRoutingCfgFromDeps 安全获取路由配置。
+// deps 或 GetRoutingCfg 为 nil 时返回 nil（调用方回退到原有逻辑）。
+func getRoutingCfgFromDeps(deps *EndpointPolicyDeps) *config.AutopilotRoutingConfig {
+	if deps == nil || deps.GetRoutingCfg == nil {
+		return nil
+	}
+	cfg := deps.GetRoutingCfg()
+	return &cfg
 }
 
 // ── 排序辅助 ──
@@ -738,10 +834,18 @@ func topN(items []string, n int) []string {
 
 // GetEndpointCandidates 获取指定 baseURL 列表的 endpoint 评分信息。
 // 仅用于诊断/dry-run，不影响调度。
+
+// buildResolvedModelLookup 从 endpointUID → mappedModel 映射构建闭包。
+// 空 map 时返回总是返回空串的闭包（避免 nil 检查）。
+func buildResolvedModelLookup(m map[string]string) func(string) string {
+	return func(endpointUID string) string {
+		return m[endpointUID]
+	}
+}
 func GetEndpointCandidates(store *ProfileStore, fastDecay *FastDecayScorer, model string, urls []string) []EndpointCandidate {
 	candidates := make([]EndpointCandidate, 0, len(urls))
 	for _, url := range urls {
-		cand := scoreEndpointForURL(store, fastDecay, model, url)
+		cand := scoreEndpointForURL(store, fastDecay, model, url, nil, nil)
 		candidates = append(candidates, cand)
 	}
 	return candidates
@@ -752,7 +856,7 @@ func GetEndpointCandidates(store *ProfileStore, fastDecay *FastDecayScorer, mode
 func GetKeyCandidates(store *ProfileStore, fastDecay *FastDecayScorer, model, baseURL string, apiKeys []string) []EndpointCandidate {
 	candidates := make([]EndpointCandidate, 0, len(apiKeys))
 	for _, key := range apiKeys {
-		cand := scoreEndpointForKey(store, fastDecay, model, baseURL, key)
+		cand := scoreEndpointForKey(store, fastDecay, model, baseURL, key, nil, nil)
 		candidates = append(candidates, cand)
 	}
 	return candidates

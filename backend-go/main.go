@@ -584,9 +584,11 @@ func main() {
 				ChannelKind: "", // channel kind 由 handler 层传入，hook 签名暂不含；shadow 模式下不影响评分
 			}
 			deps := autopilot.EndpointPolicyDeps{
-				ProfileStore: profileStore,
-				FastDecay:    fastDecayScorer,
-				TraceStore:   traceStore,
+				ProfileStore:  profileStore,
+				FastDecay:     fastDecayScorer,
+				TraceStore:    traceStore,
+				ModelResolver: autopilotManager.ModelResolver(),
+				GetRoutingCfg: func() config.AutopilotRoutingConfig { return cfgManager.GetAutopilotRouting() },
 			}
 			return autopilot.BuildEndpointPolicy(deps, req, mode)
 		})
@@ -626,6 +628,15 @@ func main() {
 			autopilotManager.SetProbeWorker(probeWorker)
 			log.Printf("[Autopilot-Init] L2 ProbeWorker 已创建 (将在 StartWorker 时启动)")
 		}
+	}
+
+	// Phase 3B-2: ModelSupportResolver 注入（无条件注册，安全门控在 ResolveModelSupport 内部）。
+	// 调度器候选筛选时调用，AutoManaged 渠道 + 三条件门控通过才走 ModelResolver，否则回退 ExplainModelSupport。
+	if autopilotManager != nil {
+		channelScheduler.SetModelSupportResolverProvider(func(kind scheduler.ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+			return autopilotManager.ResolveModelSupport(string(kind), upstream, model)
+		})
+		log.Printf("[Autopilot-Init] ModelSupportResolver 已注册到调度器")
 	}
 
 	// 初始化对话追踪器和覆盖管理器
@@ -1025,6 +1036,10 @@ func main() {
 
 			// Phase 2 第三批：自动托管 API
 			autoDiscoveryRunner := autopilot.NewAutoDiscoveryRunner(autopilotManager.ProfileStore(), autopilotManager.EventHub())
+			// Phase 3B-2：注入 ModelProfileStore，使自动发现时同步写入 model_profiles
+			if mps := autopilotManager.ModelProfileStore(); mps != nil {
+				autoDiscoveryRunner.ModelProfileStore = mps
+			}
 			autopilot.RegisterAutoManagedRoutes(apiGroup, &autopilot.AutoManagedDeps{
 				CfgManager: cfgManager,
 				Runner:     autoDiscoveryRunner,
