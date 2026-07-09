@@ -81,6 +81,20 @@
             <v-icon start size="12">{{ tag.icon }}</v-icon>
             {{ tag.label }}
           </v-chip>
+          <!-- 用户自定义标签 -->
+          <v-chip
+            v-for="utag in channel.tags"
+            :key="'user-' + utag"
+            color="teal"
+            size="x-small"
+            variant="outlined"
+            density="comfortable"
+            rounded="pill"
+            class="user-tag-chip"
+          >
+            <v-icon start size="12">mdi-tag</v-icon>
+            {{ utag }}
+          </v-chip>
           <!-- 自动托管徽标 -->
           <v-tooltip v-if="channel.autoManaged" :text="t('autopilot.badge.tooltip')" location="top" :open-delay="150" content-class="ccx-tooltip">
             <template #activator="{ props: autoProps }">

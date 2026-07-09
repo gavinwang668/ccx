@@ -199,6 +199,7 @@ export interface Channel {
   autoManaged?: boolean                      // 启用自动托管
   autoManagedAt?: string                     // 开始托管时间（ISO 格式）
   rpm?: number                // 能力测试发送速率（仅影响能力测试）
+  tags?: string[]             // 用户自定义标签（自由文本，与 PoolTag 完全独立）
 }
 
 export interface ChannelsResponse {

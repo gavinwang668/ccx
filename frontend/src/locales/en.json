@@ -721,6 +721,8 @@
   "channelEditor.basic.website.placeholder": "https://openai.com",
   "channelEditor.basic.description.label": "Description",
   "channelEditor.basic.description.placeholder": "Optional: note about this provider...",
+  "channelEditor.basic.tags.label": "Tags",
+  "channelEditor.basic.tags.hint": "Press Enter to add tags for filtering and grouping channels",
   "channelEditor.auth.keys.label": "API Keys",
   "channelEditor.auth.apiKeyRequired": "At least one API key is required",
   "channelEditor.auth.duplicateKey": "Duplicate API key",

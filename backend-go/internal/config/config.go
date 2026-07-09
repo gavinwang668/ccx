@@ -114,6 +114,9 @@ type UpstreamConfig struct {
 	// 加载旧配置时由 ConfigManager 自动补齐为 "unknown"（不做任何基于 URL/名称的猜测推断）。
 	OriginType string `json:"originType,omitempty"`
 	OriginTier string `json:"originTier,omitempty"`
+	// 用户自定义标签（自由文本，与受限枚举 PoolTag 完全独立）。
+	// Tags 只做用户侧组织/筛选，不接入任何调度逻辑。
+	Tags []string `json:"tags,omitempty"`
 }
 
 // APIKeyConfig 描述单个 API Key 的附加调度配置。
@@ -488,6 +491,8 @@ type UpstreamUpdate struct {
 	// 自动托管字段
 	AutoManaged   *bool      `json:"autoManaged"`
 	AutoManagedAt *time.Time `json:"autoManagedAt"`
+	// 用户自定义标签（nil=不修改，空切片=清空标签）
+	Tags []string `json:"tags"`
 }
 
 // Config 配置结构

@@ -352,6 +352,23 @@ func (cm *ConfigManager) UpdateChatUpstream(index int, updates UpstreamUpdate) (
 	if updates.AutoManagedAt != nil {
 		upstream.AutoManagedAt = updates.AutoManagedAt
 	}
+	if updates.Tags != nil {
+		// 去重并裁剪空白，空切片表示清空标签
+		seen := make(map[string]struct{}, len(updates.Tags))
+		cleaned := make([]string, 0, len(updates.Tags))
+		for _, t := range updates.Tags {
+			trimmed := strings.TrimSpace(t)
+			if trimmed == "" {
+				continue
+			}
+			if _, dup := seen[trimmed]; dup {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			cleaned = append(cleaned, trimmed)
+		}
+		upstream.Tags = cleaned
+	}
 
 	// 检测配置是否真的发生了变化
 	if !cm.hasConfigChanged(originalConfig, cm.config) {

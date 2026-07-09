@@ -196,6 +196,20 @@
                 <v-icon start size="11">{{ tag.icon }}</v-icon>
                 {{ tag.label }}
               </v-chip>
+              <!-- 用户自定义标签 -->
+              <v-chip
+                v-for="utag in element.tags"
+                :key="'user-' + utag"
+                color="teal"
+                size="x-small"
+                variant="outlined"
+                density="comfortable"
+                rounded="pill"
+                class="ml-1 user-tag-chip-orch"
+              >
+                <v-icon start size="11">mdi-tag</v-icon>
+                {{ utag }}
+              </v-chip>
               <span v-if="element.description" class="text-caption text-disabled ml-3 channel-description">{{ element.description }}</span>
               <!-- Expand icon -->
               <v-icon
@@ -701,7 +715,9 @@ const matchesSearch = (channel: Channel) => {
     channel.name?.toLowerCase().includes(q) ||
     channel.description?.toLowerCase().includes(q) ||
     channel.serviceType?.toLowerCase().includes(q) ||
-    channel.baseUrl?.toLowerCase().includes(q)
+    channel.baseUrl?.toLowerCase().includes(q) ||
+    channel.tags?.some(t => t.toLowerCase().includes(q)) ||
+    false
   )
 }
 

@@ -721,6 +721,8 @@
   "channelEditor.basic.website.placeholder": "https://openai.com",
   "channelEditor.basic.description.label": "描述",
   "channelEditor.basic.description.placeholder": "可选填，用于备注此节点供应商...",
+  "channelEditor.basic.tags.label": "标签",
+  "channelEditor.basic.tags.hint": "按 Enter 添加标签，用于渠道筛选和分组",
   "channelEditor.auth.keys.label": "API Keys",
   "channelEditor.auth.apiKeyRequired": "至少需要一个 API Key",
   "channelEditor.auth.duplicateKey": "重复的 API Key",

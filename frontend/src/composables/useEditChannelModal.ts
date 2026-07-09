@@ -147,6 +147,7 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
     stripEmptyTextBlocks: false,
     normalizeSystemRoleToTopLevel: false,
     description: '',
+    tags: [] as string[],
     apiKeys: [] as string[],
     apiKeyConfigs: undefined as Channel['apiKeyConfigs'],
     modelMapping: {} as Record<string, string>,
@@ -841,6 +842,7 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
     form.stripEmptyTextBlocks = !!channel.stripEmptyTextBlocks
     form.normalizeSystemRoleToTopLevel = !!channel.normalizeSystemRoleToTopLevel
     form.description = channel.description || ''
+    form.tags = [...(channel.tags || [])]
 
     // 同步 baseUrlsText（优先使用 baseUrls，否则使用 baseUrl），保留用户显式配置的原始 URL 形式
     const rawUrls = channel.baseUrls && channel.baseUrls.length > 0

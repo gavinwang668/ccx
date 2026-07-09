@@ -93,6 +93,35 @@
           @update:model-value="updateField('description', $event)"
         />
       </v-col>
+
+      <!-- 用户自定义标签 -->
+      <v-col cols="12">
+        <v-combobox
+          :model-value="form.tags ?? []"
+          :label="t('channelEditor.basic.tags.label')"
+          :hint="t('channelEditor.basic.tags.hint')"
+          persistent-hint
+          prepend-inner-icon="mdi-tag"
+          variant="outlined"
+          density="comfortable"
+          chips
+          closable-chips
+          multiple
+          hide-selected
+          @update:model-value="updateField('tags', $event)"
+        >
+          <template #chip="{ props, item }">
+            <v-chip
+              v-bind="props"
+              :text="item.value"
+              color="teal"
+              size="small"
+              variant="tonal"
+              closable
+            />
+          </template>
+        </v-combobox>
+      </v-col>
     </v-row>
   </div>
 </template>
@@ -105,6 +134,7 @@ interface FormData {
   serviceType: string
   website: string
   description: string
+  tags?: string[]
 }
 
 interface Props {

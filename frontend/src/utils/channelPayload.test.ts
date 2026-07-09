@@ -917,3 +917,65 @@ describe('buildChannelPayload', () => {
     ])).toBeNull()
   })
 })
+
+describe('buildChannelPayload tags', () => {
+  const baseForm = {
+    name: 'test',
+    serviceType: 'openai' as const,
+    baseUrl: 'https://api.example.com',
+    baseUrls: [] as string[],
+    website: '',
+    insecureSkipVerify: false,
+    lowQuality: false,
+    injectDummyThoughtSignature: false,
+    stripThoughtSignature: false,
+    passbackReasoningContent: false,
+    passbackThinkingBlocks: false,
+    description: '',
+    apiKeys: ['sk-1'],
+    modelMapping: {},
+    reasoningMapping: {},
+    reasoningParamStyle: 'reasoning' as const,
+    textVerbosity: '' as const,
+    fastMode: false,
+    customHeaders: {},
+    proxyUrl: '',
+    routePrefix: '',
+    supportedModels: [] as string[],
+    autoBlacklistBalance: true,
+    normalizeMetadataUserId: true,
+    stripEmptyTextBlocks: false,
+    normalizeSystemRoleToTopLevel: false,
+    codexNativeToolPassthrough: false,
+    codexToolCompat: false,
+    stripImageGenerationTool: false,
+    noVision: false,
+    noVisionModels: [] as string[],
+    visionFallbackModel: '',
+  }
+
+  it('应包含非空 tags', () => {
+    const result = buildChannelPayload({ ...baseForm, tags: ['prod', 'primary'] })
+    expect(result.tags).toEqual(['prod', 'primary'])
+  })
+
+  it('空 tags 应返回空数组', () => {
+    const result = buildChannelPayload({ ...baseForm, tags: [] })
+    expect(result.tags).toEqual([])
+  })
+
+  it('undefined tags 应返回空数组', () => {
+    const result = buildChannelPayload({ ...baseForm })
+    expect(result.tags).toEqual([])
+  })
+
+  it('tags 应裁剪空白', () => {
+    const result = buildChannelPayload({ ...baseForm, tags: ['  prod  ', ' primary '] })
+    expect(result.tags).toEqual(['prod', 'primary'])
+  })
+
+  it('空字符串 tag 应被过滤', () => {
+    const result = buildChannelPayload({ ...baseForm, tags: ['valid', '', '  ', 'also'] })
+    expect(result.tags).toEqual(['valid', 'also'])
+  })
+})

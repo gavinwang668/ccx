@@ -721,6 +721,8 @@
   "channelEditor.basic.website.placeholder": "https://openai.com",
   "channelEditor.basic.description.label": "Deskripsi",
   "channelEditor.basic.description.placeholder": "Opsional: catatan tentang provider ini...",
+  "channelEditor.basic.tags.label": "Tag",
+  "channelEditor.basic.tags.hint": "Tekan Enter untuk menambahkan tag untuk filter dan pengelompokan channel",
   "channelEditor.auth.keys.label": "API Keys",
   "channelEditor.auth.apiKeyRequired": "Minimal satu API Key diperlukan",
   "channelEditor.auth.duplicateKey": "API Key duplikat",

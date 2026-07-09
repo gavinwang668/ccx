@@ -93,6 +93,7 @@ export interface ChannelFormLike {
   noVisionModels: string[]
   visionFallbackModel: SelectableString
   historicalImageTurnLimit?: string | number | null
+  tags?: string[]
 
 }
 
@@ -570,6 +571,9 @@ export function buildChannelPayload(
   if (form.apiKeyConfigs !== undefined) {
     channelData.apiKeyConfigs = processedApiKeyConfigs
   }
+
+  // 用户自定义标签（始终发送，空数组用于清空标签）
+  channelData.tags = (form.tags || []).map(t => t.trim()).filter(Boolean)
 
   if (deduplicatedUrls.length > 1) {
     channelData.baseUrls = deduplicatedUrls
