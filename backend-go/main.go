@@ -1092,8 +1092,23 @@ func main() {
 		if autopilotManager != nil {
 			autopilot.RegisterRoutes(apiGroup, autopilotManager)
 
+			// Phase 2 第三批：自动托管发现执行器。
+			// 提前到这里构造（原在 Phase 2 自动托管 API 注册处），因为 §8.5.1 new-api
+			// 订阅集成的 provision 端点也需要复用同一个 runner 实例来触发 Discovery。
+			autoDiscoveryRunner := autopilot.NewAutoDiscoveryRunner(autopilotManager.ProfileStore(), autopilotManager.EventHub())
+			// Phase 3B-2：注入 ModelProfileStore，使自动发现时同步写入 model_profiles
+			if mps := autopilotManager.ModelProfileStore(); mps != nil {
+				autoDiscoveryRunner.ModelProfileStore = mps
+			}
+
 			// 订阅中心 API
 			autopilot.RegisterSubscriptionRoutes(apiGroup, autopilotManager.SubscriptionStore(), autopilotManager.SubscriptionRefreshWorker())
+			// §8.5.1：new-api 订阅集成 API（校验 + 完整 provision 流程）
+			autopilot.RegisterNewApiSubscriptionRoutes(apiGroup, &autopilot.NewApiRouteDeps{
+				Store:      autopilotManager.SubscriptionStore(),
+				CfgManager: cfgManager,
+				Runner:     autoDiscoveryRunner,
+			})
 			// 本地 Runtime API
 			autopilot.RegisterLocalRuntimeRoutes(apiGroup, autopilotManager.LocalRuntimeStore())
 			// 手动意图 API
@@ -1124,12 +1139,7 @@ func main() {
 				autopilot.RegisterDryRunRoutes(apiGroup, autopilotManager.SmartRouter())
 			}
 
-			// Phase 2 第三批：自动托管 API
-			autoDiscoveryRunner := autopilot.NewAutoDiscoveryRunner(autopilotManager.ProfileStore(), autopilotManager.EventHub())
-			// Phase 3B-2：注入 ModelProfileStore，使自动发现时同步写入 model_profiles
-			if mps := autopilotManager.ModelProfileStore(); mps != nil {
-				autoDiscoveryRunner.ModelProfileStore = mps
-			}
+			// Phase 2 第三批：自动托管 API（复用上方已构造的 autoDiscoveryRunner）
 			autopilot.RegisterAutoManagedRoutes(apiGroup, &autopilot.AutoManagedDeps{
 				CfgManager: cfgManager,
 				Runner:     autoDiscoveryRunner,

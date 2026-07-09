@@ -84,9 +84,21 @@ type SubscriptionItem struct {
 	// Phase 4 Item 6：余额自动刷新
 	BillingAPIKey           string `json:"billingApiKey,omitempty"`
 	AutoRefreshEnabled      bool   `json:"autoRefreshEnabled,omitempty"`
-	AutoRefreshSupported    bool   `json:"autoRefreshSupported,omitempty"`    // provider 是否在白名单内
+	AutoRefreshSupported    bool   `json:"autoRefreshSupported,omitempty"` // provider 是否在白名单内
 	LastBalanceRefreshAt    string `json:"lastBalanceRefreshAt,omitempty"`
 	LastBalanceRefreshError string `json:"lastBalanceRefreshError,omitempty"`
+
+	// ── §8.5.1：new-api 订阅集成 ──
+	// AccessToken 绝不完整出响应，只回显脱敏后的尾部片段，字段名区分以免误用。
+	BaseURL            string   `json:"baseUrl,omitempty"`
+	AccessTokenMasked  string   `json:"accessTokenMasked,omitempty"`
+	UserID             string   `json:"userId,omitempty"`
+	AuthTokenMode      string   `json:"authTokenMode,omitempty"`
+	ProvisionKeyName   string   `json:"provisionKeyName,omitempty"`
+	ProvisionGroup     string   `json:"provisionGroup,omitempty"`
+	ProvisionModels    []string `json:"provisionModels,omitempty"`
+	ProvisionedTokenID int      `json:"provisionedTokenId,omitempty"`
+	AvailableModels    []string `json:"availableModels,omitempty"`
 }
 
 // SubscriptionsListResponse GET /api/subscriptions 返回结构。
@@ -426,10 +438,21 @@ func toSubscriptionItem(p *SubscriptionProfile) SubscriptionItem {
 		CreatedAt:          p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:          p.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		// Phase 4 Item 6：余额自动刷新
-		BillingAPIKey:        p.BillingAPIKey,
-		AutoRefreshEnabled:   p.AutoRefreshEnabled,
-		AutoRefreshSupported: IsAutoRefreshSupported(p.Provider),
+		BillingAPIKey:           p.BillingAPIKey,
+		AutoRefreshEnabled:      p.AutoRefreshEnabled,
+		AutoRefreshSupported:    IsAutoRefreshSupported(p.Provider),
 		LastBalanceRefreshError: p.LastBalanceRefreshError,
+
+		// §8.5.1：new-api 订阅集成——AccessToken 绝不完整出响应，仅脱敏展示
+		BaseURL:            p.BaseURL,
+		AccessTokenMasked:  maskAccessToken(p.AccessToken),
+		UserID:             p.UserID,
+		AuthTokenMode:      p.AuthTokenMode,
+		ProvisionKeyName:   p.ProvisionKeyName,
+		ProvisionGroup:     p.ProvisionGroup,
+		ProvisionModels:    p.ProvisionModels,
+		ProvisionedTokenID: p.ProvisionedTokenID,
+		AvailableModels:    p.AvailableModels,
 	}
 	if p.ArchivedAt != nil {
 		item.ArchivedAt = p.ArchivedAt.Format("2006-01-02T15:04:05Z07:00")
@@ -438,4 +461,16 @@ func toSubscriptionItem(p *SubscriptionProfile) SubscriptionItem {
 		item.LastBalanceRefreshAt = p.LastBalanceRefreshAt.Format("2006-01-02T15:04:05Z07:00")
 	}
 	return item
+}
+
+// maskAccessToken 对 new-api 访问令牌脱敏：只显示尾部 4 位，其余用 "****" 替代。
+// 空令牌返回空字符串（不出现在响应里，字段有 omitempty）。
+func maskAccessToken(token string) string {
+	if token == "" {
+		return ""
+	}
+	if len(token) <= 4 {
+		return "****"
+	}
+	return "****" + token[len(token)-4:]
 }

@@ -52,6 +52,29 @@ type SubscriptionProfile struct {
 	// ── 订阅级用量窗口（§3.2.4）──
 	UsageWindows []UsageWindow `json:"usageWindows,omitempty"` // 订阅级汇总用量窗口
 
+	// ── §8.5.1：new-api 订阅集成（统一账号接入）──
+	// BaseURL 是 new-api 站点地址，同时作为自动建渠道的上游 baseURL。
+	BaseURL string `json:"baseUrl,omitempty"`
+	// AccessToken 是 new-api 系统访问令牌，敏感数据。
+	// 与 BillingAPIKey 同等级别处理：允许序列化进 profile_json 以便持久化（否则每次重启都要求用户重填），
+	// 但 json tag 用小写 accessToken——toSubscriptionItem 转换 API 响应时必须脱敏（仅显示尾部 4 位），
+	// 且任何日志打印都不得包含该字段。
+	AccessToken string `json:"accessToken,omitempty"`
+	// UserID 对应 New-API-User / User-id 请求头。
+	UserID string `json:"userId,omitempty"`
+	// AuthTokenMode: "bearer"(默认，Authorization: Bearer <token>) | "raw"（不带 Bearer 前缀，fork 兼容）
+	AuthTokenMode string `json:"authTokenMode,omitempty"`
+	// ProvisionKeyName 自动建 key 的名称模板，默认 "ccx-autopilot"。
+	ProvisionKeyName string `json:"provisionKeyName,omitempty"`
+	// ProvisionGroup 建 key 时指定分组，空=默认分组。
+	ProvisionGroup string `json:"provisionGroup,omitempty"`
+	// ProvisionModels 建 key 时的 model_limits 白名单，空=不限制。
+	ProvisionModels []string `json:"provisionModels,omitempty"`
+	// ProvisionedTokenID 是自动建 key 后回填的 new-api 侧令牌 ID（只读展示）。
+	ProvisionedTokenID int `json:"provisionedTokenId,omitempty"`
+	// AvailableModels 是账号可用模型快照（GET /api/user/models），供渠道 supportedModels 参考。
+	AvailableModels []string `json:"availableModels,omitempty"`
+
 	Notes      string     `json:"notes,omitempty"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
