@@ -243,6 +243,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
 import { api } from '@/services/api'
+import { useRuntimePresets } from '@/composables/useRuntimePresets'
 import SubscriptionPlanTable from '@/components/SubscriptionPlanTable.vue'
 import NewApiSubscriptionForm from '@/components/NewApiSubscriptionForm.vue'
 import type {
@@ -250,35 +251,12 @@ import type {
   SubscriptionCreateRequest,
   SubscriptionUpdateRequest,
   NewApiProvisionResponse,
-  SubscriptionPreset,
 } from '@/services/api-types'
 
 const { t } = useI18n()
-
-// 预置兜底：/api/presets 不可用时保证表单选项仍可渲染。
-// 与后端 shared/subscription-preset 编译期兜底保持一致。
-function fallbackPreset(): SubscriptionPreset {
-  return {
-    originTypes: [
-      { value: 'official_api', tier: 'first' },
-      { value: 'official_token_plan', tier: 'first' },
-      { value: 'relay', tier: 'second' },
-      { value: 'community', tier: 'third' },
-      { value: 'local_runtime', tier: 'local' },
-      { value: 'unknown', tier: 'unknown' },
-    ],
-    billingModes: ['token_plan', 'pay_as_you_go', 'shared_free', 'unknown'],
-    sources: ['manual', 'auto_discovered'],
-    autoRefreshProviders: ['openai', 'anthropic', 'google'],
-    newApiDefaults: { originType: 'relay', originTier: 'second', billingMode: 'token_plan' },
-    originTypeAliases: { public_benefit: 'community' },
-  }
-}
+const { subscriptionPreset: preset, ensureLoaded: ensureRuntimePresetsLoaded } = useRuntimePresets()
 
 const subscriptions = ref<SubscriptionItem[]>([])
-// 订阅预置：来源类型/计费模式/来源等表单选项来源，替代前端硬编码副本。
-// 后端 /api/presets 提供，失败时回退到 fallbackPreset 保证表单可用。
-const preset = ref<SubscriptionPreset>(fallbackPreset())
 const loading = ref(true)
 const saving = ref(false)
 const deleting = ref(false)
@@ -306,9 +284,14 @@ const form = ref<SubscriptionCreateRequest>({
   autoRefreshEnabled: false,
 })
 
+function translateLabel(key: string, fallback: string): string {
+  const translated = t(key)
+  return translated === key ? fallback : translated
+}
+
 const originTypeOptions = computed(() =>
   preset.value.originTypes.map((o) => ({
-    title: t(`subscription.originType.${o.value}`),
+    title: translateLabel(`subscription.originType.${o.value}`, o.value),
     value: o.value,
   })),
 )
@@ -318,7 +301,8 @@ const originTypeOptions = computed(() =>
 // 未命中回退 unknown。等级映射随预置更新，无需改前端。
 function inferOriginTier(originType?: string): string {
   if (!originType) return 'unknown'
-  const canonical = preset.value.originTypeAliases[originType] ?? originType
+  const aliases = preset.value.originTypeAliases || {}
+  const canonical = aliases[originType] ?? originType
   const entry = preset.value.originTypes.find((o) => o.value === canonical)
   return entry?.tier ?? 'unknown'
 }
@@ -326,35 +310,24 @@ function inferOriginTier(originType?: string): string {
 const derivedOriginTier = computed(() => inferOriginTier(form.value.originType))
 
 const derivedOriginTierLabel = computed(() =>
-  t(`subscription.originTier.${derivedOriginTier.value}`),
+  translateLabel(`subscription.originTier.${derivedOriginTier.value}`, derivedOriginTier.value),
 )
 
 const billingModeOptions = computed(() =>
   preset.value.billingModes.map((m) => ({
-    title: t(`subscription.billingMode.${m}`),
+    title: translateLabel(`subscription.billingMode.${m}`, m),
     value: m,
   })),
 )
 
 const sourceOptions = computed(() =>
   preset.value.sources.map((s) => ({
-    title: t(`subscription.source.${s}`),
+    title: translateLabel(`subscription.source.${s}`, s),
     value: s,
   })),
 )
 
 const filteredSubscriptions = computed(() => subscriptions.value)
-
-async function fetchPresets() {
-  try {
-    const bundle = await api.getPresets()
-    if (bundle?.subscription) {
-      preset.value = bundle.subscription
-    }
-  } catch {
-    // 预置拉取失败不阻断页面：保留 fallbackPreset 选项。
-  }
-}
 
 async function fetchSubscriptions() {
   loading.value = true
@@ -510,7 +483,7 @@ function handleNewApiError(message: string) {
 }
 
 onMounted(() => {
-  fetchPresets()
+  ensureRuntimePresetsLoaded()
   fetchSubscriptions()
 })
 </script>

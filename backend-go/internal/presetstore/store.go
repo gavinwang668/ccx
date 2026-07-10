@@ -1,6 +1,8 @@
 package presetstore
 
 import (
+	"encoding/json"
+	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -22,19 +24,23 @@ func NewPresetStore(initial *PresetBundle) *PresetStore {
 	if initial == nil {
 		initial = EmbeddedBundle()
 	}
+	cloned := cloneBundle(initial)
+	if err := Validate(cloned); err != nil {
+		panic(fmt.Sprintf("[presetstore] 初始 bundle 校验失败: %v", err))
+	}
 	s := &PresetStore{}
-	s.current.Store(initial)
+	s.current.Store(cloned)
 	return s
 }
 
 // Get 返回当前生效的 bundle 快照（只读，调用方不得原地修改）。
 func (s *PresetStore) Get() *PresetBundle {
-	return s.current.Load()
+	return cloneBundle(s.current.Load())
 }
 
 // Subscription 是 Get().Subscription 的便捷读取。
 func (s *PresetStore) Subscription() SubscriptionPreset {
-	return s.current.Load().Subscription
+	return cloneBundle(s.current.Load()).Subscription
 }
 
 // DataVersion 返回当前生效数据版本（内置默认为空串）。
@@ -48,7 +54,11 @@ func (s *PresetStore) Swap(next *PresetBundle) {
 	if next == nil {
 		return
 	}
-	s.current.Store(next)
+	cloned := cloneBundle(next)
+	if err := Validate(cloned); err != nil {
+		panic(fmt.Sprintf("[presetstore] Swap bundle 校验失败: %v", err))
+	}
+	s.current.Store(cloned)
 
 	s.mu.Lock()
 	observers := make([]func(*PresetBundle), len(s.observers))
@@ -56,7 +66,7 @@ func (s *PresetStore) Swap(next *PresetBundle) {
 	s.mu.Unlock()
 
 	for _, cb := range observers {
-		cb(next)
+		cb(cloneBundle(cloned))
 	}
 }
 
@@ -68,4 +78,19 @@ func (s *PresetStore) RegisterOnChange(cb func(*PresetBundle)) {
 	s.mu.Lock()
 	s.observers = append(s.observers, cb)
 	s.mu.Unlock()
+}
+
+func cloneBundle(src *PresetBundle) *PresetBundle {
+	if src == nil {
+		return EmbeddedBundle()
+	}
+	data, err := json.Marshal(src)
+	if err != nil {
+		panic(fmt.Sprintf("[presetstore] clone bundle marshal 失败: %v", err))
+	}
+	var cloned PresetBundle
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		panic(fmt.Sprintf("[presetstore] clone bundle unmarshal 失败: %v", err))
+	}
+	return &cloned
 }

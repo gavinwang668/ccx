@@ -1,31 +1,18 @@
 package config
 
 import (
+	"encoding/json"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
-)
 
-// builtinPatternCache 编译后的 builtin 正则，init 时填充
-var builtinPatternCache = map[string]*compiledBuiltinPattern{}
+	"github.com/BenedictKing/ccx/internal/presetstore"
+)
 
 type compiledBuiltinPattern struct {
 	regex               *regexp.Regexp
 	hasSuffixConstraint bool
-}
-
-func initBuiltinPatternCache(patterns []string) {
-	for _, p := range patterns {
-		if _, ok := builtinPatternCache[p]; ok {
-			continue
-		}
-		compiled, err := compileBuiltinPattern(p)
-		if err != nil {
-			panic("invalid builtin model pattern regex: " + p + ": " + err.Error())
-		}
-		builtinPatternCache[p] = compiled
-	}
 }
 
 // compileBuiltinPattern 将 pattern 编译为 Go RE2 兼容的正则。
@@ -56,39 +43,27 @@ func compileBuiltinPattern(pattern string) (*compiledBuiltinPattern, error) {
 	return &compiledBuiltinPattern{regex: re, hasSuffixConstraint: hasSuffixConstraint}, nil
 }
 
-func matchBuiltinRegexPattern(pattern, model string) bool {
-	compiled, ok := builtinPatternCache[pattern]
-	if !ok {
-		var err error
-		compiled, err = compileBuiltinPattern(pattern)
-		if err != nil {
-			return false
-		}
-		builtinPatternCache[pattern] = compiled
+func matchBuiltinRegexPatternWithCache(pattern, model string, patternCache map[string]*compiledBuiltinPattern) bool {
+	if len(patternCache) == 0 {
+		return false
 	}
-
+	compiled, ok := patternCache[pattern]
+	if !ok {
+		return false
+	}
 	if !compiled.regex.MatchString(model) {
 		return false
 	}
-
-	// 如果 pattern 有后缀约束（原始 lookahead 包含 $|@），
-	// 检查匹配位置后模型是否以合法结尾（字符串结束或 @）。
-	// 严格只允许 $ 或 @，不放行 `-` 等分隔符，避免 gpt-5.4 误吃 gpt-5.4-mini。
 	if compiled.hasSuffixConstraint {
 		loc := compiled.regex.FindStringIndex(model)
 		if loc == nil {
 			return false
 		}
 		endIdx := loc[1]
-		if endIdx < len(model) {
-			next := model[endIdx]
-			// 只允许 @（模型 hash/版本后缀，如 model@hash）或字符串结尾
-			if next != '@' {
-				return false
-			}
+		if endIdx < len(model) && model[endIdx] != '@' {
+			return false
 		}
 	}
-
 	return true
 }
 
@@ -318,16 +293,72 @@ func BuiltinAgentModelProfiles() map[string]AgentModelProfile {
 
 // BuiltinUpstreamModelCapabilities 返回 CCX 内置的实际上游模型能力知识库。
 var (
-	builtinOnce             sync.Once
-	builtinCapabilitiesOnce map[string]UpstreamModelCapability
+	builtinOnce       sync.Once
+	builtinSnapshotMu sync.RWMutex
+	builtinSnapshot   upstreamCapabilitySnapshot
 )
 
+type upstreamCapabilitySnapshot struct {
+	store        *presetstore.PresetStore
+	fingerprint  string
+	capabilities map[string]UpstreamModelCapability
+	patternCache map[string]*compiledBuiltinPattern
+}
+
 func BuiltinUpstreamModelCapabilities() map[string]UpstreamModelCapability {
+	return cloneCapabilitiesMap(currentBuiltinSnapshot().capabilities)
+}
+
+func currentBuiltinSnapshot() upstreamCapabilitySnapshot {
 	builtinOnce.Do(func() {
-		builtinCapabilitiesOnce = generatedBuiltinUpstreamModelCapabilities()
-		initBuiltinPatternCache(precisionKeys(builtinCapabilitiesOnce))
+		rebuildBuiltinSnapshotForStore(presetstore.Default())
 	})
-	return builtinCapabilitiesOnce
+	store := presetstore.Default()
+	snapshot := getBuiltinSnapshot()
+	if shouldRebuildBuiltinSnapshot(snapshot, store) {
+		rebuildBuiltinSnapshotForStore(store)
+	}
+	return getBuiltinSnapshot()
+}
+
+func shouldRebuildBuiltinSnapshot(snapshot upstreamCapabilitySnapshot, store *presetstore.PresetStore) bool {
+	if store == nil {
+		return snapshot.store != nil || len(snapshot.capabilities) == 0
+	}
+	if snapshot.store != store {
+		return true
+	}
+	bundle := store.Get()
+	return snapshot.fingerprint != bundleFingerprint(bundle)
+}
+
+func getBuiltinSnapshot() upstreamCapabilitySnapshot {
+	builtinSnapshotMu.RLock()
+	defer builtinSnapshotMu.RUnlock()
+	return cloneBuiltinSnapshotLocked(builtinSnapshot)
+}
+
+func rebuildBuiltinSnapshotForStore(store *presetstore.PresetStore) {
+	if store == nil {
+		store = presetstore.Default()
+	}
+	bundle := store.Get()
+	capabilities := generatedBuiltinUpstreamModelCapabilities()
+	if runtimeCapabilities := convertRuntimeCapabilities(bundle.ModelRegistry); len(runtimeCapabilities) > 0 {
+		capabilities = runtimeCapabilities
+	}
+	snapshot := upstreamCapabilitySnapshot{
+		store:        store,
+		fingerprint:  bundleFingerprint(bundle),
+		capabilities: cloneCapabilitiesMap(capabilities),
+		patternCache: buildPatternCache(precisionKeys(capabilities)),
+	}
+	builtinSnapshotMu.Lock()
+	builtinSnapshot = snapshot
+	builtinSnapshotMu.Unlock()
+	store.RegisterOnChange(func(*presetstore.PresetBundle) {
+		rebuildBuiltinSnapshotForStore(store)
+	})
 }
 
 func precisionKeys(m map[string]UpstreamModelCapability) []string {
@@ -336,6 +367,188 @@ func precisionKeys(m map[string]UpstreamModelCapability) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func buildPatternCache(patterns []string) map[string]*compiledBuiltinPattern {
+	cache := make(map[string]*compiledBuiltinPattern, len(patterns))
+	for _, p := range patterns {
+		compiled, err := compileBuiltinPattern(p)
+		if err != nil {
+			panic("invalid builtin model pattern regex: " + p + ": " + err.Error())
+		}
+		cache[p] = compiled
+	}
+	return cache
+}
+
+func cloneBuiltinSnapshotLocked(snapshot upstreamCapabilitySnapshot) upstreamCapabilitySnapshot {
+	return upstreamCapabilitySnapshot{
+		store:        snapshot.store,
+		fingerprint:  snapshot.fingerprint,
+		capabilities: cloneCapabilitiesMap(snapshot.capabilities),
+		patternCache: clonePatternCache(snapshot.patternCache),
+	}
+}
+
+func cloneCapabilitiesMap(src map[string]UpstreamModelCapability) map[string]UpstreamModelCapability {
+	if len(src) == 0 {
+		return map[string]UpstreamModelCapability{}
+	}
+	dst := make(map[string]UpstreamModelCapability, len(src))
+	for pattern, capability := range src {
+		dst[pattern] = cloneCapability(capability)
+	}
+	return dst
+}
+
+func cloneCapability(src UpstreamModelCapability) UpstreamModelCapability {
+	dst := src
+	if len(src.ReasoningEfforts) > 0 {
+		dst.ReasoningEfforts = append([]string(nil), src.ReasoningEfforts...)
+	}
+	if len(src.Sources) > 0 {
+		dst.Sources = append([]string(nil), src.Sources...)
+	}
+	if len(src.Capabilities) > 0 {
+		dst.Capabilities = make(map[string]bool, len(src.Capabilities))
+		for key, value := range src.Capabilities {
+			dst.Capabilities[key] = value
+		}
+	}
+	if src.Pricing != nil {
+		pricing := *src.Pricing
+		if pricing.InputCacheHitPrice != nil {
+			v := *pricing.InputCacheHitPrice
+			pricing.InputCacheHitPrice = &v
+		}
+		if pricing.InputCacheMissPrice != nil {
+			v := *pricing.InputCacheMissPrice
+			pricing.InputCacheMissPrice = &v
+		}
+		if pricing.OutputPrice != nil {
+			v := *pricing.OutputPrice
+			pricing.OutputPrice = &v
+		}
+		if len(src.Pricing.Tiers) > 0 {
+			pricing.Tiers = make([]ModelPricingTier, len(src.Pricing.Tiers))
+			for i, tier := range src.Pricing.Tiers {
+				pricing.Tiers[i] = clonePricingTier(tier)
+			}
+		}
+		dst.Pricing = &pricing
+	}
+	return dst
+}
+
+func clonePricingTier(src ModelPricingTier) ModelPricingTier {
+	dst := src
+	if src.InputCacheHitPrice != nil {
+		v := *src.InputCacheHitPrice
+		dst.InputCacheHitPrice = &v
+	}
+	if src.InputCacheMissPrice != nil {
+		v := *src.InputCacheMissPrice
+		dst.InputCacheMissPrice = &v
+	}
+	if src.OutputPrice != nil {
+		v := *src.OutputPrice
+		dst.OutputPrice = &v
+	}
+	return dst
+}
+
+func clonePatternCache(src map[string]*compiledBuiltinPattern) map[string]*compiledBuiltinPattern {
+	if len(src) == 0 {
+		return map[string]*compiledBuiltinPattern{}
+	}
+	dst := make(map[string]*compiledBuiltinPattern, len(src))
+	for pattern, compiled := range src {
+		if compiled == nil {
+			continue
+		}
+		copyCompiled := *compiled
+		dst[pattern] = &copyCompiled
+	}
+	return dst
+}
+
+func convertRuntimeCapabilities(preset *presetstore.ModelRegistryPreset) map[string]UpstreamModelCapability {
+	if preset == nil || len(preset.UpstreamCapabilities) == 0 {
+		return nil
+	}
+	capabilities := make(map[string]UpstreamModelCapability)
+	for _, entry := range preset.UpstreamCapabilities {
+		capability := UpstreamModelCapability{
+			ContextWindowTokens:     entry.ContextWindowTokens,
+			MaxOutputTokens:         entry.MaxOutputTokens,
+			DefaultOutputTokens:     entry.DefaultOutputTokens,
+			RecommendedOutputTokens: entry.RecommendedOutputTokens,
+			ThinkingMode:            entry.ThinkingMode,
+			ReasoningEfforts:        append([]string(nil), entry.ReasoningEfforts...),
+			Provider:                entry.Provider,
+			DisplayName:             entry.DisplayName,
+			Description:             entry.Description,
+			Sources:                 append([]string(nil), entry.Sources...),
+		}
+		if len(entry.Capabilities) > 0 {
+			capability.Capabilities = make(map[string]bool, len(entry.Capabilities))
+			for key, value := range entry.Capabilities {
+				capability.Capabilities[key] = value
+			}
+		}
+		if entry.Pricing != nil {
+			capability.Pricing = &ModelPricing{
+				Unit:                coalesceString(entry.Pricing.Unit, preset.PricingUnit),
+				Currency:            entry.Pricing.Currency,
+				InputCacheHitPrice:  cloneFloatPointer(entry.Pricing.InputCacheHitPrice),
+				InputCacheMissPrice: cloneFloatPointer(entry.Pricing.InputCacheMissPrice),
+				OutputPrice:         cloneFloatPointer(entry.Pricing.OutputPrice),
+			}
+			if len(entry.Pricing.Tiers) > 0 {
+				capability.Pricing.Tiers = make([]ModelPricingTier, len(entry.Pricing.Tiers))
+				for i, tier := range entry.Pricing.Tiers {
+					capability.Pricing.Tiers[i] = ModelPricingTier{
+						Label:               tier.Label,
+						InputTokensAbove:    tier.InputTokensAbove,
+						InputTokensUpTo:     tier.InputTokensUpTo,
+						InputCacheHitPrice:  cloneFloatPointer(tier.InputCacheHitPrice),
+						InputCacheMissPrice: cloneFloatPointer(tier.InputCacheMissPrice),
+						OutputPrice:         cloneFloatPointer(tier.OutputPrice),
+					}
+				}
+			}
+		}
+		for _, pattern := range entry.Patterns {
+			capabilities[pattern] = cloneCapability(capability)
+		}
+	}
+	return capabilities
+}
+
+func cloneFloatPointer(src *float64) *float64 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func coalesceString(primary, fallback string) string {
+	if strings.TrimSpace(primary) != "" {
+		return primary
+	}
+	return fallback
+}
+
+func bundleFingerprint(bundle *presetstore.PresetBundle) string {
+	if bundle == nil {
+		return ""
+	}
+	data, err := json.Marshal(bundle)
+	if err != nil {
+		panic("failed to fingerprint preset bundle: " + err.Error())
+	}
+	return string(data)
 }
 
 // ResolveAgentModelProfile 解析下游 agent 模型语义。
@@ -361,7 +574,8 @@ func ResolveUpstreamCapability(requestModel string, upstream *UpstreamConfig, gl
 	if capability, pattern, ok := resolveCapabilityForModels(actualModel, requestModel, global); ok {
 		return ResolvedUpstreamCapability{Capability: capability, RequestModel: requestModel, ActualModel: actualModel, MatchedPattern: pattern, Source: "global", Known: true}
 	}
-	if capability, pattern, ok := resolveCapabilityForModelsFold(actualModel, requestModel, BuiltinUpstreamModelCapabilities()); ok {
+	snapshot := currentBuiltinSnapshot()
+	if capability, pattern, ok := resolveCapabilityForModelsFold(actualModel, requestModel, snapshot.capabilities, snapshot.patternCache); ok {
 		return ResolvedUpstreamCapability{Capability: capability, RequestModel: requestModel, ActualModel: actualModel, MatchedPattern: pattern, Source: "builtin", Known: true}
 	}
 	if upstream != nil && (upstream.DefaultCapability.ContextWindowTokens > 0 || upstream.DefaultCapability.MaxOutputTokens > 0) {
@@ -382,12 +596,12 @@ func resolveCapabilityForModels(actualModel, requestModel string, capabilities m
 	return UpstreamModelCapability{}, "", false
 }
 
-func resolveCapabilityForModelsFold(actualModel, requestModel string, capabilities map[string]UpstreamModelCapability) (UpstreamModelCapability, string, bool) {
-	if capability, pattern, ok := resolvePatternValueFold(actualModel, capabilities); ok {
+func resolveCapabilityForModelsFold(actualModel, requestModel string, capabilities map[string]UpstreamModelCapability, patternCache map[string]*compiledBuiltinPattern) (UpstreamModelCapability, string, bool) {
+	if capability, pattern, ok := resolvePatternValueFold(actualModel, capabilities, patternCache); ok {
 		return capability, pattern, true
 	}
 	if requestModel != actualModel {
-		if capability, pattern, ok := resolvePatternValueFold(requestModel, capabilities); ok {
+		if capability, pattern, ok := resolvePatternValueFold(requestModel, capabilities, patternCache); ok {
 			return capability, pattern, true
 		}
 	}
@@ -428,7 +642,7 @@ func resolvePatternValue[T any](model string, values map[string]T) (T, string, b
 	return zero, "", false
 }
 
-func resolvePatternValueFold[T any](model string, values map[string]T) (T, string, bool) {
+func resolvePatternValueFold[T any](model string, values map[string]T, patternCache ...map[string]*compiledBuiltinPattern) (T, string, bool) {
 	var zero T
 	model = strings.TrimSpace(model)
 	if model == "" || len(values) == 0 {
@@ -458,17 +672,21 @@ func resolvePatternValueFold[T any](model string, values map[string]T) (T, strin
 	})
 
 	for _, pattern := range patterns {
+		var cache map[string]*compiledBuiltinPattern
+		if len(patternCache) > 0 {
+			cache = patternCache[0]
+		}
 		// 优先用正则匹配（builtin 正则），失败再回退通配符
-		if matchBuiltinRegexPattern(pattern, model) {
+		if matchBuiltinRegexPatternWithCache(pattern, model, cache) {
 			return values[pattern], pattern, true
 		}
-		if matchSupportedModelPatternFold(pattern, model) {
+		if matchSupportedModelPatternFold(pattern, model, cache) {
 			return values[pattern], pattern, true
 		}
 	}
 	return zero, "", false
 }
 
-func matchSupportedModelPatternFold(pattern, model string) bool {
+func matchSupportedModelPatternFold(pattern, model string, patternCache map[string]*compiledBuiltinPattern) bool {
 	return matchSupportedModelPattern(strings.ToLower(pattern), strings.ToLower(model))
 }

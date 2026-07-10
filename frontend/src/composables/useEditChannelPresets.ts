@@ -1,8 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import type { Channel } from '../services/api'
-import { claudeMessagesPresets } from '../generated/claudeMessagesPresets'
-import { codexResponsesPresets } from '../generated/codexResponsesPresets'
-import { openaiMessagesPresets } from '../generated/openaiMessagesPresets'
+import { ensureRuntimePresetsLoaded, useRuntimePresets } from './useRuntimePresets'
 
 type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 type FormLike = {
@@ -38,6 +36,9 @@ type EditChannelPresetOptions = {
 }
 
 export function useEditChannelPresets(options: EditChannelPresetOptions) {
+  void ensureRuntimePresetsLoaded()
+  const { effectiveChannelPresets } = useRuntimePresets()
+
   const showModelMappingPresets = computed(() => {
     return options.channelType.value === 'messages'
       && (options.form.serviceType === 'openai' || options.form.serviceType === 'responses')
@@ -48,10 +49,11 @@ export function useEditChannelPresets(options: EditChannelPresetOptions) {
       && (options.form.serviceType === 'openai' || options.form.serviceType === 'responses')
   })
 
-  const modelMappingPresets = openaiMessagesPresets
+  const modelMappingPresets = computed(() => effectiveChannelPresets.value.openAIMessages)
 
-  const applyModelMappingPreset = (preset: keyof typeof modelMappingPresets) => {
-    const presetConfig = modelMappingPresets[preset]
+  const applyModelMappingPreset = (preset: string) => {
+    const presetConfig = modelMappingPresets.value[preset]
+    if (!presetConfig) return
     options.form.modelMapping = { ...presetConfig.modelMapping }
     options.form.fastMode = presetConfig.fastMode
     options.form.textVerbosity = presetConfig.textVerbosity
@@ -70,26 +72,27 @@ export function useEditChannelPresets(options: EditChannelPresetOptions) {
       && (options.channelType.value === 'messages' || options.channelType.value === 'chat' || options.channelType.value === 'responses')
   })
 
-  const claudeChannelPresets = claudeMessagesPresets
+  const claudeChannelPresets = computed(() => effectiveChannelPresets.value.claudeMessages)
 
-  const applyClaudeChannelPreset = (preset: keyof typeof claudeChannelPresets) => {
-    const presetConfig = claudeChannelPresets[preset]
-    options.form.passbackReasoningContent = presetConfig.passbackReasoningContent
-    options.form.passbackThinkingBlocks = presetConfig.passbackThinkingBlocks
-    options.form.stripEmptyTextBlocks = presetConfig.stripEmptyTextBlocks
-    options.form.normalizeSystemRoleToTopLevel = presetConfig.normalizeSystemRoleToTopLevel
+  const applyClaudeChannelPreset = (preset: string) => {
+    const presetConfig = claudeChannelPresets.value[preset]
+    if (!presetConfig) return
+    options.form.passbackReasoningContent = !!presetConfig.passbackReasoningContent
+    options.form.passbackThinkingBlocks = !!presetConfig.passbackThinkingBlocks
+    options.form.stripEmptyTextBlocks = !!presetConfig.stripEmptyTextBlocks
+    options.form.normalizeSystemRoleToTopLevel = !!presetConfig.normalizeSystemRoleToTopLevel
     if (presetConfig.normalizeMetadataUserId) {
       options.form.normalizeMetadataUserId = true
     }
     options.form.stripBillingHeader = !!presetConfig.stripBillingHeader
-    options.form.stripImageGenerationTool = presetConfig.stripImageGenerationTool
-    options.form.noVision = presetConfig.noVision
-    options.form.noVisionModels = [...presetConfig.noVisionModels]
-    options.form.visionFallbackModel = presetConfig.visionFallbackModel
+    options.form.stripImageGenerationTool = !!presetConfig.stripImageGenerationTool
+    options.form.noVision = !!presetConfig.noVision
+    options.form.noVisionModels = [...(presetConfig.noVisionModels || [])]
+    options.form.visionFallbackModel = presetConfig.visionFallbackModel || ''
     options.form.visionFallbackReasoningEffort = ''
     options.form.modelMapping = { ...presetConfig.modelMapping }
     options.form.reasoningMapping = { ...(presetConfig.reasoningMapping || {}) } as FormLike['reasoningMapping']
-    options.form.reasoningParamStyle = presetConfig.reasoningParamStyle as FormLike['reasoningParamStyle']
+    options.form.reasoningParamStyle = presetConfig.reasoningParamStyle || 'thinking'
     if (presetConfig.serviceType) {
       options.form.serviceType = presetConfig.serviceType as FormLike['serviceType']
     }
@@ -103,24 +106,26 @@ export function useEditChannelPresets(options: EditChannelPresetOptions) {
       && options.supportsOpenAIAdvancedOptions.value
   })
 
+  const codexResponsesChannelPresets = computed(() => effectiveChannelPresets.value.codexResponses)
+
   const applyCodexResponsesChannelPreset = (preset: string) => {
-    const presetConfig = codexResponsesPresets[preset.toLowerCase()]
+    const presetConfig = codexResponsesChannelPresets.value[preset.toLowerCase()]
     if (!presetConfig) return
 
     options.form.modelMapping = { ...presetConfig.modelMapping }
     options.form.reasoningMapping = { ...(presetConfig.reasoningMapping || {}) } as FormLike['reasoningMapping']
-    options.form.reasoningParamStyle = presetConfig.reasoningParamStyle as FormLike['reasoningParamStyle']
+    options.form.reasoningParamStyle = presetConfig.reasoningParamStyle || 'reasoning'
     if (presetConfig.serviceType) {
       options.form.serviceType = presetConfig.serviceType as FormLike['serviceType']
     }
-    options.form.codexNativeToolPassthrough = presetConfig.codexNativeToolPassthrough
-    options.form.codexToolCompat = presetConfig.codexToolCompat
-    options.form.stripCodexClientTools = presetConfig.stripCodexClientTools
-    options.form.stripImageGenerationTool = presetConfig.stripImageGenerationTool
-    options.form.normalizeNonstandardChatRoles = presetConfig.normalizeNonstandardChatRoles
-    options.form.noVision = presetConfig.noVision
-    options.form.noVisionModels = [...presetConfig.noVisionModels]
-    options.form.visionFallbackModel = presetConfig.visionFallbackModel
+    options.form.codexNativeToolPassthrough = !!presetConfig.codexNativeToolPassthrough
+    options.form.codexToolCompat = !!presetConfig.codexToolCompat
+    options.form.stripCodexClientTools = !!presetConfig.stripCodexClientTools
+    options.form.stripImageGenerationTool = !!presetConfig.stripImageGenerationTool
+    options.form.normalizeNonstandardChatRoles = !!presetConfig.normalizeNonstandardChatRoles
+    options.form.noVision = !!presetConfig.noVision
+    options.form.noVisionModels = [...(presetConfig.noVisionModels || [])]
+    options.form.visionFallbackModel = presetConfig.visionFallbackModel || ''
     options.form.visionFallbackReasoningEffort = ''
 
     options.syncModelMappingRowsFromForm()
@@ -130,11 +135,11 @@ export function useEditChannelPresets(options: EditChannelPresetOptions) {
     if (presetName === 'gpt-5.5' || presetName === 'gpt-5.4') {
       applyModelMappingPreset(presetName)
     } else if (options.form.serviceType === 'claude') {
-      applyClaudeChannelPreset(presetName as keyof typeof claudeChannelPresets)
+      applyClaudeChannelPreset(presetName)
     } else if (options.channelType.value === 'responses') {
       applyCodexResponsesChannelPreset(presetName)
     } else {
-      applyClaudeChannelPreset(presetName as keyof typeof claudeChannelPresets)
+      applyClaudeChannelPreset(presetName)
     }
   }
 
@@ -148,6 +153,7 @@ export function useEditChannelPresets(options: EditChannelPresetOptions) {
     applyClaudeChannelPreset,
     showCodexResponsesChannelPresets,
     applyCodexResponsesChannelPreset,
+    codexResponsesChannelPresets,
     applyPreset,
   }
 }

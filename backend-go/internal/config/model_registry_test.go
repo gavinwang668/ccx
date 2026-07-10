@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/BenedictKing/ccx/internal/presetstore"
+)
 
 func TestResolveAgentModelProfile_CodexBuiltins(t *testing.T) {
 	profile := ResolveAgentModelProfile("gpt-5.4", nil)
@@ -311,6 +315,41 @@ func TestResolveUpstreamCapability_Qwen37PlusTieredPricing(t *testing.T) {
 	assertFloatPointerValue(t, secondTier.OutputPrice, 24, "Pricing.Tiers[1].OutputPrice")
 }
 
+func TestResolveUpstreamCapability_RuntimeRegistryOverride(t *testing.T) {
+	store := presetstore.Default()
+	original := store.Get()
+	store.Swap(&presetstore.PresetBundle{
+		SchemaVersion: original.SchemaVersion,
+		DataVersion:   "runtime-test-1",
+		Subscription:  original.Subscription,
+		ModelRegistry: &presetstore.ModelRegistryPreset{
+			SchemaVersion: 1,
+			UpstreamCapabilities: []presetstore.ModelRegistryCapabilityPreset{{
+				Patterns:            []string{`(?:^|[-/])qwen3\.7-plus(?:-\d{4}-\d{2}-\d{2}|-\d{6,8})?(?=$|@)`},
+				ContextWindowTokens: 123456,
+				Pricing: &presetstore.ModelPricingPreset{Tiers: []presetstore.ModelPricingTierPreset{{
+					InputTokensUpTo: 42,
+				}}},
+			}},
+		},
+	})
+	defer store.Swap(original)
+
+	resolved := ResolveUpstreamCapability("qwen3.7-plus-2026-05-26", nil, nil)
+	if !resolved.Known || resolved.Source != "builtin" {
+		t.Fatalf("source = %q known=%v, want builtin known", resolved.Source, resolved.Known)
+	}
+	if resolved.Capability.ContextWindowTokens != 123456 {
+		t.Fatalf("ContextWindowTokens = %d, want 123456", resolved.Capability.ContextWindowTokens)
+	}
+	if resolved.Capability.Pricing == nil || len(resolved.Capability.Pricing.Tiers) != 1 {
+		t.Fatalf("Pricing.Tiers len = %d, want 1", len(resolved.Capability.Pricing.Tiers))
+	}
+	if resolved.Capability.Pricing.Tiers[0].InputTokensUpTo != 42 {
+		t.Fatalf("InputTokensUpTo = %d, want 42", resolved.Capability.Pricing.Tiers[0].InputTokensUpTo)
+	}
+}
+
 func TestResolveUpstreamCapability_MimoVisionCapabilities(t *testing.T) {
 	upstream := &UpstreamConfig{}
 
@@ -379,4 +418,46 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestBuiltinUpstreamModelCapabilities_ReturnsDeepCopy(t *testing.T) {
+	caps := BuiltinUpstreamModelCapabilities()
+	entry := caps[`(?:^|[-/])qwen3\.7-plus(?:-\d{4}-\d{2}-\d{2}|-\d{6,8})?(?=$|@)`]
+	if entry.Pricing == nil || len(entry.Pricing.Tiers) == 0 {
+		t.Fatal("expected qwen3.7-plus pricing tiers")
+	}
+	entry.Pricing.Tiers[0].InputTokensUpTo = 1
+	caps[`(?:^|[-/])qwen3\.7-plus(?:-\d{4}-\d{2}-\d{2}|-\d{6,8})?(?=$|@)`] = entry
+
+	again := BuiltinUpstreamModelCapabilities()
+	againEntry := again[`(?:^|[-/])qwen3\.7-plus(?:-\d{4}-\d{2}-\d{2}|-\d{6,8})?(?=$|@)`]
+	if againEntry.Pricing.Tiers[0].InputTokensUpTo != 262144 {
+		t.Fatalf("InputTokensUpTo = %d, want 262144", againEntry.Pricing.Tiers[0].InputTokensUpTo)
+	}
+}
+
+func TestCurrentBuiltinSnapshot_RebuildsAfterSetDefault(t *testing.T) {
+	original := presetstore.Default()
+	defer presetstore.SetDefault(original)
+
+	first := presetstore.NewPresetStore(presetstore.EmbeddedBundle())
+	presetstore.SetDefault(first)
+	_ = BuiltinUpstreamModelCapabilities()
+
+	secondBundle := presetstore.EmbeddedBundle()
+	secondBundle.DataVersion = "same"
+	secondBundle.ModelRegistry = &presetstore.ModelRegistryPreset{
+		SchemaVersion: 1,
+		UpstreamCapabilities: []presetstore.ModelRegistryCapabilityPreset{{
+			Patterns:            []string{`(?:^|[-/])custom-runtime-model(?=$|@)`},
+			ContextWindowTokens: 777,
+		}},
+	}
+	second := presetstore.NewPresetStore(secondBundle)
+	presetstore.SetDefault(second)
+
+	resolved := ResolveUpstreamCapability("custom-runtime-model", nil, nil)
+	if !resolved.Known || resolved.Capability.ContextWindowTokens != 777 {
+		t.Fatalf("resolved = %+v, want runtime rebuilt capability", resolved)
+	}
 }

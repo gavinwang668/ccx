@@ -15,6 +15,15 @@ import (
 //go:embed embedded/subscription-preset.json
 var embeddedSubscriptionPreset []byte
 
+//go:embed embedded/model-registry.json
+var embeddedModelRegistry []byte
+
+//go:embed embedded/channel-presets.json
+var embeddedChannelPresets []byte
+
+//go:embed embedded/builtin-manifest.json
+var embeddedBuiltinManifest []byte
+
 // EmbeddedBundle 解析并返回编译期内置的 PresetBundle。
 // 内置数据的 DataVersion 为空串，任何有效远程版本都会覆盖它。
 // 解析失败视为构建缺陷（内置数据由本仓库控制），直接 panic。
@@ -23,9 +32,28 @@ func EmbeddedBundle() *PresetBundle {
 	if err := json.Unmarshal(embeddedSubscriptionPreset, &sub); err != nil {
 		panic(fmt.Sprintf("[presetstore] 内置 subscription-preset.json 解析失败: %v", err))
 	}
+
+	var registry ModelRegistryPreset
+	if err := json.Unmarshal(embeddedModelRegistry, &registry); err != nil {
+		panic(fmt.Sprintf("[presetstore] 内置 model-registry.json 解析失败: %v", err))
+	}
+
+	var channelPresets ChannelPresetsPreset
+	if err := json.Unmarshal(embeddedChannelPresets, &channelPresets); err != nil {
+		panic(fmt.Sprintf("[presetstore] 内置 channel-presets.json 解析失败: %v", err))
+	}
+
+	var builtinManifest BuiltinModelsManifestPreset
+	if err := json.Unmarshal(embeddedBuiltinManifest, &builtinManifest); err != nil {
+		panic(fmt.Sprintf("[presetstore] 内置 builtin-manifest.json 解析失败: %v", err))
+	}
+
 	return &PresetBundle{
-		SchemaVersion: CurrentSchemaVersion,
-		DataVersion:   "", // 内置默认无数据版本
-		Subscription:  sub,
+		SchemaVersion:          CurrentSchemaVersion,
+		DataVersion:            "", // 内置默认无数据版本
+		Subscription:           sub,
+		ModelRegistry:          &registry,
+		ChannelPresets:         &channelPresets,
+		BuiltinModelsManifests: &builtinManifest,
 	}
 }

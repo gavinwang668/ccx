@@ -19,8 +19,11 @@ func TestPresetUpdaterCheckOnceUpdatesStoreAndCache(t *testing.T) {
 	cacheDir := t.TempDir()
 	bundle := validBundle()
 	bundle.DataVersion = "2026.07.10-2"
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
 
-	server := newPresetTestServer(t, bundle, false, false)
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{})
 	defer server.Close()
 
 	store := NewPresetStore(nil)
@@ -53,7 +56,10 @@ func TestPresetUpdaterCheckOnceUpdatesStoreAndCache(t *testing.T) {
 func TestPresetUpdaterCheckOnceRejectsTamperedShard(t *testing.T) {
 	bundle := validBundle()
 	bundle.DataVersion = "2026.07.10-2"
-	server := newPresetTestServer(t, bundle, true, false)
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{tamperHash: true})
 	defer server.Close()
 
 	store := NewPresetStore(nil)
@@ -75,7 +81,10 @@ func TestPresetUpdaterCheckOnceRejectsTamperedShard(t *testing.T) {
 func TestPresetUpdaterCheckOnceRejectsHigherSchema(t *testing.T) {
 	bundle := validBundle()
 	bundle.DataVersion = "2026.07.10-2"
-	server := newPresetTestServer(t, bundle, false, true)
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{higherSchema: true})
 	defer server.Close()
 
 	store := NewPresetStore(nil)
@@ -92,10 +101,15 @@ func TestPresetUpdaterCheckOnceRejectsHigherSchema(t *testing.T) {
 }
 
 func TestPresetUpdaterCheckOnceSkipsOlderVersion(t *testing.T) {
-	store := NewPresetStore(validBundle())
-	incoming := validBundle()
+	current := validBundle()
+	current.ModelRegistry = validModelRegistryPreset()
+	current.ChannelPresets = validChannelPresetsPreset()
+	current.BuiltinModelsManifests = validBuiltinManifestPreset()
+	store := NewPresetStore(current)
+
+	incoming := cloneBundle(current)
 	incoming.DataVersion = "2026.07.10-0"
-	server := newPresetTestServer(t, incoming, false, false)
+	server := newPresetTestServer(t, incoming, presetTestServerOptions{})
 	defer server.Close()
 
 	updater := NewPresetUpdater(store, UpdaterConfig{
@@ -113,7 +127,7 @@ func TestPresetUpdaterCheckOnceSkipsOlderVersion(t *testing.T) {
 	}
 }
 
-func TestPresetUpdaterCheckOnceAcceptsLegacySubscriptionKind(t *testing.T) {
+func TestPresetUpdaterCheckOnceRejectsLegacySubscriptionOnlyIndex(t *testing.T) {
 	bundle := validBundle()
 	bundle.DataVersion = "2026.07.10-2"
 	subscriptionBytes, err := json.Marshal(bundle.Subscription)
@@ -153,11 +167,33 @@ func TestPresetUpdaterCheckOnceAcceptsLegacySubscriptionKind(t *testing.T) {
 		AllowInsecureForTesting: true,
 	})
 
-	if err := updater.CheckOnce(context.Background()); err != nil {
-		t.Fatalf("CheckOnce() error = %v", err)
+	if err := updater.CheckOnce(context.Background()); err == nil {
+		t.Fatal("CheckOnce() error = nil, want legacy subscription rejection")
 	}
-	if store.DataVersion() != bundle.DataVersion {
-		t.Fatalf("store version = %q, want %q", store.DataVersion(), bundle.DataVersion)
+	if store.DataVersion() != "" {
+		t.Fatalf("store version = %q, want embedded empty version", store.DataVersion())
+	}
+}
+
+func TestPresetUpdaterCheckOnceRequiresAllRemoteShards(t *testing.T) {
+	bundle := validBundle()
+	bundle.DataVersion = "2026.07.10-2"
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{omitKinds: map[string]bool{"builtinManifest": true}})
+	defer server.Close()
+
+	store := NewPresetStore(nil)
+	updater := NewPresetUpdater(store, UpdaterConfig{
+		Enabled:                 true,
+		IndexURL:                server.URL + "/index.json",
+		Interval:                time.Minute,
+		AllowInsecureForTesting: true,
+	})
+
+	if err := updater.CheckOnce(context.Background()); err == nil {
+		t.Fatal("CheckOnce() error = nil, want missing shard error")
 	}
 }
 
@@ -188,7 +224,10 @@ func TestPresetUpdaterLoadCacheAtStartupFallbackOnCorruption(t *testing.T) {
 func TestPresetUpdaterStopIsIdempotent(t *testing.T) {
 	bundle := validBundle()
 	bundle.DataVersion = "2026.07.10-2"
-	server := newPresetTestServer(t, bundle, false, false)
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{})
 	defer server.Close()
 
 	store := NewPresetStore(nil)
@@ -221,6 +260,124 @@ func TestPresetUpdaterStopIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestPresetUpdaterCheckOnceSerializesConcurrentRuns(t *testing.T) {
+	cacheDir := t.TempDir()
+	bundle := validBundle()
+	bundle.DataVersion = "v2.10.0"
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
+
+	release := make(chan struct{})
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{waitOnShardPath: "/subscription.json", release: release})
+	defer server.Close()
+
+	store := NewPresetStore(nil)
+	updater := NewPresetUpdater(store, UpdaterConfig{
+		Enabled:                 true,
+		IndexURL:                server.URL + "/index.json",
+		Interval:                time.Minute,
+		CacheDir:                cacheDir,
+		AllowInsecureForTesting: true,
+	})
+
+	errCh := make(chan error, 2)
+	go func() { errCh <- updater.CheckOnce(context.Background()) }()
+	go func() { errCh <- updater.CheckOnce(context.Background()) }()
+
+	time.Sleep(50 * time.Millisecond)
+	if !updater.Status().Checking {
+		t.Fatal("Checking = false, want true while first run is blocked")
+	}
+	close(release)
+
+	for i := 0; i < 2; i++ {
+		if err := <-errCh; err != nil {
+			t.Fatalf("CheckOnce() concurrent error = %v", err)
+		}
+	}
+	if store.DataVersion() != bundle.DataVersion {
+		t.Fatalf("store version = %q, want %q", store.DataVersion(), bundle.DataVersion)
+	}
+}
+
+func TestPresetUpdaterStartStopCanRestart(t *testing.T) {
+	bundle := validBundle()
+	bundle.DataVersion = "2026.07.10-2"
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{})
+	defer server.Close()
+
+	store := NewPresetStore(nil)
+	updater := NewPresetUpdater(store, UpdaterConfig{
+		Enabled:                 true,
+		IndexURL:                server.URL + "/index.json",
+		Interval:                15 * time.Millisecond,
+		AllowInsecureForTesting: true,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	updater.Start(ctx)
+	updater.Stop()
+	updater.Start(ctx)
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if updater.Status().LastCheckAt != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if updater.Status().LastCheckAt == nil {
+		t.Fatal("restart did not trigger a fresh check")
+	}
+	updater.Stop()
+}
+
+func TestPresetUpdaterCheckOnceRejectsCrossOriginRedirect(t *testing.T) {
+	redirectTarget := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("{}"))
+	}))
+	defer redirectTarget.Close()
+
+	redirector := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	updater := NewPresetUpdater(NewPresetStore(nil), UpdaterConfig{
+		Enabled:    true,
+		IndexURL:   redirector.URL,
+		Interval:   time.Minute,
+		HTTPClient: redirector.Client(),
+	})
+
+	if _, err := updater.fetchBytes(context.Background(), redirector.URL, 0); err == nil {
+		t.Fatal("fetchBytes() error = nil, want cross-origin redirect rejection")
+	}
+}
+
+func TestPresetUpdaterCheckOnceRejectsRedirectSchemeDowngrade(t *testing.T) {
+	redirector := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.com", http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	updater := NewPresetUpdater(NewPresetStore(nil), UpdaterConfig{
+		Enabled:    true,
+		IndexURL:   redirector.URL,
+		Interval:   time.Minute,
+		HTTPClient: redirector.Client(),
+	})
+
+	if _, err := updater.fetchBytes(context.Background(), redirector.URL, 0); err == nil {
+		t.Fatal("fetchBytes() error = nil, want redirect scheme rejection")
+	}
+}
+
 func TestStatusHandlerNilUpdater(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -240,33 +397,57 @@ func TestStatusHandlerNilUpdater(t *testing.T) {
 	}
 }
 
-func newPresetTestServer(t *testing.T, bundle *PresetBundle, tamperHash bool, higherSchema bool) *httptest.Server {
+type presetTestServerOptions struct {
+	tamperHash      bool
+	higherSchema    bool
+	omitKinds       map[string]bool
+	waitOnShardPath string
+	release         <-chan struct{}
+}
+
+func newPresetTestServer(t *testing.T, bundle *PresetBundle, opts presetTestServerOptions) *httptest.Server {
 	t.Helper()
 
-	subscriptionBytes, err := json.Marshal(bundle.Subscription)
-	if err != nil {
-		t.Fatalf("json.Marshal(subscription) error = %v", err)
+	type shardFile struct {
+		kind string
+		path string
+		body []byte
 	}
+
+	files := []shardFile{{kind: "subscriptionPreset", path: "/subscription.json", body: mustJSON(t, bundle.Subscription)}}
+	if bundle.ModelRegistry != nil {
+		files = append(files, shardFile{kind: "modelRegistry", path: "/model-registry.json", body: mustJSON(t, bundle.ModelRegistry)})
+	}
+	if bundle.ChannelPresets != nil {
+		files = append(files, shardFile{kind: "channelPresets", path: "/channel-presets.json", body: mustJSON(t, bundle.ChannelPresets)})
+	}
+	if bundle.BuiltinModelsManifests != nil {
+		files = append(files, shardFile{kind: "builtinManifest", path: "/builtin-manifest.json", body: mustJSON(t, bundle.BuiltinModelsManifests)})
+	}
+
+	shards := make([]PresetIndexShard, 0, len(files))
+	fileMap := make(map[string][]byte, len(files))
+	for _, file := range files {
+		if opts.omitKinds != nil && opts.omitKinds[file.kind] {
+			continue
+		}
+		fileMap[file.path] = file.body
+		shards = append(shards, PresetIndexShard{Kind: file.kind, URL: "." + file.path, SHA256: sha256Hex(file.body)})
+	}
+
 	index := PresetIndex{
 		SchemaVersion: bundle.SchemaVersion,
 		DataVersion:   bundle.DataVersion,
 		PublishedAt:   time.Now().UTC(),
-		Shards: []PresetIndexShard{{
-			Kind:   "subscriptionPreset",
-			URL:    "./subscription.json",
-			SHA256: sha256Hex(subscriptionBytes),
-		}},
+		Shards:        shards,
 	}
-	if tamperHash {
+	if opts.tamperHash && len(index.Shards) > 0 {
 		index.Shards[0].SHA256 = "deadbeef"
 	}
-	if higherSchema {
+	if opts.higherSchema {
 		index.SchemaVersion = CurrentSchemaVersion + 1
 	}
-	indexBytes, err := json.Marshal(index)
-	if err != nil {
-		t.Fatalf("json.Marshal(index) error = %v", err)
-	}
+	indexBytes := mustJSON(t, index)
 
 	var indexHits atomic.Int32
 	var shardHits atomic.Int32
@@ -275,13 +456,27 @@ func newPresetTestServer(t *testing.T, bundle *PresetBundle, tamperHash bool, hi
 		case "/index.json":
 			indexHits.Add(1)
 			_, _ = w.Write(indexBytes)
-		case "/subscription.json":
-			shardHits.Add(1)
-			_, _ = w.Write(subscriptionBytes)
 		default:
+			if body, ok := fileMap[r.URL.Path]; ok {
+				if opts.waitOnShardPath == r.URL.Path && opts.release != nil {
+					<-opts.release
+				}
+				shardHits.Add(1)
+				_, _ = w.Write(body)
+				return
+			}
 			http.NotFound(w, r)
 		}
 	}))
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return data
 }
 
 func TestCompareDataVersion(t *testing.T) {
@@ -294,6 +489,8 @@ func TestCompareDataVersion(t *testing.T) {
 		{name: "equal", a: "2026.07.10-1", b: "2026.07.10-1", want: 0},
 		{name: "empty old", a: "2026.07.10-1", b: "", want: 1},
 		{name: "older", a: "2026.07.10-0", b: "2026.07.10-1", want: -1},
+		{name: "semantic numeric", a: "2.10.0", b: "2.9.37", want: 1},
+		{name: "semantic reverse", a: "2.9.37", b: "2.10.0", want: -1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -328,7 +525,10 @@ func TestPresetUpdaterLoadCacheAtStartupSetsCacheSource(t *testing.T) {
 
 func TestPresetUpdaterCheckOnceRequiresHTTPSByDefault(t *testing.T) {
 	bundle := validBundle()
-	server := newPresetTestServer(t, bundle, false, false)
+	bundle.ModelRegistry = validModelRegistryPreset()
+	bundle.ChannelPresets = validChannelPresetsPreset()
+	bundle.BuiltinModelsManifests = validBuiltinManifestPreset()
+	server := newPresetTestServer(t, bundle, presetTestServerOptions{})
 	defer server.Close()
 
 	updater := NewPresetUpdater(NewPresetStore(nil), UpdaterConfig{
@@ -346,6 +546,39 @@ func TestPresetUpdaterStartDisabledIsNoop(t *testing.T) {
 	updater.Start(context.Background())
 	if updater.Status().Running {
 		t.Fatal("Running = true, want false")
+	}
+}
+
+func validModelRegistryPreset() *ModelRegistryPreset {
+	return &ModelRegistryPreset{
+		SchemaVersion: 1,
+		PricingUnit:   "per_1m_tokens",
+		UpstreamCapabilities: []ModelRegistryCapabilityPreset{{
+			Patterns: []string{"claude-sonnet-5"},
+		}},
+	}
+}
+
+func validChannelPresetsPreset() *ChannelPresetsPreset {
+	return &ChannelPresetsPreset{
+		SchemaVersion: 1,
+		Collections: map[string]json.RawMessage{
+			"claudeMessages": json.RawMessage(`{"schemaVersion":1,"items":[]}`),
+			"openAIChat":     json.RawMessage(`{"schemaVersion":1,"items":[]}`),
+			"codexResponses": json.RawMessage(`{"schemaVersion":1,"items":[]}`),
+			"openAIMessages": json.RawMessage(`{"schemaVersion":1,"items":[]}`),
+		},
+	}
+}
+
+func validBuiltinManifestPreset() *BuiltinModelsManifestPreset {
+	return &BuiltinModelsManifestPreset{
+		SchemaVersion: 1,
+		Manifests: []BuiltinModelsManifestEntryPreset{{
+			BaseURLPattern: "api.example.com",
+			ServiceType:    "messages",
+			ModelIDs:       []string{"claude-sonnet-5"},
+		}},
 	}
 }
 

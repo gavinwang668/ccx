@@ -2,6 +2,7 @@ package presetstore
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,5 +79,42 @@ func TestSaveCacheWritesCanonicalJSON(t *testing.T) {
 	}
 	if decoded["dataVersion"] != bundle.DataVersion {
 		t.Fatalf("dataVersion = %v, want %q", decoded["dataVersion"], bundle.DataVersion)
+	}
+}
+
+func TestSaveCacheRollsBackOnSidecarFailure(t *testing.T) {
+	cacheDir := t.TempDir()
+	original := validBundle()
+	original.DataVersion = "2026.07.10-1"
+	if err := SaveCache(cacheDir, original); err != nil {
+		t.Fatalf("SaveCache() error = %v", err)
+	}
+
+	next := validBundle()
+	next.DataVersion = "2026.07.10-2"
+
+	writer := atomicFileWriter
+	defer func() { atomicFileWriter = writer }()
+	calls := 0
+	atomicFileWriter = func(path string, data []byte, perm os.FileMode) error {
+		calls++
+		if filepath.Base(path) == shaFileName {
+			return fmt.Errorf("injected sidecar failure")
+		}
+		return writer(path, data, perm)
+	}
+
+	if err := SaveCache(cacheDir, next); err == nil {
+		t.Fatal("SaveCache() error = nil, want injected sidecar failure")
+	}
+	loaded, err := LoadCache(cacheDir)
+	if err != nil {
+		t.Fatalf("LoadCache() after rollback error = %v", err)
+	}
+	if loaded.DataVersion != original.DataVersion {
+		t.Fatalf("rolled back version = %q, want %q", loaded.DataVersion, original.DataVersion)
+	}
+	if calls < 2 {
+		t.Fatalf("atomicFileWriter calls = %d, want at least 2", calls)
 	}
 }

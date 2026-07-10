@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +22,8 @@ const (
 	defaultShardSizeLimit  = 2 << 20
 	defaultHTTPTimeout     = 10 * time.Second
 )
+
+var requiredRemoteShardKinds = []string{"subscriptionPreset", "modelRegistry", "channelPresets", "builtinManifest"}
 
 // UpdaterConfig 控制远程预置更新器行为。
 type UpdaterConfig struct {
@@ -61,6 +65,11 @@ type UpdaterStatus struct {
 	CacheValid    bool       `json:"cacheValid"`
 }
 
+type redirectPolicy struct {
+	allowInsecure bool
+	baseURL       *url.URL
+}
+
 type PresetUpdater struct {
 	store  *PresetStore
 	config UpdaterConfig
@@ -68,6 +77,8 @@ type PresetUpdater struct {
 	client *http.Client
 
 	mu            sync.RWMutex
+	lifecycleMu   sync.Mutex
+	checkMu       sync.Mutex
 	running       bool
 	checking      bool
 	source        string
@@ -77,10 +88,8 @@ type PresetUpdater struct {
 	nextCheckAt   *time.Time
 	lastError     string
 	cacheValid    bool
-
-	startStopMu sync.Mutex
-	cancel      context.CancelFunc
-	done        chan struct{}
+	cancel        context.CancelFunc
+	done          chan struct{}
 }
 
 func NewPresetUpdater(store *PresetStore, cfg UpdaterConfig) *PresetUpdater {
@@ -90,14 +99,14 @@ func NewPresetUpdater(store *PresetStore, cfg UpdaterConfig) *PresetUpdater {
 	if cfg.Interval <= 0 {
 		cfg.Interval = defaultUpdaterInterval
 	}
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: defaultHTTPTimeout}
-	} else if client.Timeout <= 0 {
-		clone := *client
-		clone.Timeout = defaultHTTPTimeout
-		client = &clone
+	indexURL, err := url.Parse(cfg.IndexURL)
+	if err != nil {
+		indexURL = nil
 	}
+	client := buildUpdaterHTTPClient(cfg.HTTPClient, redirectPolicy{
+		allowInsecure: cfg.AllowInsecureForTesting,
+		baseURL:       indexURL,
+	})
 
 	u := &PresetUpdater{
 		store:  store,
@@ -130,44 +139,44 @@ func (u *PresetUpdater) LoadCacheAtStartup() error {
 }
 
 func (u *PresetUpdater) Start(ctx context.Context) {
-	u.startStopMu.Lock()
-	defer u.startStopMu.Unlock()
-	if u.running {
-		return
-	}
-	if !u.config.Enabled {
-		u.mu.Lock()
-		u.running = false
-		u.mu.Unlock()
+	u.lifecycleMu.Lock()
+	defer u.lifecycleMu.Unlock()
+	if !u.config.Enabled || u.running {
 		return
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
-	u.cancel = cancel
-	u.done = make(chan struct{})
-	now := time.Now()
-	next := now.Add(u.config.Interval)
+	next := time.Now().Add(u.config.Interval)
+	ready := make(chan struct{})
+	done := make(chan struct{})
 
 	u.mu.Lock()
 	u.running = true
 	u.lastError = ""
 	u.nextCheckAt = &next
+	u.cancel = cancel
+	u.done = done
 	u.mu.Unlock()
 
-	go u.loop(runCtx)
+	go u.loop(runCtx, ready, done)
+	<-ready
 }
 
 func (u *PresetUpdater) Stop() {
-	u.startStopMu.Lock()
-	cancel := u.cancel
-	done := u.done
-	if !u.running {
-		u.startStopMu.Unlock()
+	u.lifecycleMu.Lock()
+	cancel, done, running := u.snapshotLifecycleLocked()
+	if !running {
+		u.lifecycleMu.Unlock()
 		return
 	}
+	u.mu.Lock()
+	u.running = false
+	u.checking = false
+	u.nextCheckAt = nil
 	u.cancel = nil
 	u.done = nil
-	u.startStopMu.Unlock()
+	u.mu.Unlock()
+	u.lifecycleMu.Unlock()
 
 	if cancel != nil {
 		cancel()
@@ -175,12 +184,6 @@ func (u *PresetUpdater) Stop() {
 	if done != nil {
 		<-done
 	}
-
-	u.mu.Lock()
-	u.running = false
-	u.checking = false
-	u.nextCheckAt = nil
-	u.mu.Unlock()
 }
 
 func (u *PresetUpdater) Status() UpdaterStatus {
@@ -201,12 +204,15 @@ func (u *PresetUpdater) Status() UpdaterStatus {
 }
 
 func (u *PresetUpdater) CheckOnce(ctx context.Context) error {
+	u.checkMu.Lock()
+	defer u.checkMu.Unlock()
+
+	startedAt := time.Now()
 	if err := u.validateIndexURL(); err != nil {
-		u.finishCheck(time.Now(), err, false)
+		u.finishCheck(startedAt, err, false)
 		return err
 	}
 
-	startedAt := time.Now()
 	u.beginCheck()
 	defer func() {
 		if r := recover(); r != nil {
@@ -259,6 +265,14 @@ func (u *PresetUpdater) CheckOnce(ctx context.Context) error {
 		u.finishCheck(startedAt, err, false)
 		return err
 	}
+
+	currentVersion = u.store.DataVersion()
+	if compareDataVersion(bundle.DataVersion, currentVersion) <= 0 {
+		log.Printf("[PresetUpdater-Check] 构建完成后跳过旧版本覆盖: current=%q incoming=%q", currentVersion, bundle.DataVersion)
+		u.finishCheck(startedAt, nil, false)
+		return nil
+	}
+
 	if strings.TrimSpace(u.config.CacheDir) != "" {
 		if err := SaveCache(u.config.CacheDir, bundle); err != nil {
 			err = fmt.Errorf("[PresetUpdater-Cache] 写缓存失败: %w", err)
@@ -273,9 +287,23 @@ func (u *PresetUpdater) CheckOnce(ctx context.Context) error {
 	return nil
 }
 
-func (u *PresetUpdater) loop(ctx context.Context) {
-	defer close(u.done)
+func (u *PresetUpdater) loop(ctx context.Context, ready chan<- struct{}, done chan struct{}) {
+	defer close(done)
+	defer func() {
+		u.lifecycleMu.Lock()
+		defer u.lifecycleMu.Unlock()
+		u.mu.Lock()
+		defer u.mu.Unlock()
+		if u.done == done {
+			u.running = false
+			u.checking = false
+			u.nextCheckAt = nil
+			u.cancel = nil
+			u.done = nil
+		}
+	}()
 
+	close(ready)
 	if err := u.CheckOnce(ctx); err != nil {
 		log.Printf("[PresetUpdater-Start] 首次检查失败: %v", err)
 	}
@@ -284,15 +312,14 @@ func (u *PresetUpdater) loop(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
-		next := time.Now().Add(u.config.Interval)
-		u.mu.Lock()
-		u.nextCheckAt = &next
-		u.mu.Unlock()
-
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			next := time.Now().Add(u.config.Interval)
+			u.mu.Lock()
+			u.nextCheckAt = &next
+			u.mu.Unlock()
 			if err := u.CheckOnce(ctx); err != nil {
 				log.Printf("[PresetUpdater-Loop] 周期检查失败: %v", err)
 			}
@@ -301,41 +328,121 @@ func (u *PresetUpdater) loop(ctx context.Context) {
 }
 
 func (u *PresetUpdater) buildBundleFromIndex(ctx context.Context, indexURL *url.URL, index *PresetIndex) (*PresetBundle, error) {
-	var subscription SubscriptionPreset
-	foundSubscription := false
+	legacyOnly := true
 	for _, shard := range index.Shards {
-		if shard.Kind != "subscriptionPreset" && shard.Kind != "subscription" {
-			continue
+		if canonicalShardKind(shard.Kind) != "subscriptionPreset" {
+			legacyOnly = false
+			break
 		}
-		if strings.TrimSpace(shard.SHA256) == "" {
-			return nil, fmt.Errorf("[PresetUpdater-Check] subscription shard 缺少 sha256")
-		}
-		resolved, err := indexURL.Parse(shard.URL)
-		if err != nil {
-			return nil, fmt.Errorf("[PresetUpdater-Check] 解析 shard URL 失败: %w", err)
-		}
-		body, err := u.fetchBytes(ctx, resolved.String(), defaultShardSizeLimit)
-		if err != nil {
-			return nil, fmt.Errorf("[PresetUpdater-Check] 拉取 subscription shard 失败: %w", err)
-		}
-		if !strings.EqualFold(strings.TrimSpace(shard.SHA256), sha256Hex(body)) {
-			return nil, fmt.Errorf("[PresetUpdater-Check] subscription shard SHA256 校验失败")
-		}
-		if err := json.Unmarshal(body, &subscription); err != nil {
-			return nil, fmt.Errorf("[PresetUpdater-Check] 解析 subscription shard 失败: %w", err)
-		}
-		foundSubscription = true
-		break
 	}
-	if !foundSubscription {
-		return nil, fmt.Errorf("[PresetUpdater-Check] index 缺少 subscription shard")
+	if legacyOnly {
+		return nil, fmt.Errorf("[PresetUpdater-Check] legacy 单 subscription shard index 已不再支持正式更新")
 	}
 
-	return &PresetBundle{
-		SchemaVersion: index.SchemaVersion,
-		DataVersion:   index.DataVersion,
-		Subscription:  subscription,
-	}, nil
+	base := u.store.Get()
+	bundle := cloneBundle(base)
+	bundle.SchemaVersion = index.SchemaVersion
+	bundle.DataVersion = index.DataVersion
+
+	seenKinds := map[string]bool{}
+	for _, shard := range index.Shards {
+		kind := canonicalShardKind(shard.Kind)
+		if !isExpectedShardKind(kind) {
+			continue
+		}
+		if seenKinds[kind] {
+			return nil, fmt.Errorf("[PresetUpdater-Check] shard kind %s 重复", kind)
+		}
+		seenKinds[kind] = true
+
+		body, err := u.fetchShard(ctx, indexURL, shard, kind)
+		if err != nil {
+			return nil, err
+		}
+		if err := applyShard(body, kind, bundle); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, kind := range requiredRemoteShardKinds {
+		if !seenKinds[kind] {
+			return nil, fmt.Errorf("[PresetUpdater-Check] index 缺少 %s shard", kind)
+		}
+	}
+	if err := Validate(bundle); err != nil {
+		return nil, err
+	}
+	return bundle, nil
+}
+
+func isExpectedShardKind(kind string) bool {
+	switch kind {
+	case "subscriptionPreset", "modelRegistry", "channelPresets", "builtinManifest":
+		return true
+	default:
+		return false
+	}
+}
+
+func canonicalShardKind(kind string) string {
+	if kind == "subscription" {
+		return "subscriptionPreset"
+	}
+	return kind
+}
+
+func (u *PresetUpdater) fetchShard(ctx context.Context, indexURL *url.URL, shard PresetIndexShard, kind string) ([]byte, error) {
+	if strings.TrimSpace(shard.SHA256) == "" {
+		return nil, fmt.Errorf("[PresetUpdater-Check] %s shard 缺少 sha256", kind)
+	}
+	resolved, err := indexURL.Parse(shard.URL)
+	if err != nil {
+		return nil, fmt.Errorf("[PresetUpdater-Check] 解析 %s shard URL 失败: %w", kind, err)
+	}
+	body, err := u.fetchBytes(ctx, resolved.String(), defaultShardSizeLimit)
+	if err != nil {
+		return nil, fmt.Errorf("[PresetUpdater-Check] 拉取 %s shard 失败: %w", kind, err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(shard.SHA256), sha256Hex(body)) {
+		return nil, fmt.Errorf("[PresetUpdater-Check] %s shard SHA256 校验失败", kind)
+	}
+	return body, nil
+}
+
+func applyShard(body []byte, kind string, bundle *PresetBundle) error {
+	switch kind {
+	case "subscriptionPreset":
+		var subscription SubscriptionPreset
+		if err := json.Unmarshal(body, &subscription); err != nil {
+			return fmt.Errorf("[PresetUpdater-Check] 解析 subscriptionPreset shard 失败: %w", err)
+		}
+		bundle.Subscription = subscription
+	case "modelRegistry":
+		var registry ModelRegistryPreset
+		if err := json.Unmarshal(body, &registry); err != nil {
+			return fmt.Errorf("[PresetUpdater-Check] 解析 modelRegistry shard 失败: %w", err)
+		}
+		bundle.ModelRegistry = &registry
+	case "channelPresets":
+		var channelPresets ChannelPresetsPreset
+		if err := json.Unmarshal(body, &channelPresets); err != nil {
+			return fmt.Errorf("[PresetUpdater-Check] 解析 channelPresets shard 失败: %w", err)
+		}
+		bundle.ChannelPresets = &channelPresets
+	case "builtinManifest":
+		var manifest BuiltinModelsManifestPreset
+		if err := json.Unmarshal(body, &manifest); err != nil {
+			return fmt.Errorf("[PresetUpdater-Check] 解析 builtinManifest shard 失败: %w", err)
+		}
+		bundle.BuiltinModelsManifests = &manifest
+	default:
+		return fmt.Errorf("[PresetUpdater-Check] 未知 shard kind %s", kind)
+	}
+	return nil
+}
+
+func fetchBytesNoRedirect(client *http.Client, req *http.Request) (*http.Response, error) {
+	return client.Do(req)
 }
 
 func (u *PresetUpdater) fetchBytes(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
@@ -347,7 +454,7 @@ func (u *PresetUpdater) fetchBytes(ctx context.Context, rawURL string, limit int
 	if err != nil {
 		return nil, err
 	}
-	resp, err := u.client.Do(req)
+	resp, err := fetchBytesNoRedirect(u.client, req)
 	if err != nil {
 		return nil, err
 	}
@@ -424,6 +531,12 @@ func (u *PresetUpdater) setCacheValid(valid bool) {
 	u.cacheValid = valid
 }
 
+func (u *PresetUpdater) snapshotLifecycleLocked() (context.CancelFunc, chan struct{}, bool) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	return u.cancel, u.done, u.running
+}
+
 func cloneTimePtr(src *time.Time) *time.Time {
 	if src == nil {
 		return nil
@@ -433,20 +546,145 @@ func cloneTimePtr(src *time.Time) *time.Time {
 }
 
 func compareDataVersion(a, b string) int {
-	as := strings.TrimSpace(a)
-	bs := strings.TrimSpace(b)
+	av := parseDataVersion(strings.TrimSpace(a))
+	bv := parseDataVersion(strings.TrimSpace(b))
+	return av.compare(bv)
+}
+
+type dataVersion struct {
+	raw     string
+	parts   []int
+	hasText bool
+}
+
+func parseDataVersion(raw string) dataVersion {
+	if raw == "" {
+		return dataVersion{}
+	}
+	fields := splitVersionTokens(raw)
+	parts := make([]int, 0, len(fields))
+	for _, field := range fields {
+		value, err := strconv.Atoi(field)
+		if err != nil {
+			return dataVersion{raw: raw, hasText: true}
+		}
+		parts = append(parts, value)
+	}
+	return dataVersion{raw: raw, parts: parts}
+}
+
+func splitVersionTokens(raw string) []string {
+	return strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case '.', '-', '_':
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func (v dataVersion) compare(other dataVersion) int {
 	switch {
-	case as == bs:
+	case v.raw == other.raw:
 		return 0
-	case as == "":
+	case v.raw == "":
 		return -1
-	case bs == "":
-		return 1
-	case as < bs:
-		return -1
-	default:
+	case other.raw == "":
 		return 1
 	}
+	if !v.hasText && !other.hasText {
+		maxLen := len(v.parts)
+		if len(other.parts) > maxLen {
+			maxLen = len(other.parts)
+		}
+		for i := 0; i < maxLen; i++ {
+			left := 0
+			if i < len(v.parts) {
+				left = v.parts[i]
+			}
+			right := 0
+			if i < len(other.parts) {
+				right = other.parts[i]
+			}
+			if left < right {
+				return -1
+			}
+			if left > right {
+				return 1
+			}
+		}
+		return 0
+	}
+	if v.raw < other.raw {
+		return -1
+	}
+	return 1
+}
+
+func buildUpdaterHTTPClient(base *http.Client, policy redirectPolicy) *http.Client {
+	var client http.Client
+	if base == nil {
+		client = http.Client{Timeout: defaultHTTPTimeout}
+	} else {
+		client = *base
+		if client.Timeout <= 0 {
+			client.Timeout = defaultHTTPTimeout
+		}
+	}
+	client.CheckRedirect = buildRedirectChecker(policy)
+	return &client
+}
+
+func buildRedirectChecker(policy redirectPolicy) func(req *http.Request, via []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) == 0 {
+			return nil
+		}
+		if err := validateRedirectTarget(req.URL, policy.allowInsecure); err != nil {
+			return err
+		}
+		if policy.baseURL != nil && !sameOrigin(policy.baseURL, req.URL) {
+			return fmt.Errorf("[PresetUpdater-Config] redirect 仅允许同源")
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("[PresetUpdater-Config] redirect 次数过多")
+		}
+		return nil
+	}
+}
+
+func validateRedirectTarget(target *url.URL, allowInsecure bool) error {
+	if target == nil {
+		return fmt.Errorf("[PresetUpdater-Config] redirect 目标为空")
+	}
+	if target.Scheme == "https" {
+		return nil
+	}
+	if target.Scheme == "http" && allowInsecure {
+		return nil
+	}
+	return fmt.Errorf("[PresetUpdater-Config] redirect 仅允许 HTTPS URL")
+}
+
+func sameOrigin(base *url.URL, target *url.URL) bool {
+	if base == nil || target == nil {
+		return false
+	}
+	return strings.EqualFold(base.Scheme, target.Scheme) && strings.EqualFold(normalizeHost(base), normalizeHost(target))
+}
+
+func normalizeHost(u *url.URL) string {
+	host := strings.ToLower(u.Hostname())
+	port := u.Port()
+	if port == "" {
+		if strings.EqualFold(u.Scheme, "https") {
+			port = "443"
+		} else if strings.EqualFold(u.Scheme, "http") {
+			port = "80"
+		}
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // StatusHandler 返回 GET /api/presets/status 的只读处理器。

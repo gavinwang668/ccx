@@ -38,15 +38,15 @@ func TestEmbeddedBundleValid(t *testing.T) {
 
 func TestValidateRejects(t *testing.T) {
 	cases := map[string]func(*PresetBundle){
-		"schema 过高":     func(b *PresetBundle) { b.SchemaVersion = CurrentSchemaVersion + 1 },
-		"originTypes 空": func(b *PresetBundle) { b.Subscription.OriginTypes = nil },
-		"tier 非法":       func(b *PresetBundle) { b.Subscription.OriginTypes[0].Tier = "platinum" },
-		"value 空":       func(b *PresetBundle) { b.Subscription.OriginTypes[0].Value = "" },
-		"重复 value":      func(b *PresetBundle) { b.Subscription.OriginTypes[1].Value = "official_api" },
+		"schema 过高":      func(b *PresetBundle) { b.SchemaVersion = CurrentSchemaVersion + 1 },
+		"originTypes 空":  func(b *PresetBundle) { b.Subscription.OriginTypes = nil },
+		"tier 非法":        func(b *PresetBundle) { b.Subscription.OriginTypes[0].Tier = "platinum" },
+		"value 空":        func(b *PresetBundle) { b.Subscription.OriginTypes[0].Value = "" },
+		"重复 value":       func(b *PresetBundle) { b.Subscription.OriginTypes[1].Value = "official_api" },
 		"billingModes 空": func(b *PresetBundle) { b.Subscription.BillingModes = nil },
 		"sources 空":      func(b *PresetBundle) { b.Subscription.Sources = nil },
-		"newApi 引用未知类型": func(b *PresetBundle) { b.Subscription.NewApiDefaults.OriginType = "ghost" },
-		"别名目标未知":       func(b *PresetBundle) { b.Subscription.OriginTypeAliases["x"] = "ghost" },
+		"newApi 引用未知类型":  func(b *PresetBundle) { b.Subscription.NewApiDefaults.OriginType = "ghost" },
+		"别名目标未知":         func(b *PresetBundle) { b.Subscription.OriginTypeAliases["x"] = "ghost" },
 	}
 	for name, corrupt := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -126,5 +126,38 @@ func TestStoreSwapAndObserver(t *testing.T) {
 	s.Swap(nil)
 	if s.DataVersion() != "2026.07.10-1" {
 		t.Errorf("nil Swap 后 DataVersion 应不变，得到 %q", s.DataVersion())
+	}
+}
+
+func TestStoreGetReturnsImmutableClone(t *testing.T) {
+	s := NewPresetStore(validBundle())
+	got := s.Get()
+	got.DataVersion = "mutated"
+	got.Subscription.OriginTypes[0].Value = "mutated"
+
+	again := s.Get()
+	if again.DataVersion != "2026.07.10-1" {
+		t.Fatalf("DataVersion = %q, want 2026.07.10-1", again.DataVersion)
+	}
+	if again.Subscription.OriginTypes[0].Value != "official_api" {
+		t.Fatalf("OriginTypes[0].Value = %q, want official_api", again.Subscription.OriginTypes[0].Value)
+	}
+}
+
+func TestStoreObserverGetsImmutableClone(t *testing.T) {
+	s := NewPresetStore(validBundle())
+	var first *PresetBundle
+	s.RegisterOnChange(func(b *PresetBundle) {
+		first = b
+		b.DataVersion = "observer-mutated"
+	})
+	next := validBundle()
+	next.DataVersion = "2026.07.10-2"
+	s.Swap(next)
+	if first == nil {
+		t.Fatal("observer not invoked")
+	}
+	if s.DataVersion() != "2026.07.10-2" {
+		t.Fatalf("store DataVersion = %q, want 2026.07.10-2", s.DataVersion())
 	}
 }

@@ -15,6 +15,8 @@ const (
 	shaFileName    = "bundle.json.sha256"
 )
 
+var atomicFileWriter = writeFileAtomically
+
 // LoadCache 从缓存目录加载 bundle，并校验 sidecar SHA256。
 func LoadCache(cacheDir string) (*PresetBundle, error) {
 	if strings.TrimSpace(cacheDir) == "" {
@@ -73,11 +75,47 @@ func SaveCache(cacheDir string, bundle *PresetBundle) error {
 
 	bundlePath := filepath.Join(cacheDir, bundleFileName)
 	shaPath := filepath.Join(cacheDir, shaFileName)
-	if err := writeFileAtomically(bundlePath, bundleBytes, 0o644); err != nil {
+	oldBundleBytes, oldBundleExists, err := readExistingFile(bundlePath)
+	if err != nil {
 		return err
 	}
-	if err := writeFileAtomically(shaPath, shaBytes, 0o644); err != nil {
+	oldSHABytes, oldSHAExists, err := readExistingFile(shaPath)
+	if err != nil {
 		return err
+	}
+
+	if err := atomicFileWriter(bundlePath, bundleBytes, 0o644); err != nil {
+		return err
+	}
+	if err := atomicFileWriter(shaPath, shaBytes, 0o644); err != nil {
+		if rollbackErr := restoreCacheFile(bundlePath, oldBundleBytes, oldBundleExists); rollbackErr != nil {
+			return fmt.Errorf("[presetstore] 写入缓存 SHA256 失败且回滚 bundle 失败: %v; 原始错误: %w", rollbackErr, err)
+		}
+		if rollbackErr := restoreCacheFile(shaPath, oldSHABytes, oldSHAExists); rollbackErr != nil {
+			return fmt.Errorf("[presetstore] 写入缓存 SHA256 失败且回滚 sidecar 失败: %v; 原始错误: %w", rollbackErr, err)
+		}
+		return err
+	}
+	return nil
+}
+
+func readExistingFile(path string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return data, true, nil
+	}
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	return nil, false, fmt.Errorf("[presetstore] 读取已有缓存文件失败: %w", err)
+}
+
+func restoreCacheFile(path string, data []byte, existed bool) error {
+	if existed {
+		return atomicFileWriter(path, data, 0o644)
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("[presetstore] 删除半写入缓存文件失败: %w", err)
 	}
 	return nil
 }

@@ -1,3 +1,8 @@
+import type { ClaudeMessagesPreset } from '../generated/claudeMessagesPresets'
+import type { CodexResponsesPreset } from '../generated/codexResponsesPresets'
+import type { OpenAIChatPreset } from '../generated/openaiChatPresets'
+import type { OpenAIMessagesPreset } from '../generated/openaiMessagesPresets'
+
 // API 数据结构类型
 export type ChannelStatus = 'active' | 'suspended' | 'disabled'
 
@@ -1395,8 +1400,35 @@ export interface SubscriptionPreset {
   originTypeAliases: Record<string, string>
 }
 
+export interface WrappedPresetCollection<T> {
+  schemaVersion?: number
+  providers?: Record<string, T>
+  presets?: Record<string, T>
+}
+
+export interface RuntimeModelRegistryEntry extends UpstreamModelCapability {
+  patterns?: string[]
+}
+
+export interface RuntimeModelRegistryBundle {
+  schemaVersion?: number
+  pricingUnit?: string
+  upstreamCapabilities?: RuntimeModelRegistryEntry[]
+}
+
+export interface ChannelPresetBundle {
+  schemaVersion?: number
+  claudeMessages?: Record<string, ClaudeMessagesPreset> | WrappedPresetCollection<ClaudeMessagesPreset>
+  openAIChat?: Record<string, OpenAIChatPreset> | WrappedPresetCollection<OpenAIChatPreset>
+  codexResponses?: Record<string, CodexResponsesPreset> | WrappedPresetCollection<CodexResponsesPreset>
+  openAIMessages?: Record<string, OpenAIMessagesPreset> | WrappedPresetCollection<OpenAIMessagesPreset>
+}
+
 export interface PresetBundle {
   schemaVersion: number
   dataVersion: string
   subscription: SubscriptionPreset
+  modelRegistry?: Record<string, UpstreamModelCapability> | RuntimeModelRegistryBundle
+  channelPresets?: ChannelPresetBundle
+  builtinModelsManifests?: Record<string, unknown>
 }

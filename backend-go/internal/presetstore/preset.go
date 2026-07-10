@@ -9,6 +9,8 @@ package presetstore
 
 // CurrentSchemaVersion 是本二进制支持的 subscription-preset schema 主版本。
 // 远程 schemaVersion 高于此值时整体弃用远程（老客户端不误解新结构）。
+import "encoding/json"
+
 const CurrentSchemaVersion = 1
 
 // PresetBundle 是所有预置数据类的聚合，运行时由 PresetStore 原子持有。
@@ -19,8 +21,104 @@ type PresetBundle struct {
 	// embedded 默认为空串，任何非空远程版本都视为更新。
 	DataVersion string `json:"dataVersion,omitempty"`
 
-	// Subscription 订阅来源预置（本期唯一新增数据类）。
+	// Subscription 订阅来源预置。
 	Subscription SubscriptionPreset `json:"subscription"`
+	// ModelRegistry 上游模型能力注册表预置。
+	ModelRegistry *ModelRegistryPreset `json:"modelRegistry,omitempty"`
+	// ChannelPresets 各协议渠道预置原始 JSON，保持结构保真。
+	ChannelPresets *ChannelPresetsPreset `json:"channelPresets,omitempty"`
+	// BuiltinModelsManifests 内置模型清单预置。
+	BuiltinModelsManifests *BuiltinModelsManifestPreset `json:"builtinModelsManifests,omitempty"`
+}
+
+type ModelRegistryPreset struct {
+	SchemaVersion        int                             `json:"schemaVersion"`
+	PricingUnit          string                          `json:"pricingUnit,omitempty"`
+	UpstreamCapabilities []ModelRegistryCapabilityPreset `json:"upstreamCapabilities"`
+}
+
+type ModelRegistryCapabilityPreset struct {
+	Patterns                []string            `json:"patterns"`
+	ContextWindowTokens     int                 `json:"contextWindowTokens,omitempty"`
+	MaxOutputTokens         int                 `json:"maxOutputTokens,omitempty"`
+	DefaultOutputTokens     int                 `json:"defaultOutputTokens,omitempty"`
+	RecommendedOutputTokens int                 `json:"recommendedOutputTokens,omitempty"`
+	ThinkingMode            string              `json:"thinkingMode,omitempty"`
+	ReasoningEfforts        []string            `json:"reasoningEfforts,omitempty"`
+	Provider                string              `json:"provider,omitempty"`
+	DisplayName             string              `json:"displayName,omitempty"`
+	Description             string              `json:"description,omitempty"`
+	Capabilities            map[string]bool     `json:"capabilities,omitempty"`
+	Pricing                 *ModelPricingPreset `json:"pricing,omitempty"`
+	Sources                 []string            `json:"sources,omitempty"`
+}
+
+type ModelPricingPreset struct {
+	Unit                string                   `json:"unit,omitempty"`
+	Currency            string                   `json:"currency,omitempty"`
+	InputCacheHitPrice  *float64                 `json:"inputCacheHitPrice,omitempty"`
+	InputCacheMissPrice *float64                 `json:"inputCacheMissPrice,omitempty"`
+	OutputPrice         *float64                 `json:"outputPrice,omitempty"`
+	Tiers               []ModelPricingTierPreset `json:"tiers,omitempty"`
+}
+
+type ModelPricingTierPreset struct {
+	Label               string   `json:"label,omitempty"`
+	InputTokensAbove    int      `json:"inputTokensAbove,omitempty"`
+	InputTokensUpTo     int      `json:"inputTokensUpTo,omitempty"`
+	InputCacheHitPrice  *float64 `json:"inputCacheHitPrice,omitempty"`
+	InputCacheMissPrice *float64 `json:"inputCacheMissPrice,omitempty"`
+	OutputPrice         *float64 `json:"outputPrice,omitempty"`
+}
+
+type ChannelPresetsPreset struct {
+	SchemaVersion int                        `json:"schemaVersion"`
+	Collections   map[string]json.RawMessage `json:"-"`
+}
+
+type BuiltinModelsManifestPreset struct {
+	SchemaVersion int                                `json:"schemaVersion"`
+	Manifests     []BuiltinModelsManifestEntryPreset `json:"manifests"`
+}
+
+type BuiltinModelsManifestEntryPreset struct {
+	BaseURLPattern string   `json:"baseUrlPattern"`
+	ServiceType    string   `json:"serviceType"`
+	PlanHint       string   `json:"planHint,omitempty"`
+	ModelIDs       []string `json:"modelIds"`
+	DisableProbe   bool     `json:"disableProbe"`
+}
+
+func (p *ChannelPresetsPreset) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	p.Collections = make(map[string]json.RawMessage, len(raw))
+	for key, value := range raw {
+		if key == "schemaVersion" {
+			if err := json.Unmarshal(value, &p.SchemaVersion); err != nil {
+				return err
+			}
+			continue
+		}
+		copied := append(json.RawMessage(nil), value...)
+		p.Collections[key] = copied
+	}
+	return nil
+}
+
+func (p ChannelPresetsPreset) MarshalJSON() ([]byte, error) {
+	body := make(map[string]json.RawMessage, len(p.Collections)+1)
+	schemaBytes, err := json.Marshal(p.SchemaVersion)
+	if err != nil {
+		return nil, err
+	}
+	body["schemaVersion"] = schemaBytes
+	for key, value := range p.Collections {
+		body[key] = append(json.RawMessage(nil), value...)
+	}
+	return json.Marshal(body)
 }
 
 // SubscriptionPreset 是订阅中心的来源分类预置。

@@ -1,6 +1,10 @@
 package config
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/BenedictKing/ccx/internal/presetstore"
+)
 
 // BuiltinModelsManifest 内置模型清单条目。
 // 对部分官方订阅入口（如 Claude OAuth 订阅、Codex plan 入口），
@@ -58,20 +62,43 @@ var builtinModelsManifests = []BuiltinModelsManifest{
 // 优先精确 host 匹配，其次 host+path 前缀匹配（最长前缀优先）。
 // 返回匹配的清单和 true；未命中返回零值和 false。
 func LookupBuiltinManifest(baseURL string, serviceType string) (BuiltinModelsManifest, bool) {
-	if len(builtinModelsManifests) == 0 {
-		return BuiltinModelsManifest{}, false
-	}
-
 	normalized := normalizeBaseURLForManifest(baseURL)
 	if normalized == "" {
 		return BuiltinModelsManifest{}, false
 	}
 
+	if manifest, found := lookupBuiltinManifestIn(runtimeBuiltinModelsManifests(), normalized, serviceType); found {
+		return manifest, true
+	}
+	return lookupBuiltinManifestIn(builtinModelsManifests, normalized, serviceType)
+}
+
+func runtimeBuiltinModelsManifests() []BuiltinModelsManifest {
+	bundle := presetstore.Default().Get()
+	if bundle == nil || bundle.BuiltinModelsManifests == nil || len(bundle.BuiltinModelsManifests.Manifests) == 0 {
+		return nil
+	}
+	manifests := make([]BuiltinModelsManifest, 0, len(bundle.BuiltinModelsManifests.Manifests))
+	for _, entry := range bundle.BuiltinModelsManifests.Manifests {
+		manifests = append(manifests, BuiltinModelsManifest{
+			BaseURLPattern: entry.BaseURLPattern,
+			ServiceType:    entry.ServiceType,
+			PlanHint:       entry.PlanHint,
+			ModelIDs:       append([]string(nil), entry.ModelIDs...),
+			DisableProbe:   entry.DisableProbe,
+		})
+	}
+	return manifests
+}
+
+func lookupBuiltinManifestIn(manifests []BuiltinModelsManifest, normalized string, serviceType string) (BuiltinModelsManifest, bool) {
+	if len(manifests) == 0 {
+		return BuiltinModelsManifest{}, false
+	}
 	var bestMatch BuiltinModelsManifest
 	var bestMatchLen int
 	found := false
-
-	for _, manifest := range builtinModelsManifests {
+	for _, manifest := range manifests {
 		if manifest.ServiceType != serviceType {
 			continue
 		}
@@ -79,14 +106,12 @@ func LookupBuiltinManifest(baseURL string, serviceType string) (BuiltinModelsMan
 		if !matchManifestPattern(normalized, pattern) {
 			continue
 		}
-		// 最长前缀优先：避免 "api.anthropic.com" 误匹配到更具体的 pattern
 		if len(pattern) > bestMatchLen {
 			bestMatch = manifest
 			bestMatchLen = len(pattern)
 			found = true
 		}
 	}
-
 	return bestMatch, found
 }
 

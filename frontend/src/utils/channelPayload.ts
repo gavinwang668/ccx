@@ -3,6 +3,8 @@ import { normalizeAdvancedChannelOptions } from './channelAdvancedOptions'
 import { deduplicateEquivalentBaseUrls } from './baseUrlSemantics'
 import { builtinUpstreamModelCapabilities } from '../generated/modelRegistry'
 
+let runtimeUpstreamModelCapabilities: Record<string, UpstreamModelCapability> | null = null
+
 const DEFAULT_COPILOT_BASE_URL = 'https://api.githubcopilot.com'
 
 export interface ModelCapabilityRow {
@@ -245,19 +247,30 @@ function matchesModelPattern(pattern: string, model: string): boolean {
   }
 }
 
+export function setRuntimeUpstreamModelCapabilities(capabilities: Record<string, UpstreamModelCapability> | null | undefined) {
+  runtimeUpstreamModelCapabilities = capabilities && Object.keys(capabilities).length > 0
+    ? capabilities
+    : null
+}
+
+function getEffectiveUpstreamModelCapabilities(): Record<string, UpstreamModelCapability> {
+  return runtimeUpstreamModelCapabilities || builtinUpstreamModelCapabilities
+}
+
 export function resolveBuiltinUpstreamModelCapability(model: string): { capability: UpstreamModelCapability; pattern: string } | null {
   const trimmed = model.trim()
   if (!trimmed) return null
-  if (builtinUpstreamModelCapabilities[trimmed]) {
-    return { capability: builtinUpstreamModelCapabilities[trimmed], pattern: trimmed }
+  const registry = getEffectiveUpstreamModelCapabilities()
+  if (registry[trimmed]) {
+    return { capability: registry[trimmed], pattern: trimmed }
   }
 
-  const patterns = Object.keys(builtinUpstreamModelCapabilities)
+  const patterns = Object.keys(registry)
     .filter(pattern => pattern !== trimmed)
     .sort((a, b) => b.length - a.length || a.localeCompare(b))
   for (const pattern of patterns) {
     if (matchesModelPattern(pattern, trimmed)) {
-      return { capability: builtinUpstreamModelCapabilities[pattern], pattern }
+      return { capability: registry[pattern], pattern }
     }
   }
   return null
