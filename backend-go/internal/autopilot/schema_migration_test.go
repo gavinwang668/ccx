@@ -145,3 +145,58 @@ CREATE TABLE IF NOT EXISTS autopilot_advisor_decisions (
 		t.Fatalf("v1->v2 迁移后 user_version = %d, want 2", version)
 	}
 }
+
+// TestEnsureSchemaVersion_HealsDriftedV2 复现真实漂移库：
+// user_version 已是 2（命中 version==autopilotSchemaVersion 的早退分支），
+// 但 advisor_decisions 表实际缺 reason 列（开发期版本常量与建表/迁移未同步导致）。
+// 修复前该分支直接 return nil，reason 列永远补不上，loadAll 查询 no such column 阻断整个 Autopilot 初始化。
+func TestEnsureSchemaVersion_HealsDriftedV2(t *testing.T) {
+	db := newTestDB(t)
+
+	// 建「缺 reason 列」的表，并把版本直接标成 2（模拟漂移库）
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS autopilot_advisor_decisions (
+    decision_uid        TEXT PRIMARY KEY,
+    request_uid         TEXT,
+    advisor_uid         TEXT    NOT NULL,
+    advisor_origin_tier TEXT    NOT NULL,
+    mode                TEXT    NOT NULL,
+    task_class          TEXT    NOT NULL,
+    prompt_hash         TEXT,
+    input_token_bucket  TEXT    NOT NULL DEFAULT '',
+    hint_json           TEXT    NOT NULL,
+    default_plan_hash   TEXT    NOT NULL DEFAULT '',
+    applied             INTEGER NOT NULL DEFAULT 0,
+    outcome             TEXT    NOT NULL DEFAULT '',
+    misroute_severity   TEXT    NOT NULL DEFAULT '',
+    latency_ms          INTEGER NOT NULL DEFAULT 0,
+    estimated_advisor_cost REAL NOT NULL DEFAULT 0,
+    created_at          TEXT    NOT NULL
+)`); err != nil {
+		t.Fatalf("建漂移表失败: %v", err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 2"); err != nil {
+		t.Fatalf("设置漂移版本失败: %v", err)
+	}
+
+	// 版本已是当前版本，但列自愈仍应补上 reason
+	if err := ensureSchemaVersion(db); err != nil {
+		t.Fatalf("ensureSchemaVersion（漂移库）失败: %v", err)
+	}
+
+	// 补列成功后，含 reason 的插入应成功
+	if _, err := db.Exec(`INSERT INTO autopilot_advisor_decisions
+		(decision_uid, advisor_uid, advisor_origin_tier, mode, task_class,
+		 input_token_bucket, hint_json, default_plan_hash, applied,
+		 outcome, misroute_severity, latency_ms, estimated_advisor_cost,
+		 reason, created_at)
+		VALUES ('drift-heal', 'ch-1', 'first', 'shadow', 'worker',
+		 '', '{}', '', 0, '', '', 0, 0, 'manual', '2024-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("自愈后插入含 reason 的记录失败（列未补上）: %v", err)
+	}
+
+	// 幂等：重复调用不应报错
+	if err := ensureSchemaVersion(db); err != nil {
+		t.Fatalf("自愈应幂等，重复调用报错: %v", err)
+	}
+}

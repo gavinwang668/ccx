@@ -51,7 +51,11 @@ func ensureSchemaVersion(db *sql.DB) error {
 	}
 
 	if version == autopilotSchemaVersion {
-		return nil
+		// 幂等自愈：即便 user_version 已是当前版本，仍校验关键列是否真实存在。
+		// 历史上曾出现「user_version=2 但 advisor_decisions 缺 reason 列」的漂移库
+		//（开发期版本常量与建表/迁移未同步导致），此处兜底补列，避免 loadAll 查询失败
+		// 阻断整个 Autopilot 初始化。列已存在时为空操作。
+		return ensureAdvisorDecisionColumns(db)
 	}
 
 	// v1 -> v2: advisor_decisions 新增 reason 列（SLO regression 自动回滚记录触发原因）
@@ -81,5 +85,83 @@ func ensureSchemaVersion(db *sql.DB) error {
 		log.Printf("[Autopilot-SchemaMigration] schema 版本已从 %d 更新至 %d", version, autopilotSchemaVersion)
 	}
 
+	// 全新库/正常升级路径也走一次列自愈，确保 reason 列一定存在（幂等）。
+	return ensureAdvisorDecisionColumns(db)
+}
+
+// ensureAdvisorDecisionColumns 校验 advisor_decisions 表的关键列是否存在，缺失则补齐。
+// 用于兜底修复历史 schema 漂移库（user_version 与实际表结构不一致）。
+// 表尚不存在时（全新库，CREATE TABLE 还没执行）跳过，交给建表语句。
+func ensureAdvisorDecisionColumns(db *sql.DB) error {
+	const table = "autopilot_advisor_decisions"
+
+	exists, err := tableExists(db, table)
+	if err != nil {
+		return fmt.Errorf("[Autopilot-SchemaMigration] 检查表 %s 是否存在失败: %w", table, err)
+	}
+	if !exists {
+		return nil // 全新库，建表语句会包含所有列
+	}
+
+	// 期望列 -> 建表定义（与 advisor_decision_store.go 的建表语句保持一致）。
+	// 目前仅 reason 曾发生漂移；后续如有新增列同样在此登记，实现幂等自愈。
+	wantColumns := map[string]string{
+		"reason": "reason TEXT NOT NULL DEFAULT ''",
+	}
+	for col, def := range wantColumns {
+		has, err := columnExists(db, table, col)
+		if err != nil {
+			return fmt.Errorf("[Autopilot-SchemaMigration] 检查列 %s.%s 失败: %w", table, col, err)
+		}
+		if has {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", table, def)); err != nil {
+			return fmt.Errorf("[Autopilot-SchemaMigration] 补列 %s.%s 失败: %w", table, col, err)
+		}
+		log.Printf("[Autopilot-SchemaMigration] 自愈补列: %s.%s", table, col)
+	}
 	return nil
+}
+
+// tableExists 判断表是否存在。
+func tableExists(db *sql.DB, table string) (bool, error) {
+	var name string
+	err := db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
+	).Scan(&name)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// columnExists 通过 PRAGMA table_info 判断列是否存在。
+func columnExists(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid       int
+			name      string
+			ctype     string
+			notNull   int
+			dfltValue sql.NullString
+			pk        int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dfltValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
