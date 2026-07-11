@@ -109,6 +109,9 @@ func (cm *ConfigManager) loadConfig() error {
 	if cm.ensureAccountUIDs() {
 		needSaveDefaults = true
 	}
+	if cm.mergeManagedProviderAccounts() {
+		needSaveDefaults = true
+	}
 	if cm.ensureCredentialUIDs() {
 		needSaveDefaults = true
 	}

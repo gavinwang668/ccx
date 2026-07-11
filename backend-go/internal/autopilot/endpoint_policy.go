@@ -19,8 +19,8 @@ import (
 //
 // 模式门控：
 //   - off / kill switch → BuildEndpointPolicy 返回 nil（不注入）
-//   - shadow / dry_run → 计算评分 + 记录 trace，但原样返回输入（不影响真实调度）
-//   - assist → 真实排序但不过滤（FilterURLs/FilterKeys 原样返回）
+//   - shadow / dry_run → 计算评分 + 记录 trace，不应用健康优化；仍执行模型兼容硬约束
+//   - assist → 真实排序但不应用健康过滤；仍执行模型兼容硬约束
 //   - auto → binding 级真实过滤（健康 / 衰减 / 模型能力）+ 排序，未知画像 fail-open
 
 // ── EndpointCandidate（§4.6.2 契约）──
@@ -121,8 +121,8 @@ type EndpointPolicyDeps struct {
 //
 // 模式门控：
 //   - off / kill switch → nil
-//   - shadow / dry_run → 计算评分 + 记录 trace，但原样返回输入
-//   - assist → 真实排序（FilterURLs/FilterKeys 原样返回，只排序不删减）
+//   - shadow / dry_run → 计算评分 + 记录 trace，仅执行模型兼容硬约束
+//   - assist → 真实排序，仅执行模型兼容硬约束
 //   - auto → binding 级真实过滤（健康 / 衰减 / 模型能力）+ 排序，未知画像 fail-open
 func BuildEndpointPolicy(deps EndpointPolicyDeps, req *RequestProfile, mode RoutingMode) *EndpointAttemptPolicy {
 	if req == nil {
@@ -222,7 +222,7 @@ func buildShadowPolicy(deps EndpointPolicyDeps, req *RequestProfile) *EndpointAt
 		return apiKeys, candidates
 	}
 	policy.FilterKeyBindings = func(channelUID, baseURL string, apiKeys []string) []string {
-		return apiKeys
+		return filterKeyBindings(deps, req, channelUID, baseURL, apiKeys, false)
 	}
 	policy.SortKeyBindings = func(channelUID, baseURL string, apiKeys []string) ([]string, []EndpointCandidate) {
 		return scoreAndSortKeyBindings(deps, req, modelByUID, channelUID, baseURL, apiKeys, false)
@@ -392,28 +392,7 @@ func buildActivePolicy(deps EndpointPolicyDeps, req *RequestProfile, enableFilte
 	}
 
 	policy.FilterKeyBindings = func(channelUID, baseURL string, apiKeys []string) []string {
-		if !enableFilter || len(apiKeys) == 0 {
-			return apiKeys
-		}
-		filtered := make([]string, 0, len(apiKeys))
-		for _, key := range apiKeys {
-			profile := findProfileForBinding(deps.ProfileStore, channelUID, baseURL, key)
-			if profile == nil {
-				filtered = append(filtered, key)
-				continue
-			}
-			if profile.HealthState == HealthStateDead || profile.HealthState == HealthStateMisconfigured {
-				continue
-			}
-			if deps.FastDecay != nil && deps.FastDecay.Score(profile.EndpointUID) < fastDecayFilterThreshold {
-				continue
-			}
-			if !profileSupportsRequestModel(profile, req.Model, req, &deps) {
-				continue
-			}
-			filtered = append(filtered, key)
-		}
-		return filtered
+		return filterKeyBindings(deps, req, channelUID, baseURL, apiKeys, enableFilter)
 	}
 	policy.SortKeyBindings = func(channelUID, baseURL string, apiKeys []string) ([]string, []EndpointCandidate) {
 		return scoreAndSortKeyBindings(deps, req, modelByUID, channelUID, baseURL, apiKeys, true)
@@ -421,6 +400,35 @@ func buildActivePolicy(deps EndpointPolicyDeps, req *RequestProfile, enableFilte
 
 	policy.ResolvedModelByEndpointUID = buildResolvedModelLookup(modelByUID)
 	return policy
+}
+
+// filterKeyBindings 将正确性约束与调度优化分开：
+// 已知模型不兼容在所有模式下都必须排除；健康和衰减只在 auto 模式参与硬过滤。
+func filterKeyBindings(deps EndpointPolicyDeps, req *RequestProfile, channelUID, baseURL string, apiKeys []string, filterOperationalState bool) []string {
+	if len(apiKeys) == 0 {
+		return apiKeys
+	}
+	filtered := make([]string, 0, len(apiKeys))
+	for _, key := range apiKeys {
+		profile := findProfileForBinding(deps.ProfileStore, channelUID, baseURL, key)
+		if profile == nil {
+			filtered = append(filtered, key)
+			continue
+		}
+		if !profileSupportsRequestModel(profile, req.Model, req, &deps) {
+			continue
+		}
+		if filterOperationalState {
+			if profile.HealthState == HealthStateDead || profile.HealthState == HealthStateMisconfigured {
+				continue
+			}
+			if deps.FastDecay != nil && deps.FastDecay.Score(profile.EndpointUID) < fastDecayFilterThreshold {
+				continue
+			}
+		}
+		filtered = append(filtered, key)
+	}
+	return filtered
 }
 
 func scoreAndSortKeyBindings(deps EndpointPolicyDeps, req *RequestProfile, modelByUID map[string]string, channelUID, baseURL string, apiKeys []string, active bool) ([]string, []EndpointCandidate) {

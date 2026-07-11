@@ -305,6 +305,54 @@ func TestProviderRouteNameAndPrimaryResult(t *testing.T) {
 	}
 }
 
+func TestManagedAccountUIDForProviderUsesExistingAccount(t *testing.T) {
+	cfg := config.Config{ManagedAccounts: []config.ManagedAccountConfig{
+		{AccountUID: "acct-old", ProviderID: "mimo"},
+		{AccountUID: "acct-new", ProviderID: "mimo"},
+		{AccountUID: "acct-deepseek", ProviderID: "deepseek"},
+	}}
+	if got := managedAccountUIDForProvider(cfg, "mimo"); got != "acct-new" {
+		t.Fatalf("mimo existing account = %q, want acct-new", got)
+	}
+	if got := managedAccountUIDForProvider(cfg, "unknown"); got != "" {
+		t.Fatalf("unknown provider 不应命中账号: %q", got)
+	}
+}
+
+func TestProviderAutoAddReusesExistingAccount(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	data := `{
+  "managedAccounts": [{"accountUid":"acct_test","providerId":"mimo","name":"mimo-main","credentials":[{"credentialUid":"cred_test","apiKey":"sk-existing"}]}],
+  "upstream": [{"accountUid":"acct_test","channelUid":"ch_messages","providerId":"mimo","name":"mimo-main","serviceType":"claude","baseUrl":"https://api.xiaomimimo.com/anthropic","apiKeyConfigs":[{"credentialUid":"cred_test","baseUrl":"https://api.xiaomimimo.com/anthropic"}],"autoManaged":true,"status":"active"}],
+  "responsesUpstream": [], "geminiUpstream": [], "chatUpstream": [], "imagesUpstream": [], "vectorsUpstream": []
+}`
+	if err := os.WriteFile(configPath, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfgManager, err := config.NewConfigManager(configPath, filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cfgManager.Close() })
+	router := setupAutoManagedRouter(&AutoManagedDeps{CfgManager: cfgManager})
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/channels/auto-add", bytes.NewBufferString(`{"providerId":"mimo","apiKeys":["sk-existing"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("追加已有 provider key status=%d body=%s", w.Code, w.Body.String())
+	}
+	channels := cfgManager.GetAccountChannels("acct_test")
+	if len(channels) != 1 || channels[0].Upstream.ChannelUID != "ch_messages" {
+		t.Fatalf("不应创建新渠道: %+v", channels)
+	}
+	var response AutoAddResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || response.AccountUID != "acct_test" {
+		t.Fatalf("响应未返回已有账号: body=%s err=%v", w.Body.String(), err)
+	}
+}
+
 func TestAutoAddHandler_InvalidKind(t *testing.T) {
 	deps := &AutoManagedDeps{
 		CfgManager: nil,

@@ -637,6 +637,10 @@ func handleProviderAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind st
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("provider %s 不支持添加到 %s 渠道", req.ProviderID, requestKind)})
 		return
 	}
+	if accountUID := managedAccountUIDForProvider(deps.CfgManager.GetConfig(), tmpl.ProviderID); accountUID != "" {
+		appendCredentialsToProviderAccount(c, deps, requestKind, accountUID, req.APIKeys)
+		return
+	}
 
 	baseName := req.Name
 	if baseName == "" {
@@ -722,6 +726,55 @@ func handleProviderAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind st
 		Index:            primary.Index,
 		DiscoveryStarted: primary.DiscoveryStarted,
 		Channels:         results,
+	})
+}
+
+func managedAccountUIDForProvider(cfg config.Config, providerID string) string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return ""
+	}
+	uid := ""
+	for _, account := range cfg.ManagedAccounts {
+		if account.ProviderID == providerID {
+			uid = account.AccountUID
+		}
+	}
+	return uid
+}
+
+func appendCredentialsToProviderAccount(c *gin.Context, deps *AutoManagedDeps, requestKind, accountUID string, apiKeys []string) {
+	channels := deps.CfgManager.GetAccountChannels(accountUID)
+	if len(channels) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "provider 账号不存在"})
+		return
+	}
+	desired := append([]string(nil), channels[0].Upstream.APIKeys...)
+	desired = uniqueNonEmptyStrings(append(desired, apiKeys...))
+	accountName := strings.TrimSuffix(channels[0].Upstream.Name, accountRouteSuffix(channels[0].Kind))
+	update, status, err := applyManagedAccountUpdate(c.Request.Context(), deps, accountUID, updateAccountRequest{
+		Name: accountName, APIKeys: desired,
+	})
+	if err != nil {
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	results := make([]AutoAddChannelResult, 0, len(channels))
+	cfg := deps.CfgManager.GetConfig()
+	for _, channel := range deps.CfgManager.GetAccountChannels(accountUID) {
+		index := findChannelIndexByUID(getChannelSlice(cfg, channel.Kind), channel.Upstream.ChannelUID)
+		results = append(results, AutoAddChannelResult{
+			AccountUID: accountUID, ChannelKind: channel.Kind, ChannelUID: channel.Upstream.ChannelUID,
+			Index: index, Name: channel.Upstream.Name, ServiceType: channel.Upstream.ServiceType,
+			DiscoveryStarted: update.DiscoveryStarted > 0,
+		})
+	}
+	primary := primaryAutoAddResult(results, requestKind)
+	log.Printf("[AutoManaged-Add] 已向 provider 账号追加凭证: provider=%s account=%s keys=%d", channels[0].Upstream.ProviderID, accountUID, len(apiKeys))
+	c.JSON(http.StatusOK, AutoAddResponse{
+		AccountUID: accountUID, ChannelUID: primary.ChannelUID, Index: primary.Index,
+		DiscoveryStarted: primary.DiscoveryStarted, Channels: results,
 	})
 }
 

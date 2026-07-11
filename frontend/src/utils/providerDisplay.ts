@@ -1,3 +1,5 @@
+import type { Channel } from '@/services/api'
+
 const PROVIDER_BRAND_NAMES: Record<string, string> = {
   mimo: 'MiMo',
   openai: 'OpenAI',
@@ -16,4 +18,8 @@ export const providerDisplayName = (providerId?: string): string => {
     .filter(Boolean)
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+export const isManagedProviderChannel = (channel?: Channel | null): boolean => {
+  return !!channel && (!!channel.autoManaged || (!!channel.providerId && !!channel.accountUid))
 }

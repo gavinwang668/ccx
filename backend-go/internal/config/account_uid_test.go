@@ -34,6 +34,41 @@ func TestEnsureAccountUIDsGroupsLegacyProviderRoutes(t *testing.T) {
 	}
 }
 
+func TestMergeManagedProviderAccountsCombinesKeysAndRoutes(t *testing.T) {
+	cm := &ConfigManager{config: Config{
+		ManagedAccounts: []ManagedAccountConfig{
+			{AccountUID: "acct-old", ProviderID: "mimo", Name: "mimo-old"},
+			{AccountUID: "acct-new", ProviderID: "mimo", Name: "mimo-new"},
+		},
+		Upstream: []UpstreamConfig{
+			{AccountUID: "acct-old", ChannelUID: "ch-msg-old", Name: "mimo-old-claude", ProviderID: "mimo", AutoManaged: true, ServiceType: "claude", APIKeys: []string{"sk-a"}, APIKeyConfigs: []APIKeyConfig{{Key: "sk-a", BaseURL: "https://a.example/anthropic"}}},
+			{AccountUID: "acct-new", ChannelUID: "ch-msg-new", Name: "mimo-new-claude", ProviderID: "mimo", AutoManaged: true, ServiceType: "claude", APIKeys: []string{"sk-b"}, APIKeyConfigs: []APIKeyConfig{{Key: "sk-b", BaseURL: "https://b.example/anthropic"}}},
+		},
+		ChatUpstream: []UpstreamConfig{
+			{AccountUID: "acct-old", ChannelUID: "ch-chat-old", Name: "mimo-old-chat", ProviderID: "mimo", AutoManaged: true, ServiceType: "openai", APIKeys: []string{"sk-a"}, APIKeyConfigs: []APIKeyConfig{{Key: "sk-a", BaseURL: "https://a.example/v1"}}},
+			{AccountUID: "acct-new", ChannelUID: "ch-chat-new", Name: "mimo-new-chat", ProviderID: "mimo", AutoManaged: true, ServiceType: "openai", APIKeys: []string{"sk-b"}, APIKeyConfigs: []APIKeyConfig{{Key: "sk-b", BaseURL: "https://b.example/v1"}}},
+		},
+	}}
+
+	if !cm.mergeManagedProviderAccounts() {
+		t.Fatal("重复 provider 账号应触发合并")
+	}
+	if len(cm.config.Upstream) != 1 || len(cm.config.ChatUpstream) != 1 {
+		t.Fatalf("每种协议应只保留一条 route: messages=%d chat=%d", len(cm.config.Upstream), len(cm.config.ChatUpstream))
+	}
+	for _, channel := range []UpstreamConfig{cm.config.Upstream[0], cm.config.ChatUpstream[0]} {
+		if channel.AccountUID != "acct-new" || len(channel.APIKeys) != 2 {
+			t.Fatalf("route 未归并到最近账号或 Key 未合并: %+v", channel)
+		}
+	}
+	if cm.config.Upstream[0].ChannelUID != "ch-msg-new" || cm.config.ChatUpstream[0].ChannelUID != "ch-chat-new" {
+		t.Fatalf("应保留最近账号的 route 身份")
+	}
+	if len(cm.config.ManagedAccounts) != 1 || len(cm.config.ManagedAccounts[0].Credentials) != 2 {
+		t.Fatalf("账号凭证池未合并: %+v", cm.config.ManagedAccounts)
+	}
+}
+
 func TestUpdateAccountChannelsUpdatesAllRoutes(t *testing.T) {
 	cm := &ConfigManager{config: Config{
 		Upstream:     []UpstreamConfig{{AccountUID: "acct_test", ChannelUID: "ch_messages", ServiceType: "claude", ProviderID: "mimo", AutoManaged: true}},

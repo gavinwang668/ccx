@@ -1029,6 +1029,46 @@ func TestAutoPolicyFiltersBindingsByKeyModelProfile(t *testing.T) {
 	}
 }
 
+func TestShadowAndAssistPoliciesEnforceKnownBindingModels(t *testing.T) {
+	store := newTestProfileStore(t)
+	const (
+		channelUID = "ch-model-constraint"
+		baseURL    = "https://api.example.com"
+		keyA       = "sk-model-a"
+		keyB       = "sk-model-b"
+	)
+	for key, models := range map[string][]string{
+		keyA: {"model-a"},
+		keyB: {"model-b"},
+	} {
+		uid := GenerateEndpointUID(channelUID, baseURL, KeyHashFromAPIKey(key))
+		if err := store.Upsert(&KeyEndpointProfile{
+			ChannelUID:      channelUID,
+			ChannelKind:     "messages",
+			EndpointUID:     uid,
+			BaseURL:         baseURL,
+			HealthState:     HealthStateHealthy,
+			AvailableModels: models,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, mode := range []RoutingMode{RoutingModeShadow, RoutingModeAssist} {
+		t.Run(string(mode), func(t *testing.T) {
+			policy := BuildEndpointPolicy(
+				EndpointPolicyDeps{ProfileStore: store},
+				&RequestProfile{Model: "model-b", ChannelKind: "messages"},
+				mode,
+			)
+			got := policy.FilterKeyBindings(channelUID, baseURL, []string{keyA, keyB})
+			if len(got) != 1 || got[0] != keyB {
+				t.Fatalf("%s 模式允许了已知不兼容 binding: %v", mode, got)
+			}
+		})
+	}
+}
+
 func TestAutoPolicyBindingLookupIncludesChannelUID(t *testing.T) {
 	store := newTestProfileStore(t)
 	const (

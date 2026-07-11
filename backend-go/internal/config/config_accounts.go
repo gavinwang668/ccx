@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -41,6 +42,166 @@ func (cm *ConfigManager) GetAccountChannels(accountUID string) []AccountChannel 
 	visit("images", cm.config.ImagesUpstream)
 	visit("vectors", cm.config.VectorsUpstream)
 	return result
+}
+
+// mergeManagedProviderAccounts 将同一官方 provider 的历史自动托管账号归并为一个凭证池。
+// provider 模板已经描述完整协议 routes，因此账号身份应是 provider 级，而不是每个 Key 一份。
+func (cm *ConfigManager) mergeManagedProviderAccounts() bool {
+	canonicalUID := make(map[string]string)
+	canonicalName := make(map[string]string)
+	providerAccounts := make(map[string]map[string]bool)
+	for _, account := range cm.config.ManagedAccounts {
+		if account.ProviderID == "" || account.AccountUID == "" {
+			continue
+		}
+		// 保留最后创建的账号身份和名称，符合用户最近一次添加时看到的名称。
+		canonicalUID[account.ProviderID] = account.AccountUID
+		canonicalName[account.ProviderID] = account.Name
+		if providerAccounts[account.ProviderID] == nil {
+			providerAccounts[account.ProviderID] = make(map[string]bool)
+		}
+		providerAccounts[account.ProviderID][account.AccountUID] = true
+	}
+
+	updated := false
+	providerKinds := make(map[string]map[string]bool)
+	collectKinds := func(channels []UpstreamConfig, kind string) {
+		for i := range channels {
+			channel := &channels[i]
+			if channel.AutoManaged && channel.ProviderID != "" {
+				if providerKinds[channel.ProviderID] == nil {
+					providerKinds[channel.ProviderID] = make(map[string]bool)
+				}
+				providerKinds[channel.ProviderID][kind] = true
+				if providerAccounts[channel.ProviderID] == nil {
+					providerAccounts[channel.ProviderID] = make(map[string]bool)
+				}
+				if channel.AccountUID != "" {
+					providerAccounts[channel.ProviderID][channel.AccountUID] = true
+				}
+			}
+		}
+	}
+	collectKinds(cm.config.Upstream, "messages")
+	collectKinds(cm.config.ChatUpstream, "chat")
+	collectKinds(cm.config.ResponsesUpstream, "responses")
+	collectKinds(cm.config.GeminiUpstream, "gemini")
+	collectKinds(cm.config.ImagesUpstream, "images")
+	collectKinds(cm.config.VectorsUpstream, "vectors")
+
+	mergeKind := func(channels []UpstreamConfig, kind string) []UpstreamConfig {
+		out := make([]UpstreamConfig, 0, len(channels))
+		providerIndex := make(map[string]int)
+		providerHasCanonicalRoute := make(map[string]bool)
+		for i := range channels {
+			channel := channels[i]
+			if !channel.AutoManaged || channel.ProviderID == "" {
+				out = append(out, channel)
+				continue
+			}
+			providerID := channel.ProviderID
+			if len(providerAccounts[providerID]) < 2 {
+				out = append(out, channel)
+				continue
+			}
+			originalAccountUID := channel.AccountUID
+			uid := canonicalUID[providerID]
+			if uid == "" {
+				uid = channel.AccountUID
+				if uid == "" {
+					uid = GenerateAccountUID()
+				}
+				canonicalUID[providerID] = uid
+			}
+			baseName := canonicalName[providerID]
+			if baseName == "" {
+				baseName = managedAccountName(channel.Name)
+				canonicalName[providerID] = baseName
+			}
+			targetName := baseName
+			if len(providerKinds[providerID]) > 1 {
+				targetName += accountChannelSuffix(kind)
+			}
+			if channel.AccountUID != uid || channel.Name != targetName {
+				updated = true
+			}
+			channel.AccountUID = uid
+			channel.Name = targetName
+			channel.APIKeyConfigs = normalizeAPIKeyConfigs(channel.APIKeys, channel.APIKeyConfigs)
+			for j := range channel.APIKeyConfigs {
+				channel.APIKeyConfigs[j].CredentialUID = GenerateCredentialUID(uid, channel.APIKeyConfigs[j].Key)
+			}
+
+			idx, exists := providerIndex[providerID]
+			if !exists {
+				providerIndex[providerID] = len(out)
+				providerHasCanonicalRoute[providerID] = originalAccountUID == uid
+				out = append(out, channel)
+				continue
+			}
+
+			merged := &out[idx]
+			if originalAccountUID == uid && !providerHasCanonicalRoute[providerID] {
+				previous := *merged
+				*merged = channel
+				channel = previous
+				providerHasCanonicalRoute[providerID] = true
+			}
+			configs := make(map[string]APIKeyConfig, len(merged.APIKeyConfigs)+len(channel.APIKeyConfigs))
+			for _, cfg := range merged.APIKeyConfigs {
+				configs[cfg.Key] = cfg
+			}
+			for _, cfg := range channel.APIKeyConfigs {
+				cfg.CredentialUID = GenerateCredentialUID(uid, cfg.Key)
+				configs[cfg.Key] = cfg
+			}
+			merged.APIKeys = deduplicateStrings(append(merged.APIKeys, channel.APIKeys...))
+			merged.APIKeyConfigs = make([]APIKeyConfig, 0, len(merged.APIKeys))
+			for _, key := range merged.APIKeys {
+				cfg := configs[key]
+				cfg.Key = key
+				cfg.CredentialUID = GenerateCredentialUID(uid, key)
+				merged.APIKeyConfigs = append(merged.APIKeyConfigs, cfg)
+			}
+			incomingBaseURLs := append([]string(nil), channel.BaseURLs...)
+			if channel.BaseURL != "" {
+				incomingBaseURLs = append([]string{channel.BaseURL}, incomingBaseURLs...)
+			}
+			merged.BaseURLs = deduplicateBaseURLs(append(merged.BaseURLs, incomingBaseURLs...), merged.ServiceType)
+			if merged.BaseURL != "" {
+				merged.BaseURLs = deduplicateBaseURLs(append([]string{merged.BaseURL}, merged.BaseURLs...), merged.ServiceType)
+			}
+			if len(merged.BaseURLs) > 0 {
+				merged.BaseURL = merged.BaseURLs[0]
+			}
+			if channel.Status == "active" {
+				merged.Status = "active"
+			}
+			updated = true
+		}
+		return out
+	}
+
+	cm.config.Upstream = mergeKind(cm.config.Upstream, "messages")
+	cm.config.ChatUpstream = mergeKind(cm.config.ChatUpstream, "chat")
+	cm.config.ResponsesUpstream = mergeKind(cm.config.ResponsesUpstream, "responses")
+	cm.config.GeminiUpstream = mergeKind(cm.config.GeminiUpstream, "gemini")
+	cm.config.ImagesUpstream = mergeKind(cm.config.ImagesUpstream, "images")
+	cm.config.VectorsUpstream = mergeKind(cm.config.VectorsUpstream, "vectors")
+	if updated {
+		accounts := cm.config.ManagedAccounts[:0]
+		for _, account := range cm.config.ManagedAccounts {
+			canonical := canonicalUID[account.ProviderID]
+			if canonical != "" && account.AccountUID != canonical {
+				continue
+			}
+			accounts = append(accounts, account)
+		}
+		cm.config.ManagedAccounts = accounts
+		cm.config.syncManagedAccountsFromChannels()
+		log.Printf("[Config-AccountMerge] 已按 provider 合并历史自动托管账号")
+	}
+	return updated
 }
 
 // UpdateAccountChannels 原子更新账号下所有协议渠道的 Key -> BaseURL 绑定。
