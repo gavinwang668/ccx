@@ -3,6 +3,7 @@ package autopilot
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,6 +42,40 @@ func TestAutoDiscoveryRunner_GetTaskNil(t *testing.T) {
 	task := runner.GetTask("nonexistent")
 	if task != nil {
 		t.Fatal("从未触发的渠道应返回 nil")
+	}
+}
+
+func TestDiscoverEndpointsUsesBoundBaseURLForTwentyKeys(t *testing.T) {
+	serverA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"model-a"}]}`))
+	}))
+	defer serverA.Close()
+	serverB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"model-b"}]}`))
+	}))
+	defer serverB.Close()
+
+	channel := &config.UpstreamConfig{ServiceType: "openai", BaseURLs: []string{serverA.URL, serverB.URL}}
+	for i := 0; i < 20; i++ {
+		key := fmt.Sprintf("sk-%02d", i)
+		baseURL := serverA.URL
+		if i%2 == 1 {
+			baseURL = serverB.URL
+		}
+		channel.APIKeys = append(channel.APIKeys, key)
+		channel.APIKeyConfigs = append(channel.APIKeyConfigs, config.APIKeyConfig{Key: key, BaseURL: baseURL})
+	}
+	runner := NewAutoDiscoveryRunner(nil, nil)
+	results := runner.discoverEndpoints(context.Background(), channel)
+	if len(results) != 20 {
+		t.Fatalf("绑定后的 20 个 Key 应只探测 20 个 endpoint，实际=%d", len(results))
+	}
+	for _, result := range results {
+		if !result.ProtocolOk {
+			t.Fatalf("endpoint 探测失败: %+v", result)
+		}
 	}
 }
 

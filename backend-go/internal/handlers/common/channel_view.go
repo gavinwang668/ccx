@@ -11,6 +11,7 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 	return gin.H{
 		"index":                         index,
 		"name":                          up.Name,
+		"accountUid":                    up.AccountUID,
 		"channelUid":                    up.ChannelUID,
 		"providerId":                    up.ProviderID,
 		"serviceType":                   up.ServiceType,

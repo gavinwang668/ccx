@@ -70,6 +70,13 @@ const logicalGroupKey = (kind: LlmChannelKind, channel: Channel): { key: string;
     }
   }
 
+  if (channel.accountUid) {
+    return {
+      key: `account:${channel.accountUid}`,
+      name,
+    }
+  }
+
   return {
     key: ['provider', channel.providerId, name, apiKeyFingerprint(channel)].join(':'),
     name,

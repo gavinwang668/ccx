@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -80,6 +81,7 @@ func (cm *ConfigManager) loadConfig() error {
 		cm.mu.Unlock()
 		return err
 	}
+	cm.config.hydrateManagedAccountCredentials()
 
 	// 兼容旧配置：检查 FuzzyModeEnabled 字段是否存在
 	// 如果不存在，默认设为 true（新功能默认启用）
@@ -101,6 +103,12 @@ func (cm *ConfigManager) loadConfig() error {
 		needSaveDefaults = true
 	}
 	if cm.ensureChannelUIDs() {
+		needSaveDefaults = true
+	}
+	if cm.ensureAccountUIDs() {
+		needSaveDefaults = true
+	}
+	if cm.ensureCredentialUIDs() {
 		needSaveDefaults = true
 	}
 	if cm.ensureOriginBackfill() {
@@ -401,6 +409,22 @@ func GenerateChannelUID() string {
 	return generateChannelUID()
 }
 
+// GenerateAccountUID 生成账号稳定身份 ID。
+func GenerateAccountUID() string {
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("[Config-AccountUID] 警告: crypto/rand 读取失败: %v，使用时间戳回退", err)
+		return fmt.Sprintf("acct_%012x", time.Now().UnixNano())
+	}
+	return "acct_" + hex.EncodeToString(b)
+}
+
+// GenerateCredentialUID 返回账号内稳定且不暴露明文 Key 的凭证 ID。
+func GenerateCredentialUID(accountUID, apiKey string) string {
+	sum := sha256.Sum256([]byte(accountUID + "\x00" + strings.TrimSpace(apiKey)))
+	return "cred_" + hex.EncodeToString(sum[:8])
+}
+
 // ensureChannelUIDs 为所有缺失 ChannelUID 的渠道补齐稳定身份标识。
 // 已有 ChannelUID 的渠道不会被修改，保证渠道重排、改名、改 baseURL 后身份不变。
 // 覆盖全部六类渠道：Messages / Responses / Gemini / Chat / Images / Vectors。
@@ -422,6 +446,55 @@ func (cm *ConfigManager) ensureChannelUIDs() bool {
 	apply(cm.config.ChatUpstream, "Chat")
 	apply(cm.config.ImagesUpstream, "Images")
 	apply(cm.config.VectorsUpstream, "Vectors")
+	return updated
+}
+
+// ensureAccountUIDs 为缺失账号身份的渠道补齐 accountUid。
+// 历史配置无法可靠判断跨协议渠道是否属于同一账号，因此每条旧渠道独立回填，避免错误合并。
+func (cm *ConfigManager) ensureAccountUIDs() bool {
+	updated := false
+	apply := func(channels []UpstreamConfig, channelKind string) {
+		for i := range channels {
+			if channels[i].AccountUID != "" {
+				continue
+			}
+			channels[i].AccountUID = GenerateAccountUID()
+			updated = true
+			log.Printf("[Config-AccountUID] %s 渠道 [%d] %s 已分配 AccountUID: %s", channelKind, i, channels[i].Name, channels[i].AccountUID)
+		}
+	}
+	apply(cm.config.Upstream, "Messages")
+	apply(cm.config.ResponsesUpstream, "Responses")
+	apply(cm.config.GeminiUpstream, "Gemini")
+	apply(cm.config.ChatUpstream, "Chat")
+	apply(cm.config.ImagesUpstream, "Images")
+	apply(cm.config.VectorsUpstream, "Vectors")
+	return updated
+}
+
+func (cm *ConfigManager) ensureCredentialUIDs() bool {
+	updated := false
+	apply := func(channels []UpstreamConfig) {
+		for i := range channels {
+			channel := &channels[i]
+			if !channel.AutoManaged || channel.AccountUID == "" {
+				continue
+			}
+			channel.APIKeyConfigs = normalizeAPIKeyConfigs(channel.APIKeys, channel.APIKeyConfigs)
+			for j := range channel.APIKeyConfigs {
+				if channel.APIKeyConfigs[j].CredentialUID == "" {
+					channel.APIKeyConfigs[j].CredentialUID = GenerateCredentialUID(channel.AccountUID, channel.APIKeyConfigs[j].Key)
+					updated = true
+				}
+			}
+		}
+	}
+	apply(cm.config.Upstream)
+	apply(cm.config.ResponsesUpstream)
+	apply(cm.config.GeminiUpstream)
+	apply(cm.config.ChatUpstream)
+	apply(cm.config.ImagesUpstream)
+	apply(cm.config.VectorsUpstream)
 	return updated
 }
 
@@ -679,7 +752,10 @@ func (cm *ConfigManager) saveConfigLocked(config Config) error {
 	config.CurrentUpstream = 0
 	config.CurrentResponsesUpstream = 0
 
-	data, err := json.MarshalIndent(config, "", "  ")
+	config.syncManagedAccountsFromChannels()
+	persisted := config.deepCopy()
+	persisted.stripManagedChannelSecrets()
+	data, err := json.MarshalIndent(persisted, "", "  ")
 	if err != nil {
 		return err
 	}

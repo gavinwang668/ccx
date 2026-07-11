@@ -143,6 +143,8 @@ export function useAppController() {
         {
           ...options,
           channelType: getChannelRouteKind(editingChannel),
+          autoManaged: !!editingChannel?.autoManaged && !!editingChannel?.providerId,
+          accountUid: editingChannel?.accountUid,
         },
       )
       showToast(result.message, 'success')
@@ -189,7 +191,8 @@ export function useAppController() {
     try {
       const channelId = typeof target === 'number' ? target : getChannelRouteIndex(target)
       const channelType = typeof target === 'number' ? channelStore.activeTab : getChannelRouteKind(target)
-      const result = await channelStore.deleteChannel(channelId, channelType)
+      const accountUid = typeof target === 'number' || !target.autoManaged ? undefined : target.accountUid
+      const result = await channelStore.deleteChannel(channelId, channelType, accountUid)
       showToast(result.message, 'success')
     } catch (error) {
       handleAuthError(error)

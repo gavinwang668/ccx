@@ -26,6 +26,7 @@ func newTestDB(t *testing.T) *sql.DB {
 func newTestProfile(uid, channelUID, serviceType, baseURL string) *KeyEndpointProfile {
 	return &KeyEndpointProfile{
 		EndpointUID:     uid,
+		AccountUID:      "acct-" + channelUID,
 		ChannelUID:      channelUID,
 		ChannelID:       0,
 		ChannelKind:     serviceType,
@@ -33,12 +34,40 @@ func newTestProfile(uid, channelUID, serviceType, baseURL string) *KeyEndpointPr
 		BaseURL:         baseURL,
 		IdentityBaseURL: baseURL,
 		KeyMask:         "sk-***abc",
+		KeyHash:         "kh-" + uid,
+		CredentialUID:   "cred-" + uid,
 		MetricsKey:      "mk-" + uid,
 		HealthState:     HealthStateHealthy,
 		QualityTier:     QualityTierHigh,
 		StabilityTier:   StabilityTierStable,
 		SpeedTier:       SpeedTierFast,
 		CostTier:        CostTierNormal,
+	}
+}
+
+func TestProfileStoreListByAccount(t *testing.T) {
+	db := newTestDB(t)
+	store, err := NewProfileStoreWithDB(db)
+	if err != nil {
+		t.Fatalf("NewProfileStoreWithDB 失败: %v", err)
+	}
+	first := newTestProfile("ep-a", "ch-a", "messages", "https://a.example.com")
+	second := newTestProfile("ep-b", "ch-b", "chat", "https://b.example.com")
+	second.AccountUID = first.AccountUID
+	third := newTestProfile("ep-c", "ch-c", "chat", "https://c.example.com")
+	for _, profile := range []*KeyEndpointProfile{first, second, third} {
+		if err := store.Upsert(profile); err != nil {
+			t.Fatalf("Upsert 失败: %v", err)
+		}
+	}
+	if got := store.ListByAccount(first.AccountUID); len(got) != 2 {
+		t.Fatalf("ListByAccount 返回 %d 条，want 2", len(got))
+	}
+	if err := store.DeleteByAccount(first.AccountUID); err != nil {
+		t.Fatalf("DeleteByAccount 失败: %v", err)
+	}
+	if got := store.ListByAccount(first.AccountUID); len(got) != 0 {
+		t.Fatalf("DeleteByAccount 后仍有 %d 条画像", len(got))
 	}
 }
 

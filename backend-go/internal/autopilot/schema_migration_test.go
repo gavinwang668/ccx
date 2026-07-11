@@ -90,7 +90,7 @@ func TestNewProfileStoreWithDB_PropagatesSchemaVersionError(t *testing.T) {
 	}
 }
 
-func TestEnsureSchemaVersion_V1ToV2Migration(t *testing.T) {
+func TestEnsureSchemaVersion_V1ToCurrentMigration(t *testing.T) {
 	db := newTestDB(t)
 
 	// 模拟 v1 数据库：先建表（不含 reason 列），再设版本为 1
@@ -141,8 +141,8 @@ CREATE TABLE IF NOT EXISTS autopilot_advisor_decisions (
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("读取 user_version 失败: %v", err)
 	}
-	if version != 2 {
-		t.Fatalf("v1->v2 迁移后 user_version = %d, want 2", version)
+	if version != autopilotSchemaVersion {
+		t.Fatalf("v1 迁移后 user_version = %d, want %d", version, autopilotSchemaVersion)
 	}
 }
 

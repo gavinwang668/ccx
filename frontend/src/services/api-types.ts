@@ -83,6 +83,7 @@ export interface DisabledKeyInfo {
 
 export interface APIKeyConfig {
   key: string
+  credentialUid?: string
   name?: string
   enabled?: boolean
   quotaGroup?: string
@@ -136,6 +137,7 @@ export interface ModelPricingTier {
 
 export interface Channel {
   name: string
+  accountUid?: string                // 自动托管账号稳定身份，同一 provider 的多协议渠道共享
   channelUid?: string                // 渠道稳定身份标识（创建后不因重排/改名/Key 变更而改变）
   providerId?: string                // 官方 provider 模板 ID（如 mimo/deepseek）
   routeKind?: ChannelKind            // 前端统一列表中真实所属的后端渠道类型
@@ -1313,6 +1315,7 @@ export interface ProviderTemplatesResponse {
 
 // 自动添加渠道响应
 export interface AutoAddChannelResponse {
+  accountUid: string
   channelUid: string
   index: number
   discoveryStarted: boolean
@@ -1320,12 +1323,20 @@ export interface AutoAddChannelResponse {
 }
 
 export interface AutoAddChannelResult {
+  accountUid: string
   channelKind: string
   channelUid: string
   index: number
   name: string
   serviceType: string
   discoveryStarted: boolean
+}
+
+export interface UpdateManagedAccountResponse {
+  accountUid: string
+  keyCount: number
+  channelCount: number
+  discoveryStarted: number
 }
 
 // Endpoint 发现信息

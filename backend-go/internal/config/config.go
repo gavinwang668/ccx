@@ -17,6 +17,8 @@ import (
 
 // UpstreamConfig 上游配置
 type UpstreamConfig struct {
+	// AccountUID 自动托管账号的稳定身份。一个 provider 账号下的多协议渠道共享该值。
+	AccountUID string `json:"accountUid,omitempty"`
 	// ChannelUID 渠道稳定身份标识，创建后不因渠道重排、改名、API Key 变更而改变。
 	// 用于画像表主键、健康证据归档等需要跨配置变更持久追踪的场景。
 	// 加载旧配置时由 ConfigManager 自动补齐并持久化，格式为 "ch_" + 12 位 hex。
@@ -122,8 +124,9 @@ type UpstreamConfig struct {
 
 // APIKeyConfig 描述单个 API Key 的附加调度配置。
 type APIKeyConfig struct {
-	Key  string `json:"key"`
-	Name string `json:"name,omitempty"`
+	Key           string `json:"key,omitempty"`
+	CredentialUID string `json:"credentialUid,omitempty"`
+	Name          string `json:"name,omitempty"`
 	// BaseURL 该 Key 绑定的上游端点。非空时 failover 遍历仅在此 baseURL 上尝试该 Key，
 	// 避免 provider 模板化添加场景下不同 plan 的 Key（如 MiMo sk-/tp-）与多 baseURL 产生无效笛卡尔积组合。
 	// 为空时保持原有笛卡尔积行为（向后兼容，历史手填渠道不受影响）。
@@ -136,6 +139,32 @@ type APIKeyConfig struct {
 	RateLimitAutoFromHeaders *bool    `json:"rateLimitAutoFromHeaders,omitempty"`
 	Weight                   int      `json:"weight,omitempty"`
 	Models                   []string `json:"models,omitempty"`
+}
+
+// ManagedAccountConfig 是自动托管 provider 的账号级持久化根。
+type ManagedAccountConfig struct {
+	AccountUID  string                     `json:"accountUid"`
+	ProviderID  string                     `json:"providerId"`
+	Name        string                     `json:"name,omitempty"`
+	Credentials []ManagedAccountCredential `json:"credentials"`
+}
+
+type ManagedAccountCredential struct {
+	CredentialUID string `json:"credentialUid"`
+	APIKey        string `json:"apiKey"`
+}
+
+// CredentialUIDForKey 返回账号内 API Key 的稳定凭证身份。
+func (u *UpstreamConfig) CredentialUIDForKey(apiKey string) string {
+	for _, keyConfig := range u.APIKeyConfigs {
+		if keyConfig.Key == apiKey && keyConfig.CredentialUID != "" {
+			return keyConfig.CredentialUID
+		}
+	}
+	if u.AccountUID == "" || apiKey == "" {
+		return ""
+	}
+	return GenerateCredentialUID(u.AccountUID, apiKey)
 }
 
 // DisabledKeyInfo 被拉黑的 API Key 信息
@@ -516,8 +545,9 @@ type CircuitBreakerConfig struct {
 }
 
 type Config struct {
-	Upstream        []UpstreamConfig `json:"upstream"`
-	CurrentUpstream int              `json:"currentUpstream,omitempty"` // 已废弃：旧格式兼容用
+	ManagedAccounts []ManagedAccountConfig `json:"managedAccounts,omitempty"`
+	Upstream        []UpstreamConfig       `json:"upstream"`
+	CurrentUpstream int                    `json:"currentUpstream,omitempty"` // 已废弃：旧格式兼容用
 
 	// Responses 接口专用配置（独立于 /v1/messages）
 	ResponsesUpstream        []UpstreamConfig `json:"responsesUpstream"`
@@ -598,6 +628,13 @@ func (cm *ConfigManager) GetConfig() Config {
 
 	// 深拷贝整个 Config 结构体
 	cloned := cm.config
+	if cm.config.ManagedAccounts != nil {
+		cloned.ManagedAccounts = make([]ManagedAccountConfig, len(cm.config.ManagedAccounts))
+		for i, account := range cm.config.ManagedAccounts {
+			cloned.ManagedAccounts[i] = account
+			cloned.ManagedAccounts[i].Credentials = append([]ManagedAccountCredential(nil), account.Credentials...)
+		}
+	}
 
 	// 深拷贝 Upstream slice
 	if cm.config.Upstream != nil {

@@ -173,6 +173,7 @@ type CostProfile struct {
 // KeyEndpointProfile 是画像的最小单元，对应一个具体的 baseURL + apiKey 组合。
 type KeyEndpointProfile struct {
 	// ── 身份 ──
+	AccountUID      string    `json:"accountUid"`      // 自动托管账号稳定 ID
 	ChannelUID      string    `json:"channelUid"`      // 稳定渠道 ID，持久化主键
 	ChannelID       int       `json:"channelId"`       // 当前配置数组 index，仅用于展示/兼容
 	ChannelKind     string    `json:"channelKind"`     // messages | chat | responses | gemini | images | vectors
@@ -183,6 +184,8 @@ type KeyEndpointProfile struct {
 	BaseURL         string    `json:"baseUrl"`         // 原始配置 URL
 	IdentityBaseURL string    `json:"identityBaseUrl"` // MetricsIdentityBaseURL(baseURL, serviceType)
 	KeyMask         string    `json:"keyMask"`         // 掩码后的 key，如 sk-***abc
+	KeyHash         string    `json:"keyHash"`         // API Key 单向哈希，用于账号内凭证关联
+	CredentialUID   string    `json:"credentialUid"`   // 账号内稳定凭证 ID
 	MetricsKey      string    `json:"metricsKey"`      // GenerateMetricsIdentityKey(baseURL, apiKey, serviceType)
 	UpdatedAt       time.Time `json:"updatedAt"`
 
@@ -246,12 +249,12 @@ type KeyEndpointProfile struct {
 	UsageWindows []UsageWindow `json:"usageWindows,omitempty"` // 该 endpoint 的用量窗口列表
 
 	// ── L2 探测结果 ──
-	LastProbeAt             *time.Time `json:"lastProbeAt,omitempty"`     // 最近一次 L2 探测时间
-	ProbeSuccess             bool      `json:"probeSuccess"`              // 最近一次 L2 探测是否成功
-	ProbeLatencyMs           int64     `json:"probeLatencyMs"`            // 最近一次 L2 探测延迟（ms）
-	ProbeConfidence          float64   `json:"probeConfidence,omitempty"` // 探测置信度 0.0-1.0
-	ProbeStatusCode          int       `json:"probeStatusCode,omitempty"` // 最近一次 L2 探测 HTTP 状态码
-	ConsecutiveProbeSuccess  int       `json:"consecutiveProbeSuccess,omitempty"` // 连续探测成功次数，失败清零；用于 degraded/limited→healthy 恢复判定（防抖动）
+	LastProbeAt             *time.Time `json:"lastProbeAt,omitempty"`             // 最近一次 L2 探测时间
+	ProbeSuccess            bool       `json:"probeSuccess"`                      // 最近一次 L2 探测是否成功
+	ProbeLatencyMs          int64      `json:"probeLatencyMs"`                    // 最近一次 L2 探测延迟（ms）
+	ProbeConfidence         float64    `json:"probeConfidence,omitempty"`         // 探测置信度 0.0-1.0
+	ProbeStatusCode         int        `json:"probeStatusCode,omitempty"`         // 最近一次 L2 探测 HTTP 状态码
+	ConsecutiveProbeSuccess int        `json:"consecutiveProbeSuccess,omitempty"` // 连续探测成功次数，失败清零；用于 degraded/limited→healthy 恢复判定（防抖动）
 
 	// ── 诊断 ──
 	HealthEvidence          []string                `json:"healthEvidence"` // 诊断证据列表

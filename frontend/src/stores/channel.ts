@@ -306,7 +306,7 @@ export const useChannelStore = defineStore('channel', () => {
   async function saveChannel(
     channel: Omit<Channel, 'index' | 'latency' | 'status'>,
     editingChannelIndex: number | null,
-    options?: { isQuickAdd?: boolean; channelType?: ApiTab }
+    options?: { isQuickAdd?: boolean; channelType?: ApiTab; autoManaged?: boolean; accountUid?: string }
   ): Promise<{ success: boolean; message: string; quickAddMessage?: string; channelId?: number }> {
     const targetTab = options?.channelType ?? activeTab.value
     const isResponses = targetTab === 'responses'
@@ -317,7 +317,12 @@ export const useChannelStore = defineStore('channel', () => {
 
     if (editingChannelIndex !== null) {
       // 更新现有渠道
-      if (isChat) {
+      if (options?.autoManaged && options.accountUid) {
+        await api.updateManagedAccount(options.accountUid, {
+          name: channel.name,
+          apiKeys: channel.apiKeys,
+        })
+      } else if (isChat) {
         await api.updateChatChannel(editingChannelIndex, channel)
       } else if (isVectors) {
         await api.updateVectorsChannel(editingChannelIndex, channel)
@@ -432,8 +437,10 @@ export const useChannelStore = defineStore('channel', () => {
   /**
    * 删除渠道
    */
-  async function deleteChannel(channelId: number, channelType: ApiTab = activeTab.value) {
-    if (channelType === 'chat') {
+  async function deleteChannel(channelId: number, channelType: ApiTab = activeTab.value, accountUid?: string) {
+    if (accountUid) {
+      await api.deleteManagedAccount(accountUid)
+    } else if (channelType === 'chat') {
       await api.deleteChatChannel(channelId)
     } else if (channelType === 'vectors') {
       await api.deleteVectorsChannel(channelId)

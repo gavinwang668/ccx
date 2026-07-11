@@ -92,6 +92,8 @@ func initProfileStoreSchema(db *sql.DB) error {
 	schema := `
 CREATE TABLE IF NOT EXISTS autopilot_endpoint_profiles (
     endpoint_uid  TEXT PRIMARY KEY,
+    account_uid   TEXT NOT NULL DEFAULT '',
+    credential_uid TEXT NOT NULL DEFAULT '',
     channel_uid   TEXT NOT NULL,
     service_type  TEXT NOT NULL,
     base_url      TEXT NOT NULL,
@@ -100,6 +102,7 @@ CREATE TABLE IF NOT EXISTS autopilot_endpoint_profiles (
     updated_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_endpoint_profiles_channel ON autopilot_endpoint_profiles(channel_uid);
+CREATE INDEX IF NOT EXISTS idx_endpoint_profiles_account ON autopilot_endpoint_profiles(account_uid);
 CREATE INDEX IF NOT EXISTS idx_endpoint_profiles_service ON autopilot_endpoint_profiles(service_type);
 `
 	_, err := db.Exec(schema)
@@ -184,6 +187,21 @@ func (s *ProfileStore) ListByChannel(channelUID string) []*KeyEndpointProfile {
 	return result
 }
 
+// ListByAccount 返回指定 accountUID 下的全部 endpoint 画像副本。
+func (s *ProfileStore) ListByAccount(accountUID string) []*KeyEndpointProfile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []*KeyEndpointProfile
+	for _, p := range s.cache {
+		if p.AccountUID == accountUID {
+			cp := *p
+			result = append(result, &cp)
+		}
+	}
+	return result
+}
+
 // ListByService 返回指定 serviceType 下的全部 endpoint 画像副本。
 func (s *ProfileStore) ListByService(serviceType string) []*KeyEndpointProfile {
 	s.mu.RLock()
@@ -229,6 +247,30 @@ func (s *ProfileStore) Delete(endpointUID string) error {
 	return nil
 }
 
+// DeleteByAccount 删除账号下全部 endpoint 画像。
+func (s *ProfileStore) DeleteByAccount(accountUID string) error {
+	s.mu.Lock()
+	var endpointUIDs []string
+	for endpointUID, profile := range s.cache {
+		if profile.AccountUID == accountUID {
+			delete(s.cache, endpointUID)
+			endpointUIDs = append(endpointUIDs, endpointUID)
+		}
+	}
+	s.mu.Unlock()
+
+	s.flushMu.Lock()
+	for _, endpointUID := range endpointUIDs {
+		delete(s.dirtyKeys, endpointUID)
+	}
+	s.flushMu.Unlock()
+
+	if _, err := s.db.Exec("DELETE FROM autopilot_endpoint_profiles WHERE account_uid = ?", accountUID); err != nil {
+		return fmt.Errorf("[ProfileStore-DeleteByAccount] 删除失败 account=%s: %w", accountUID, err)
+	}
+	return nil
+}
+
 // Flush 将内存中标记为 dirty 的画像批量写入 SQLite。
 // 非 dirty 的画像不重复写入；已删除的画像由 Delete 即时落盘。
 func (s *ProfileStore) Flush() error {
@@ -267,9 +309,11 @@ func (s *ProfileStore) Flush() error {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-INSERT INTO autopilot_endpoint_profiles (endpoint_uid, channel_uid, service_type, base_url, key_hash, profile_json, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO autopilot_endpoint_profiles (endpoint_uid, account_uid, credential_uid, channel_uid, service_type, base_url, key_hash, profile_json, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(endpoint_uid) DO UPDATE SET
+    account_uid = excluded.account_uid,
+    credential_uid = excluded.credential_uid,
     channel_uid = excluded.channel_uid,
     service_type = excluded.service_type,
     base_url = excluded.base_url,
@@ -289,13 +333,14 @@ ON CONFLICT(endpoint_uid) DO UPDATE SET
 			continue
 		}
 
-		keyHash := KeyHashFromAPIKey(p.BaseURL + "|" + p.MetricsKey)
 		_, err = stmt.Exec(
 			p.EndpointUID,
+			p.AccountUID,
+			p.CredentialUID,
 			p.ChannelUID,
 			p.ServiceType,
 			p.BaseURL,
-			keyHash,
+			p.KeyHash,
 			string(profileJSON),
 			time.Now().UTC().Format(time.RFC3339),
 		)

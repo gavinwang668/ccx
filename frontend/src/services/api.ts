@@ -53,6 +53,7 @@ import type {
   AutopilotTraceStats,
   AutoAddChannelRequest,
   AutoAddChannelResponse,
+  UpdateManagedAccountResponse,
   ChannelAutoStatusResponse,
   ProviderTemplatesResponse,
   CostReportResponse,
@@ -1313,6 +1314,19 @@ export class ApiService {
       method: 'POST',
       body: JSON.stringify(data),
     })
+  }
+
+  /** 原子更新自动托管账号名称与凭证集合。 */
+  async updateManagedAccount(accountUid: string, data: { name: string; apiKeys: string[] }): Promise<UpdateManagedAccountResponse> {
+    return this.request(`/accounts/${encodeURIComponent(accountUid)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  /** 级联删除自动托管账号及其全部协议渠道。 */
+  async deleteManagedAccount(accountUid: string): Promise<void> {
+    await this.request(`/accounts/${encodeURIComponent(accountUid)}`, { method: 'DELETE' })
   }
 
   /** 查询渠道自动托管状态 */

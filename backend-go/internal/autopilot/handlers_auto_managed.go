@@ -28,6 +28,7 @@ type AutoAddRequest struct {
 
 // AutoAddResponse POST /:kind/channels/auto-add 响应体。
 type AutoAddResponse struct {
+	AccountUID       string                 `json:"accountUid"`
 	ChannelUID       string                 `json:"channelUid"`
 	Index            int                    `json:"index"`
 	DiscoveryStarted bool                   `json:"discoveryStarted"`
@@ -36,6 +37,7 @@ type AutoAddResponse struct {
 
 // AutoAddChannelResult 描述 provider 快速添加一次创建出的单条渠道。
 type AutoAddChannelResult struct {
+	AccountUID       string `json:"accountUid"`
 	ChannelKind      string `json:"channelKind"`
 	ChannelUID       string `json:"channelUid"`
 	Index            int    `json:"index"`
@@ -82,11 +84,218 @@ type AutoManagedDeps struct {
 // 注意：必须为每个 kind 显式注册静态路径，不能用 `:kind` 参数，
 // 否则会与现有的 `/messages/channels/...` 等静态路由在 Gin radix tree 中冲突。
 func RegisterAutoManagedRoutes(apiGroup *gin.RouterGroup, deps *AutoManagedDeps) {
+	apiGroup.PUT("/accounts/:accountUid", handleUpdateAccount(deps))
+	apiGroup.DELETE("/accounts/:accountUid", handleDeleteAccount(deps))
 	kinds := []string{"messages", "chat", "responses", "gemini", "images", "vectors"}
 	for _, kind := range kinds {
 		apiGroup.POST("/"+kind+"/channels/auto-add", handleAutoAdd(deps))
 		apiGroup.POST("/"+kind+"/channels/:id/auto-discover", handleAutoDiscover(deps))
 		apiGroup.GET("/"+kind+"/channels/:id/auto-status", handleAutoStatus(deps))
+	}
+}
+
+func handleDeleteAccount(deps *AutoManagedDeps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if deps == nil || deps.CfgManager == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "配置管理器不可用"})
+			return
+		}
+		accountUID := strings.TrimSpace(c.Param("accountUid"))
+		channels := deps.CfgManager.GetAccountChannels(accountUID)
+		if len(channels) == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在"})
+			return
+		}
+		for _, channel := range channels {
+			if !channel.Upstream.AutoManaged {
+				c.JSON(http.StatusConflict, gin.H{"error": "账号包含非自动托管渠道，拒绝级联删除"})
+				return
+			}
+		}
+		removed, err := deps.CfgManager.DeleteAccountChannels(accountUID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if deps.Runner != nil && deps.Runner.store != nil {
+			if err := deps.Runner.store.DeleteByAccount(accountUID); err != nil {
+				log.Printf("[AutoManaged-Delete] 清理账号画像失败 account=%s: %v", accountUID, err)
+			}
+			for _, channelUID := range removed {
+				for _, profile := range deps.Runner.store.ListByChannel(channelUID) {
+					if err := deps.Runner.store.Delete(profile.EndpointUID); err != nil {
+						log.Printf("[AutoManaged-Delete] 清理旧渠道画像失败 channel=%s endpoint=%s: %v", channelUID, profile.EndpointUID, err)
+					}
+				}
+			}
+		}
+		log.Printf("[AutoManaged-Delete] 已删除自动托管账号 account=%s channels=%d", accountUID, len(removed))
+		c.JSON(http.StatusOK, gin.H{"accountUid": accountUID, "deletedChannels": len(removed)})
+	}
+}
+
+type updateAccountRequest struct {
+	Name    string   `json:"name"`
+	APIKeys []string `json:"apiKeys"`
+}
+
+type updateAccountResponse struct {
+	AccountUID       string `json:"accountUid"`
+	KeyCount         int    `json:"keyCount"`
+	ChannelCount     int    `json:"channelCount"`
+	DiscoveryStarted int    `json:"discoveryStarted"`
+}
+
+// handleUpdateAccount 在账号范围原子替换凭证集合，并只为新增 Key 探测各协议 route。
+func handleUpdateAccount(deps *AutoManagedDeps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if deps == nil || deps.CfgManager == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "配置管理器不可用"})
+			return
+		}
+		accountUID := strings.TrimSpace(c.Param("accountUid"))
+		var req updateAccountRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求体"})
+			return
+		}
+		req.APIKeys = uniqueNonEmptyStrings(req.APIKeys)
+		if len(req.APIKeys) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "apiKeys 不能为空"})
+			return
+		}
+
+		channels := deps.CfgManager.GetAccountChannels(accountUID)
+		if len(channels) == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在"})
+			return
+		}
+		providerID := channels[0].Upstream.ProviderID
+		tmpl, ok := config.GetProviderTemplate(providerID)
+		if !ok || providerID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "仅 provider 自动托管账号支持账号级更新"})
+			return
+		}
+
+		baseName := strings.TrimSpace(req.Name)
+		if baseName == "" {
+			baseName = strings.TrimSuffix(channels[0].Upstream.Name, accountRouteSuffix(channels[0].Kind))
+		}
+		updates := make([]config.AccountChannelUpdate, 0, len(channels))
+		for _, accountChannel := range channels {
+			channel := accountChannel.Upstream
+			if !channel.AutoManaged || channel.ProviderID != providerID {
+				c.JSON(http.StatusConflict, gin.H{"error": "账号包含非托管渠道或 provider 不一致"})
+				return
+			}
+			route, found := providerRouteForChannel(tmpl, accountChannel.Kind, channel.ServiceType)
+			if !found {
+				c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("provider %s 缺少 %s route", providerID, accountChannel.Kind)})
+				return
+			}
+
+			existing := make(map[string]config.APIKeyConfig, len(channel.APIKeyConfigs))
+			for _, keyConfig := range channel.APIKeyConfigs {
+				existing[keyConfig.Key] = keyConfig
+			}
+			var added []string
+			for _, key := range req.APIKeys {
+				if _, exists := existing[key]; !exists {
+					added = append(added, key)
+				}
+			}
+			if len(added) > 0 {
+				verified, _, err := verifyProviderRouteKeys(c.Request.Context(), tmpl, route, added)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				for _, keyConfig := range verified {
+					existing[keyConfig.Key] = keyConfig
+				}
+			}
+
+			configs := make([]config.APIKeyConfig, 0, len(req.APIKeys))
+			baseURLs := make([]string, 0, len(req.APIKeys))
+			for _, key := range req.APIKeys {
+				keyConfig, exists := existing[key]
+				if !exists {
+					keyConfig = config.APIKeyConfig{Key: key, BaseURL: channel.BoundBaseURLForKey(key)}
+				}
+				if keyConfig.CredentialUID == "" {
+					keyConfig.CredentialUID = config.GenerateCredentialUID(accountUID, key)
+				}
+				configs = append(configs, keyConfig)
+				if keyConfig.BaseURL != "" {
+					baseURLs = append(baseURLs, keyConfig.BaseURL)
+				}
+			}
+			updates = append(updates, config.AccountChannelUpdate{
+				ChannelUID:   channel.ChannelUID,
+				Name:         providerRouteName(baseName, route, len(channels) > 1),
+				APIKeys:      append([]string(nil), req.APIKeys...),
+				APIKeyConfig: configs,
+				BaseURLs:     uniqueNonEmptyStrings(baseURLs),
+			})
+		}
+
+		if err := deps.CfgManager.UpdateAccountChannels(accountUID, updates); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		started := 0
+		for _, accountChannel := range channels {
+			if triggerDiscoveryForChannel(deps, accountChannel.Kind, accountChannel.Upstream.ChannelUID) {
+				started++
+			}
+		}
+		c.JSON(http.StatusOK, updateAccountResponse{
+			AccountUID:       accountUID,
+			KeyCount:         len(req.APIKeys),
+			ChannelCount:     len(channels),
+			DiscoveryStarted: started,
+		})
+	}
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func providerRouteForChannel(tmpl *config.ProviderTemplate, kind, serviceType string) (config.ProviderRoute, bool) {
+	for _, route := range tmpl.AutoAddRoutes() {
+		if route.ChannelKind == kind && route.ServiceType == serviceType {
+			return route, true
+		}
+	}
+	return config.ProviderRoute{}, false
+}
+
+func accountRouteSuffix(kind string) string {
+	switch kind {
+	case "messages":
+		return "-claude"
+	case "chat":
+		return "-chat"
+	case "responses":
+		return "-codex"
+	case "gemini":
+		return "-gemini"
+	default:
+		return "-" + kind
 	}
 }
 
@@ -158,6 +367,7 @@ func handleAutoAdd(deps *AutoManagedDeps) gin.HandlerFunc {
 		now := time.Now()
 		upstream := config.UpstreamConfig{
 			Name:          name,
+			AccountUID:    config.GenerateAccountUID(),
 			ChannelUID:    config.GenerateChannelUID(), // 预分配 channelUID，避免竞态
 			ServiceType:   serviceType,
 			Status:        "active",
@@ -188,6 +398,7 @@ func handleAutoAdd(deps *AutoManagedDeps) gin.HandlerFunc {
 		log.Printf("[AutoManaged-Add] 创建自动托管渠道: kind=%s name=%s uid=%s", kind, name, channelUID)
 
 		c.JSON(http.StatusCreated, AutoAddResponse{
+			AccountUID:       upstream.AccountUID,
 			ChannelUID:       channelUID,
 			Index:            index,
 			DiscoveryStarted: discoveryStarted,
@@ -247,10 +458,15 @@ func handleProviderAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind st
 	}
 
 	now := time.Now()
+	accountUID := config.GenerateAccountUID()
 	results := make([]AutoAddChannelResult, 0, len(planned))
 	for _, item := range planned {
+		for i := range item.keyConfigs {
+			item.keyConfigs[i].CredentialUID = config.GenerateCredentialUID(accountUID, item.keyConfigs[i].Key)
+		}
 		upstream := config.UpstreamConfig{
 			Name:          item.name,
+			AccountUID:    accountUID,
 			ChannelUID:    config.GenerateChannelUID(),
 			ServiceType:   item.route.ServiceType,
 			Status:        "active",
@@ -271,6 +487,7 @@ func handleProviderAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind st
 		index := findChannelIndexByUID(getChannelSlice(deps.CfgManager.GetConfig(), item.route.ChannelKind), upstream.ChannelUID)
 		discoveryStarted := triggerDiscoveryForChannel(deps, item.route.ChannelKind, upstream.ChannelUID)
 		results = append(results, AutoAddChannelResult{
+			AccountUID:       accountUID,
 			ChannelKind:      item.route.ChannelKind,
 			ChannelUID:       upstream.ChannelUID,
 			Index:            index,
@@ -284,6 +501,7 @@ func handleProviderAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind st
 
 	primary := primaryAutoAddResult(results, requestKind)
 	c.JSON(http.StatusCreated, AutoAddResponse{
+		AccountUID:       accountUID,
 		ChannelUID:       primary.ChannelUID,
 		Index:            primary.Index,
 		DiscoveryStarted: primary.DiscoveryStarted,

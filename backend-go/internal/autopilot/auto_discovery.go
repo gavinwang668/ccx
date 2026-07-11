@@ -207,8 +207,12 @@ func (r *AutoDiscoveryRunner) discoverEndpoints(ctx context.Context, channel *co
 	}
 
 	var results []EndpointDiscoveryResult
-	for _, baseURL := range baseURLs {
-		for _, key := range keys {
+	for _, key := range keys {
+		keyBaseURLs := baseURLs
+		if bound := channel.BoundBaseURLForKey(key); bound != "" {
+			keyBaseURLs = []string{bound}
+		}
+		for _, baseURL := range keyBaseURLs {
 			select {
 			case <-ctx.Done():
 				return results
@@ -455,9 +459,12 @@ func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.U
 
 		// 更新发现相关字段
 		profile.EndpointUID = endpointUID
+		profile.AccountUID = channel.AccountUID
 		profile.ChannelUID = channelUID
 		profile.BaseURL = ep.BaseURL
 		profile.KeyMask = ep.KeyMask
+		profile.KeyHash = KeyHashFromAPIKey(apiKey)
+		profile.CredentialUID = channel.CredentialUIDForKey(apiKey)
 		profile.AvailableModels = ep.Models
 		if len(ep.Models) > 0 {
 			hash := sha256.Sum256([]byte(strings.Join(ep.Models, ",")))
@@ -525,6 +532,12 @@ func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.U
 func (r *AutoDiscoveryRunner) maybeAutoWriteChannelConfig(channelUID string, channel *config.UpstreamConfig, endpoints []EndpointDiscoveryResult, cfgManager *config.ConfigManager) {
 	// cfgManager 为 nil 时直接返回（runDiscovery 入口已有 guard，此处防御直接调用）
 	if cfgManager == nil {
+		return
+	}
+	// 自动托管账号的模型可用性属于具体 binding，已写入 KeyEndpointProfile。
+	// 不再回写渠道级 SupportedModels，避免多 Key 权限不一致时丢失可用候选。
+	if channel != nil && channel.AutoManaged {
+		log.Printf("[AutoDiscovery-ConfigSkip] 渠道 %s: 自动托管模型由 endpoint profile 持久化，不写渠道级 SupportedModels", channelUID)
 		return
 	}
 

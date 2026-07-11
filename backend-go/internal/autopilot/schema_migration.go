@@ -19,7 +19,7 @@ import (
 // v1 = 现有 7 张表的建表语句本身（首次引入版本化时的基线，无需 ALTER）。
 // 后续新增/变更表结构时，在 ensureSchemaVersion 里追加 "if version < N { ... }" 迁移块，
 // 并将本常量递增。
-const autopilotSchemaVersion = 2
+const autopilotSchemaVersion = 4
 
 // ensureSchemaVersion 在任何 CREATE TABLE 之前执行一次版本检查/迁移。
 // 必须在 ProfileStore 打开 DB 后、调用 initProfileStoreSchema 之前调用——
@@ -55,7 +55,7 @@ func ensureSchemaVersion(db *sql.DB) error {
 		// 历史上曾出现「user_version=2 但 advisor_decisions 缺 reason 列」的漂移库
 		//（开发期版本常量与建表/迁移未同步导致），此处兜底补列，避免 loadAll 查询失败
 		// 阻断整个 Autopilot 初始化。列已存在时为空操作。
-		return ensureAdvisorDecisionColumns(db)
+		return ensureCurrentSchemaColumns(db)
 	}
 
 	// v1 -> v2: advisor_decisions 新增 reason 列（SLO regression 自动回滚记录触发原因）
@@ -74,6 +74,52 @@ func ensureSchemaVersion(db *sql.DB) error {
 		version = 2
 	}
 
+	// v2 -> v3: endpoint 画像增加账号身份，用于 account -> channel -> key -> baseURL 聚合查询。
+	if version > 0 && version < 3 {
+		if exists, err := tableExists(db, "autopilot_endpoint_profiles"); err != nil {
+			return fmt.Errorf("[Autopilot-SchemaMigration] 检查 endpoint profile 表失败: %w", err)
+		} else if exists {
+			has, err := columnExists(db, "autopilot_endpoint_profiles", "account_uid")
+			if err != nil {
+				return fmt.Errorf("[Autopilot-SchemaMigration] 检查 account_uid 失败: %w", err)
+			}
+			if !has {
+				_, err = db.Exec("ALTER TABLE autopilot_endpoint_profiles ADD COLUMN account_uid TEXT NOT NULL DEFAULT ''")
+			}
+			if err != nil {
+				return fmt.Errorf("[Autopilot-SchemaMigration] v2->v3 迁移失败: %w", err)
+			}
+		}
+		if _, err := db.Exec("PRAGMA user_version = 3"); err != nil {
+			return fmt.Errorf("[Autopilot-SchemaMigration] 写入 v3 版本失败: %w", err)
+		}
+		log.Printf("[Autopilot-SchemaMigration] schema 升级: v2 -> v3")
+		version = 3
+	}
+
+	// v3 -> v4: endpoint 画像增加稳定凭证身份。
+	if version > 0 && version < 4 {
+		if exists, err := tableExists(db, "autopilot_endpoint_profiles"); err != nil {
+			return fmt.Errorf("[Autopilot-SchemaMigration] 检查 endpoint profile 表失败: %w", err)
+		} else if exists {
+			has, err := columnExists(db, "autopilot_endpoint_profiles", "credential_uid")
+			if err != nil {
+				return fmt.Errorf("[Autopilot-SchemaMigration] 检查 credential_uid 失败: %w", err)
+			}
+			if !has {
+				_, err = db.Exec("ALTER TABLE autopilot_endpoint_profiles ADD COLUMN credential_uid TEXT NOT NULL DEFAULT ''")
+			}
+			if err != nil {
+				return fmt.Errorf("[Autopilot-SchemaMigration] v3->v4 迁移失败: %w", err)
+			}
+		}
+		if _, err := db.Exec("PRAGMA user_version = 4"); err != nil {
+			return fmt.Errorf("[Autopilot-SchemaMigration] 写入 v4 版本失败: %w", err)
+		}
+		log.Printf("[Autopilot-SchemaMigration] schema 升级: v3 -> v4")
+		version = 4
+	}
+
 	// version == 0：全新库，直接写入当前基线版本；version 属于 (0, autopilotSchemaVersion) 但
 	// 未命中任何迁移块的情况理论上不应出现（说明版本常量与迁移块不同步），同样兜底写回当前版本，
 	// 不阻塞启动——迁移块本身的正确性由后续新增迁移时的测试覆盖。
@@ -86,7 +132,40 @@ func ensureSchemaVersion(db *sql.DB) error {
 	}
 
 	// 全新库/正常升级路径也走一次列自愈，确保 reason 列一定存在（幂等）。
-	return ensureAdvisorDecisionColumns(db)
+	return ensureCurrentSchemaColumns(db)
+}
+
+func ensureCurrentSchemaColumns(db *sql.DB) error {
+	if err := ensureAdvisorDecisionColumns(db); err != nil {
+		return err
+	}
+	return ensureEndpointProfileColumns(db)
+}
+
+func ensureEndpointProfileColumns(db *sql.DB) error {
+	const table = "autopilot_endpoint_profiles"
+	exists, err := tableExists(db, table)
+	if err != nil || !exists {
+		return err
+	}
+	wantColumns := map[string]string{
+		"account_uid":    "account_uid TEXT NOT NULL DEFAULT ''",
+		"credential_uid": "credential_uid TEXT NOT NULL DEFAULT ''",
+	}
+	for column, definition := range wantColumns {
+		has, err := columnExists(db, table, column)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", table, definition)); err != nil {
+			return fmt.Errorf("[Autopilot-SchemaMigration] 补列 %s.%s 失败: %w", table, column, err)
+		}
+		log.Printf("[Autopilot-SchemaMigration] 自愈补列: %s.%s", table, column)
+	}
+	return nil
 }
 
 // ensureAdvisorDecisionColumns 校验 advisor_decisions 表的关键列是否存在，缺失则补齐。
