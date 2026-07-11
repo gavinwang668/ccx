@@ -429,13 +429,14 @@ func TestWriteProfilesSetsEndpointUID(t *testing.T) {
 		BaseURL:     baseURL,
 		APIKeys:     []string{apiKey},
 	}
+	cfgManager := setupTestConfigManagerForDiscovery(t, channelUID, nil, nil)
 	runner.writeProfiles(channelUID, channel, []EndpointDiscoveryResult{{
 		KeyMask:     utils.MaskAPIKey(apiKey),
 		BaseURL:     baseURL,
 		Models:      []string{"mimo-v2.5-pro"},
 		ModelsCount: 1,
 		ProtocolOk:  true,
-	}}, nil)
+	}}, cfgManager)
 
 	endpointUID := GenerateEndpointUID(channelUID, baseURL, KeyHashFromAPIKey(apiKey))
 	profile := store.Get(endpointUID)
@@ -450,7 +451,7 @@ func TestWriteProfilesSetsEndpointUID(t *testing.T) {
 SELECT COUNT(*) FROM autopilot_endpoint_profiles
 WHERE endpoint_uid = ? AND account_uid = ? AND service_type = ?
   AND json_array_length(json_extract(profile_json, '$.availableModels')) = 1
-`, endpointUID, "acct-profile", "claude").Scan(&persistedCount); err != nil {
+`, endpointUID, "acct-profile", "messages").Scan(&persistedCount); err != nil {
 		t.Fatalf("查询持久化画像失败: %v", err)
 	}
 	if persistedCount != 1 {

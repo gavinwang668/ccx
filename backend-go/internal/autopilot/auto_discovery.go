@@ -469,7 +469,11 @@ func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.U
 		profile.EndpointUID = endpointUID
 		profile.AccountUID = channel.AccountUID
 		profile.ChannelUID = channelUID
-		profile.ServiceType = channel.ServiceType
+		if channelKind != "" {
+			profile.ServiceType = channelKind
+		} else if profile.ServiceType == "" {
+			profile.ServiceType = channel.ServiceType
+		}
 		profile.BaseURL = ep.BaseURL
 		profile.KeyMask = ep.KeyMask
 		profile.KeyHash = KeyHashFromAPIKey(apiKey)
