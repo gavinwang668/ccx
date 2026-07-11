@@ -145,6 +145,7 @@ export function useAppController() {
           channelType: getChannelRouteKind(editingChannel),
           autoManaged: !!editingChannel?.autoManaged && !!editingChannel?.providerId,
           accountUid: editingChannel?.accountUid,
+          originalChannel: editingChannel ?? undefined,
         },
       )
       showToast(result.message, 'success')

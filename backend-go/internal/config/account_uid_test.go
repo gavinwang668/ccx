@@ -73,6 +73,12 @@ func TestUpdateAccountChannelsUpdatesAllRoutes(t *testing.T) {
 	if len(persisted.Upstream[0].APIKeys) != 2 || len(persisted.ChatUpstream[0].APIKeys) != 2 {
 		t.Fatalf("加载时未从账号凭证恢复 route 运行时 Key")
 	}
+	if err := cm.RenameManagedAccount("acct_test", "mimo-renamed"); err != nil {
+		t.Fatalf("RenameManagedAccount 失败: %v", err)
+	}
+	if cm.config.Upstream[0].Name != "mimo-renamed-claude" || cm.config.ChatUpstream[0].Name != "mimo-renamed-chat" {
+		t.Fatalf("账号重命名未同步全部协议 route")
+	}
 	removed, err := cm.DeleteAccountChannels("acct_test")
 	if err != nil || len(removed) != 2 {
 		t.Fatalf("DeleteAccountChannels removed=%v err=%v", removed, err)

@@ -163,6 +163,72 @@ func (cm *ConfigManager) DeleteAccountChannels(accountUID string) ([]string, err
 	return removed, nil
 }
 
+// RenameManagedAccount 原子重命名账号及其全部协议渠道。
+func (cm *ConfigManager) RenameManagedAccount(accountUID, baseName string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	baseName = strings.TrimSpace(baseName)
+	if baseName == "" {
+		return fmt.Errorf("账号名称不能为空")
+	}
+	total := 0
+	count := func(channels []UpstreamConfig) {
+		for i := range channels {
+			if channels[i].AccountUID == accountUID {
+				total++
+			}
+		}
+	}
+	count(cm.config.Upstream)
+	count(cm.config.ChatUpstream)
+	count(cm.config.ResponsesUpstream)
+	count(cm.config.GeminiUpstream)
+	count(cm.config.ImagesUpstream)
+	count(cm.config.VectorsUpstream)
+	matched := 0
+	rename := func(kind string, channels []UpstreamConfig) {
+		for i := range channels {
+			if channels[i].AccountUID == accountUID {
+				channels[i].Name = baseName
+				if total > 1 {
+					channels[i].Name += accountChannelSuffix(kind)
+				}
+				matched++
+			}
+		}
+	}
+	rename("messages", cm.config.Upstream)
+	rename("chat", cm.config.ChatUpstream)
+	rename("responses", cm.config.ResponsesUpstream)
+	rename("gemini", cm.config.GeminiUpstream)
+	rename("images", cm.config.ImagesUpstream)
+	rename("vectors", cm.config.VectorsUpstream)
+	if matched == 0 {
+		return fmt.Errorf("账号 %s 不存在", accountUID)
+	}
+	for i := range cm.config.ManagedAccounts {
+		if cm.config.ManagedAccounts[i].AccountUID == accountUID {
+			cm.config.ManagedAccounts[i].Name = baseName
+		}
+	}
+	return cm.saveConfigLocked(cm.config)
+}
+
+func accountChannelSuffix(kind string) string {
+	switch kind {
+	case "messages":
+		return "-claude"
+	case "chat":
+		return "-chat"
+	case "responses":
+		return "-codex"
+	case "gemini":
+		return "-gemini"
+	default:
+		return "-" + kind
+	}
+}
+
 func (c *Config) syncManagedAccountsFromChannels() {
 	existingOrder := append([]ManagedAccountConfig(nil), c.ManagedAccounts...)
 	accounts := make(map[string]ManagedAccountConfig, len(c.ManagedAccounts))

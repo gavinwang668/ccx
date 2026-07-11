@@ -55,6 +55,36 @@ func TestListAccountsMasksCredentials(t *testing.T) {
 	}
 }
 
+func TestPatchAccountCredentialsRemovesByUID(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	data := `{
+  "managedAccounts": [{"accountUid":"acct_test","providerId":"mimo","name":"mimo-main","credentials":[{"credentialUid":"cred_a","apiKey":"sk-a"},{"credentialUid":"cred_b","apiKey":"sk-b"}]}],
+  "upstream": [{"accountUid":"acct_test","channelUid":"ch_messages","providerId":"mimo","name":"mimo-main","serviceType":"claude","baseUrl":"https://api.xiaomimimo.com/anthropic","baseUrls":["https://api.xiaomimimo.com/anthropic"],"apiKeyConfigs":[{"credentialUid":"cred_a","baseUrl":"https://api.xiaomimimo.com/anthropic"},{"credentialUid":"cred_b","baseUrl":"https://api.xiaomimimo.com/anthropic"}],"autoManaged":true,"status":"active"}],
+  "responsesUpstream": [], "geminiUpstream": [], "chatUpstream": [], "imagesUpstream": [], "vectorsUpstream": []
+}`
+	if err := os.WriteFile(configPath, []byte(data), 0600); err != nil {
+		t.Fatalf("写测试配置失败: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configPath, filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatalf("NewConfigManager 失败: %v", err)
+	}
+	t.Cleanup(func() { _ = cfgManager.Close() })
+	router := setupAutoManagedRouter(&AutoManagedDeps{CfgManager: cfgManager})
+	req := httptest.NewRequest(http.MethodPatch, "/api/accounts/acct_test/credentials", bytes.NewBufferString(`{"removeCredentialUids":["cred_b"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH credentials status=%d body=%s", w.Code, w.Body.String())
+	}
+	channels := cfgManager.GetAccountChannels("acct_test")
+	if len(channels) != 1 || len(channels[0].Upstream.APIKeys) != 1 || channels[0].Upstream.APIKeys[0] != "sk-a" {
+		t.Fatalf("按 credentialUid 删除失败: %+v", channels)
+	}
+}
+
 func TestAutoAddRequest_Binding(t *testing.T) {
 	tests := []struct {
 		name    string

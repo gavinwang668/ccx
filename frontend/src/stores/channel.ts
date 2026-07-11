@@ -306,7 +306,7 @@ export const useChannelStore = defineStore('channel', () => {
   async function saveChannel(
     channel: Omit<Channel, 'index' | 'latency' | 'status'>,
     editingChannelIndex: number | null,
-    options?: { isQuickAdd?: boolean; channelType?: ApiTab; autoManaged?: boolean; accountUid?: string }
+    options?: { isQuickAdd?: boolean; channelType?: ApiTab; autoManaged?: boolean; accountUid?: string; originalChannel?: Channel }
   ): Promise<{ success: boolean; message: string; quickAddMessage?: string; channelId?: number }> {
     const targetTab = options?.channelType ?? activeTab.value
     const isResponses = targetTab === 'responses'
@@ -318,10 +318,24 @@ export const useChannelStore = defineStore('channel', () => {
     if (editingChannelIndex !== null) {
       // 更新现有渠道
       if (options?.autoManaged && options.accountUid) {
-        await api.updateManagedAccount(options.accountUid, {
-          name: channel.name,
-          apiKeys: channel.apiKeys,
-        })
+        const original = options.originalChannel
+        if (original) {
+          const originalKeys = new Set(original.apiKeys)
+          const nextKeys = new Set(channel.apiKeys)
+          const addApiKeys = channel.apiKeys.filter(key => !originalKeys.has(key))
+          const removeCredentialUids = (original.apiKeyConfigs ?? [])
+            .filter(keyConfig => !nextKeys.has(keyConfig.key))
+            .map(keyConfig => keyConfig.credentialUid)
+            .filter((uid): uid is string => !!uid)
+          if (addApiKeys.length > 0 || removeCredentialUids.length > 0) {
+            await api.patchManagedAccountCredentials(options.accountUid, { addApiKeys, removeCredentialUids })
+          }
+          if (channel.name !== original.name) {
+            await api.renameManagedAccount(options.accountUid, channel.name)
+          }
+        } else {
+          await api.updateManagedAccount(options.accountUid, { name: channel.name, apiKeys: channel.apiKeys })
+        }
       } else if (isChat) {
         await api.updateChatChannel(editingChannelIndex, channel)
       } else if (isVectors) {

@@ -87,15 +87,39 @@ type AutoManagedDeps struct {
 // 否则会与现有的 `/messages/channels/...` 等静态路由在 Gin radix tree 中冲突。
 func RegisterAutoManagedRoutes(apiGroup *gin.RouterGroup, deps *AutoManagedDeps) {
 	apiGroup.GET("/accounts", handleListAccounts(deps))
+	apiGroup.PATCH("/accounts/:accountUid", handleRenameAccount(deps))
 	apiGroup.PUT("/accounts/:accountUid", handleUpdateAccount(deps))
 	apiGroup.DELETE("/accounts/:accountUid", handleDeleteAccount(deps))
 	apiGroup.POST("/accounts/:accountUid/credentials", handleAddAccountCredentials(deps))
+	apiGroup.PATCH("/accounts/:accountUid/credentials", handlePatchAccountCredentials(deps))
 	apiGroup.DELETE("/accounts/:accountUid/credentials/:credentialUid", handleDeleteAccountCredential(deps))
 	kinds := []string{"messages", "chat", "responses", "gemini", "images", "vectors"}
 	for _, kind := range kinds {
 		apiGroup.POST("/"+kind+"/channels/auto-add", handleAutoAdd(deps))
 		apiGroup.POST("/"+kind+"/channels/:id/auto-discover", handleAutoDiscover(deps))
 		apiGroup.GET("/"+kind+"/channels/:id/auto-status", handleAutoStatus(deps))
+	}
+}
+
+func handleRenameAccount(deps *AutoManagedDeps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if deps == nil || deps.CfgManager == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "配置管理器不可用"})
+			return
+		}
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求体"})
+			return
+		}
+		accountUID := strings.TrimSpace(c.Param("accountUid"))
+		if err := deps.CfgManager.RenameManagedAccount(accountUID, req.Name); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"accountUid": accountUID, "name": strings.TrimSpace(req.Name)})
 	}
 }
 
@@ -333,6 +357,79 @@ func handleAddAccountCredentials(deps *AutoManagedDeps) gin.HandlerFunc {
 	}
 }
 
+func handlePatchAccountCredentials(deps *AutoManagedDeps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if deps == nil || deps.CfgManager == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "配置管理器不可用"})
+			return
+		}
+		var req struct {
+			AddAPIKeys           []string `json:"addApiKeys"`
+			RemoveCredentialUIDs []string `json:"removeCredentialUids"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求体"})
+			return
+		}
+		accountUID := strings.TrimSpace(c.Param("accountUid"))
+		channels := deps.CfgManager.GetAccountChannels(accountUID)
+		if len(channels) == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在"})
+			return
+		}
+		removeSet := make(map[string]bool, len(req.RemoveCredentialUIDs))
+		for _, uid := range req.RemoveCredentialUIDs {
+			removeSet[strings.TrimSpace(uid)] = true
+		}
+		removedKeys := make(map[string]string)
+		var desired []string
+		for _, keyConfig := range channels[0].Upstream.APIKeyConfigs {
+			if removeSet[keyConfig.CredentialUID] {
+				removedKeys[keyConfig.CredentialUID] = keyConfig.Key
+				continue
+			}
+			desired = append(desired, keyConfig.Key)
+		}
+		if len(removedKeys) != len(removeSet) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "包含不存在的 credentialUid"})
+			return
+		}
+		desired = append(desired, req.AddAPIKeys...)
+		if len(uniqueNonEmptyStrings(desired)) == 0 {
+			c.JSON(http.StatusConflict, gin.H{"error": "账号至少需要保留一个 Key"})
+			return
+		}
+		response, status, err := applyManagedAccountUpdate(c.Request.Context(), deps, accountUID, updateAccountRequest{APIKeys: desired})
+		if err != nil {
+			c.JSON(status, gin.H{"error": err.Error()})
+			return
+		}
+		cleanupRemovedCredentialProfiles(deps, accountUID, channels, removedKeys)
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+func cleanupRemovedCredentialProfiles(deps *AutoManagedDeps, accountUID string, channels []config.AccountChannel, removed map[string]string) {
+	if deps == nil || deps.Runner == nil || deps.Runner.store == nil {
+		return
+	}
+	for credentialUID, apiKey := range removed {
+		if err := deps.Runner.store.DeleteByCredential(accountUID, credentialUID); err != nil {
+			log.Printf("[AutoManaged-CredentialDelete] 清理凭证画像失败 account=%s credential=%s: %v", accountUID, credentialUID, err)
+		}
+		keyHash := KeyHashFromAPIKey(apiKey)
+		for _, channel := range channels {
+			for _, profile := range deps.Runner.store.ListByChannel(channel.Upstream.ChannelUID) {
+				if profile.CredentialUID == credentialUID || profile.KeyHash == keyHash {
+					if err := deps.Runner.store.Delete(profile.EndpointUID); err != nil {
+						log.Printf("[AutoManaged-CredentialDelete] 清理旧凭证画像失败 endpoint=%s: %v", profile.EndpointUID, err)
+					}
+				}
+			}
+		}
+	}
+}
+
 func handleDeleteAccountCredential(deps *AutoManagedDeps) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if deps == nil || deps.CfgManager == nil {
@@ -372,21 +469,7 @@ func handleDeleteAccountCredential(deps *AutoManagedDeps) gin.HandlerFunc {
 			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
-		if deps.Runner != nil && deps.Runner.store != nil {
-			if err := deps.Runner.store.DeleteByCredential(accountUID, credentialUID); err != nil {
-				log.Printf("[AutoManaged-CredentialDelete] 清理凭证画像失败 account=%s credential=%s: %v", accountUID, credentialUID, err)
-			}
-			keyHash := KeyHashFromAPIKey(removeKey)
-			for _, channel := range channels {
-				for _, profile := range deps.Runner.store.ListByChannel(channel.Upstream.ChannelUID) {
-					if profile.CredentialUID == credentialUID || profile.KeyHash == keyHash {
-						if err := deps.Runner.store.Delete(profile.EndpointUID); err != nil {
-							log.Printf("[AutoManaged-CredentialDelete] 清理旧凭证画像失败 endpoint=%s: %v", profile.EndpointUID, err)
-						}
-					}
-				}
-			}
-		}
+		cleanupRemovedCredentialProfiles(deps, accountUID, channels, map[string]string{credentialUID: removeKey})
 		c.JSON(http.StatusOK, response)
 	}
 }
