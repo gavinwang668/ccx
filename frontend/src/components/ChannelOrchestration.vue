@@ -688,6 +688,7 @@
       :channel-index="logsChannelIndex"
       :channel-name="logsChannelName"
       :channel-type="logsChannelType"
+      :protocol-routes="logsProtocolRoutes"
     />
     <SchedulerDiagnoseDialog
       v-model="showSchedulerDiagnoseDialog"
@@ -699,7 +700,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent, nextTick } from 'vue'
 import draggable from 'vuedraggable'
-import { api, type Channel, type ChannelKind, type ChannelMetrics, type ChannelStatus, type TimeWindowStats, type ChannelRecentActivity, type SchedulerStatsResponse } from '../services/api'
+import { api, type Channel, type ChannelKind, type ChannelMetrics, type ChannelProtocolRoute, type ChannelStatus, type TimeWindowStats, type ChannelRecentActivity, type SchedulerStatsResponse } from '../services/api'
 import { getChannelTypeApi } from '../utils/channelTypeApi'
 import { useI18n } from '../i18n'
 import { useGlobalTick } from '../composables/useGlobalTick'
@@ -771,10 +772,12 @@ const showLogsDialog = ref(false)
 const logsChannelIndex = ref(0)
 const logsChannelName = ref('')
 const logsChannelType = ref<ChannelKind>(props.channelType)
+const logsProtocolRoutes = ref<ChannelProtocolRoute[]>([])
 const openLogsDialog = (ch: Channel) => {
   logsChannelIndex.value = getRouteIndex(ch)
   logsChannelName.value = ch.name
   logsChannelType.value = getRouteKind(ch)
+  logsProtocolRoutes.value = ch.protocolRoutes ?? []
   showLogsDialog.value = true
 }
 

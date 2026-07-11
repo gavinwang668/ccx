@@ -179,7 +179,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
-import { api, type ChannelLogEntry } from '../services/api'
+import { api, type ChannelKind, type ChannelLogEntry, type ChannelProtocolRoute } from '../services/api'
 import { useI18n } from '../i18n'
 import { useGlobalTick } from '../composables/useGlobalTick'
 
@@ -187,7 +187,8 @@ const props = defineProps<{
   modelValue: boolean
   channelIndex: number
   channelName: string
-  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
+  channelType: ChannelKind
+  protocolRoutes?: ChannelProtocolRoute[]
 }>()
 
 const emit = defineEmits<{
@@ -388,8 +389,26 @@ const formatTime = (ts: string): string => {
 const fetchLogs = async () => {
   isLoading.value = true
   try {
-    const res = await api.getChannelLogs(props.channelType, props.channelIndex)
-    logs.value = res.logs || []
+    const fallbackRoute: ChannelProtocolRoute = {
+      kind: props.channelType,
+      index: props.channelIndex,
+      name: props.channelName,
+      serviceType: '',
+    }
+    const routes = props.protocolRoutes?.length ? props.protocolRoutes : [fallbackRoute]
+    const uniqueRoutes = Array.from(
+      new Map(routes.map(route => [`${route.kind}:${route.index}`, route])).values()
+    )
+    const results = await Promise.allSettled(
+      uniqueRoutes.map(route => api.getChannelLogs(route.kind, route.index))
+    )
+    logs.value = results
+      .flatMap(result => result.status === 'fulfilled' ? (result.value.logs || []) : [])
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 50)
+    for (const result of results) {
+      if (result.status === 'rejected') console.error('Failed to fetch channel route logs:', result.reason)
+    }
   } catch (e) {
     console.error('Failed to fetch channel logs:', e)
   } finally {
@@ -415,7 +434,7 @@ watch(() => props.modelValue, (open) => {
 })
 
 // 对话框打开状态下切换渠道时重新加载
-watch([() => props.channelIndex, () => props.channelType], () => {
+watch([() => props.channelIndex, () => props.channelType, () => props.protocolRoutes], () => {
   if (props.modelValue) {
     logs.value = []
     expandedIndex.value = null
