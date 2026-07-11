@@ -18,6 +18,22 @@ func TestCredentialUIDStableWithinAccount(t *testing.T) {
 	}
 }
 
+func TestEnsureAccountUIDsGroupsLegacyProviderRoutes(t *testing.T) {
+	cm := &ConfigManager{config: Config{
+		Upstream:          []UpstreamConfig{{Name: "mimo-main-claude", ProviderID: "mimo", AutoManaged: true, APIKeys: []string{"sk-b", "sk-a"}}},
+		ChatUpstream:      []UpstreamConfig{{Name: "mimo-main-chat", ProviderID: "mimo", AutoManaged: true, APIKeys: []string{"sk-a", "sk-b"}}},
+		ResponsesUpstream: []UpstreamConfig{{Name: "mimo-main-codex", ProviderID: "mimo", AutoManaged: true, APIKeys: []string{"sk-a", "sk-b"}}},
+		GeminiUpstream:    []UpstreamConfig{{Name: "mimo-main-gemini", ProviderID: "mimo", AutoManaged: true, APIKeys: []string{"sk-a", "sk-b"}}},
+	}}
+	if !cm.ensureAccountUIDs() {
+		t.Fatal("旧 provider routes 应触发 accountUid 回填")
+	}
+	want := cm.config.Upstream[0].AccountUID
+	if want == "" || cm.config.ChatUpstream[0].AccountUID != want || cm.config.ResponsesUpstream[0].AccountUID != want || cm.config.GeminiUpstream[0].AccountUID != want {
+		t.Fatalf("旧 MiMo 多协议 route 未聚合到同一账号")
+	}
+}
+
 func TestUpdateAccountChannelsUpdatesAllRoutes(t *testing.T) {
 	cm := &ConfigManager{config: Config{
 		Upstream:     []UpstreamConfig{{AccountUID: "acct_test", ChannelUID: "ch_messages", ServiceType: "claude", ProviderID: "mimo", AutoManaged: true}},

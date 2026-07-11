@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -450,15 +451,28 @@ func (cm *ConfigManager) ensureChannelUIDs() bool {
 }
 
 // ensureAccountUIDs 为缺失账号身份的渠道补齐 accountUid。
-// 历史配置无法可靠判断跨协议渠道是否属于同一账号，因此每条旧渠道独立回填，避免错误合并。
+// 旧 provider 自动托管渠道按 provider + 逻辑名称 + Key 集合恢复原有跨协议账号关系；
+// 手动渠道和无法确认归属的渠道独立回填，避免错误合并。
 func (cm *ConfigManager) ensureAccountUIDs() bool {
 	updated := false
+	managedGroups := make(map[string]string)
 	apply := func(channels []UpstreamConfig, channelKind string) {
 		for i := range channels {
 			if channels[i].AccountUID != "" {
 				continue
 			}
-			channels[i].AccountUID = GenerateAccountUID()
+			accountUID := ""
+			if groupKey := legacyManagedAccountGroupKey(channels[i]); groupKey != "" {
+				accountUID = managedGroups[groupKey]
+				if accountUID == "" {
+					accountUID = GenerateAccountUID()
+					managedGroups[groupKey] = accountUID
+				}
+			}
+			if accountUID == "" {
+				accountUID = GenerateAccountUID()
+			}
+			channels[i].AccountUID = accountUID
 			updated = true
 			log.Printf("[Config-AccountUID] %s 渠道 [%d] %s 已分配 AccountUID: %s", channelKind, i, channels[i].Name, channels[i].AccountUID)
 		}
@@ -470,6 +484,19 @@ func (cm *ConfigManager) ensureAccountUIDs() bool {
 	apply(cm.config.ImagesUpstream, "Images")
 	apply(cm.config.VectorsUpstream, "Vectors")
 	return updated
+}
+
+func legacyManagedAccountGroupKey(channel UpstreamConfig) string {
+	if !channel.AutoManaged || channel.ProviderID == "" || len(channel.APIKeys) == 0 {
+		return ""
+	}
+	keys := append([]string(nil), channel.APIKeys...)
+	for i := range keys {
+		keys[i] = strings.TrimSpace(keys[i])
+	}
+	sort.Strings(keys)
+	sum := sha256.Sum256([]byte(strings.Join(keys, "\x00")))
+	return channel.ProviderID + "\x00" + managedAccountName(channel.Name) + "\x00" + hex.EncodeToString(sum[:8])
 }
 
 func (cm *ConfigManager) ensureCredentialUIDs() bool {
