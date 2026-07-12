@@ -121,8 +121,8 @@ const warningCount = computed(() => {
 }
 
 .health-unknown .health-dot {
-  background: rgb(var(--v-theme-grey));
-  box-shadow: 0 0 3px rgba(var(--v-theme-grey), 0.4);
+  background: #94a3b8;
+  box-shadow: 0 0 3px rgba(148, 163, 184, 0.4);
 }
 
 @keyframes health-pulse-dead {
