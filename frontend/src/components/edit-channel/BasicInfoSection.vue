@@ -76,7 +76,7 @@
       </v-col>
 
       <!-- 官网/控制台 -->
-      <v-col v-if="!hideMetadata" cols="12">
+      <v-col v-if="!hideMetadata || managedAccount" cols="12">
         <v-text-field
           :model-value="form.website"
           :label="t('channelEditor.basic.website.label')"

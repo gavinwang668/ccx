@@ -900,7 +900,8 @@ func handleProviderAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind st
 	}
 
 	// provider 账号是按 providerId 唯一的官方托管资源，不接受客户端自定义名称。
-	baseName := fmt.Sprintf("%s-%d", tmpl.ProviderID, time.Now().UnixMilli()%100000)
+	// 使用 providerId 作为保留名（如 mimo），前端展示时再映射为品牌友好名。
+	baseName := tmpl.ProviderID
 
 	cfg := deps.CfgManager.GetConfig()
 	for _, route := range routes {

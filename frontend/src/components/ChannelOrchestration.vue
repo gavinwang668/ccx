@@ -153,7 +153,7 @@
                 @click.stop="$emit('edit', element)"
                 @keydown.enter.stop="$emit('edit', element)"
                 @keydown.space.stop="$emit('edit', element)"
-              >{{ element.name }}</span>
+              >{{ getChannelDisplayName(element) }}</span>
               <!-- Promotion period badge -->
               <v-chip
                 v-if="isInPromotion(element)"
@@ -180,7 +180,6 @@
               >
                 <v-icon size="14">mdi-open-in-new</v-icon>
               </v-btn>
-              <span class="text-caption text-medium-emphasis ml-2">{{ element.serviceType }}</span>
               <v-chip
                 v-for="capsule in getProtocolCapsules(element)"
                 :key="`${capsule.kind}-${capsule.index}`"
@@ -570,8 +569,7 @@
                 @click="$emit('edit', channel)"
                 @keydown.enter="$emit('edit', channel)"
                 @keydown.space.prevent="$emit('edit', channel)"
-              >{{ channel.name }}</span>
-              <span class="text-caption text-disabled ml-2">{{ channel.serviceType }}</span>
+              >{{ getChannelDisplayName(channel) }}</span>
               <v-chip
                 v-for="capsule in getProtocolCapsules(channel)"
                 :key="`${capsule.kind}-${capsule.index}`"
@@ -707,6 +705,7 @@ import { useGlobalTick } from '../composables/useGlobalTick'
 import { useChannelActivity } from '../composables/useChannelActivity'
 import ChannelStatusBadge from './ChannelStatusBadge.vue'
 import ChannelHealthBadge from './ChannelHealthBadge.vue'
+import { isManagedProviderChannel, providerDisplayName } from '../utils/providerDisplay'
 import type { ChannelHealthItem } from '../services/api-types'
 // Lazy-load chart components to reduce initial JS bundle size
 const KeyTrendChart = defineAsyncComponent(() => import('./KeyTrendChart.vue'))
@@ -1094,6 +1093,15 @@ const get6hStats = (channel: Channel) => {
 
 const get24hStats = (channel: Channel) => {
   return getChannelMetrics(channel)?.timeWindows?.['24h']
+}
+
+// 官方托管渠道展示品牌友好名（如「MiMo 官方渠道」），后台仍保留原始保留名
+const getChannelDisplayName = (channel: Channel): string => {
+  if (isManagedProviderChannel(channel)) {
+    const provider = providerDisplayName(channel.providerId)
+    if (provider) return t('channelEditor.managed.officialChannel', { provider })
+  }
+  return channel.name
 }
 
 const getProtocolCapsules = (channel: Channel) => {
