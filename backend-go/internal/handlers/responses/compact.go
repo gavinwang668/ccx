@@ -74,6 +74,7 @@ func CompactHandler(
 			_ = json.Unmarshal(bodyBytes, &compactReq)
 		}
 		common.SetRequestLogContext(c, userID, countResponsesUserMessages(compactReq.Input))
+		common.AttachAutopilotRequestProfile(c, scheduler.ChannelKindResponses, extractCompactRequestModel(bodyBytes), "summarize", userID, bodyBytes, 0)
 
 		// 检查是否为多渠道模式
 		isMultiChannel := channelScheduler.IsMultiChannelMode(scheduler.ChannelKindResponses)

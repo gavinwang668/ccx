@@ -70,6 +70,11 @@ func Handler(
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Responses")
 
 		isCompactionV2 := hasCompactionTrigger(responsesReq.Input)
+		operation := "completion"
+		if isCompactionV2 {
+			operation = "summarize"
+		}
+		common.AttachAutopilotRequestProfile(c, scheduler.ChannelKindResponses, responsesReq.Model, operation, userID, bodyBytes, 0)
 
 		// 检查是否为多渠道模式
 		isMultiChannel := channelScheduler.IsMultiChannelMode(scheduler.ChannelKindResponses)

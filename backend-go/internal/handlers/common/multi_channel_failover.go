@@ -109,9 +109,11 @@ func HandleMultiChannelFailoverWithSelectionFilter(
 	var lastError error
 	var lastFailoverError *FailoverError
 	hasImageContent := false
-	if body := GetEffectiveRequestBody(c, nil); len(body) > 0 {
-		hasImageContent = HasImageContent(c, body)
+	requestBody := GetEffectiveRequestBody(c, nil)
+	if len(requestBody) > 0 {
+		hasImageContent = HasImageContent(c, requestBody)
 	}
+	EnsureAutopilotRequestProfile(c, kind, model, "", userID, requestBody)
 
 	maxChannelAttempts := channelScheduler.GetActiveChannelCount(kind)
 

@@ -55,6 +55,7 @@ func Handler(
 		c.Set("agentContext", agentCtx)
 		common.SetRequestLogContextWithAgent(c, userID, 0, agentCtx)
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Vectors")
+		common.AttachAutopilotRequestProfile(c, scheduler.ChannelKindVectors, model, "embedding", userID, bodyBytes, dimensions)
 
 		handleVectorsFailover(c, envCfg, cfgManager, channelScheduler, bodyBytes, model, dimensions, userID, startTime)
 	})

@@ -81,24 +81,15 @@ var lightweightModelSignals = []string{
 // isLightweightRequest 判断是否为明确的低风险轻任务（§5.1 + P0.3）。
 //
 // 规则（全部满足才返回 true）：
-//  1. Operation 命中白名单（count_tokens、标题生成、分类、格式转换、摘要、翻译），
-//     或者同时满足以下全部条件：
+//  1. 无图片、工具、reasoning、长上下文或原生端点能力需求。
+//  2. Operation 命中白名单（count_tokens、标题生成、分类、格式转换、摘要、翻译），
+//     或者同时满足以下条件：
 //     - EstTokens < 10_000（上下文小于 10K）
-//     - 无图片（!HasImage）
-//     - 无工具调用（!ToolUseNeed）
-//     - 无推理需求（!ReasoningNeed）
-//     - 不需要长上下文（ContextNeed <= 200_000）
-//     - 不需要原生能力（!ImageGenNeed, !EmbeddingNeed, !VisionNeed）
 //     - 无 AgentType（非 codex/claude_code 子代理）
-//  2. 模型名包含 haiku/mini/flash 等子串作为弱信号加分，但不能单独决定 lightweight。
+//  3. 模型名包含 haiku/mini/flash 等子串作为弱信号加分，但不能单独决定 lightweight。
 //
 // P0.3：模型名弱信号必须与其他条件组合，不能单独决定 lightweight。
 func isLightweightRequest(input ClassifierInput) bool {
-	// 白名单 Operation 直接命中
-	if lightweightOperationWhitelist[input.Operation] {
-		return true
-	}
-
 	// 需要原生端点能力的不是轻任务
 	if input.ImageGenNeed || input.EmbeddingNeed || input.VisionNeed {
 		return false
@@ -116,6 +107,16 @@ func isLightweightRequest(input ClassifierInput) bool {
 
 	// 有 AgentType 的通常是子代理/特定 agent 框架，不视为轻任务
 	if input.AgentType != "" {
+		return false
+	}
+
+	// 白名单操作在通过共同硬约束后可直接判定为轻任务。
+	if lightweightOperationWhitelist[input.Operation] {
+		return true
+	}
+
+	// 0 表示未采集到输入规模，不得把未知请求静默降级为 lightweight。
+	if input.EstTokens <= 0 {
 		return false
 	}
 

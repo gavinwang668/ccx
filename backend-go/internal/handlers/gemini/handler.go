@@ -89,6 +89,7 @@ func Handler(
 
 		// 记录原始请求信息
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Gemini")
+		common.AttachAutopilotRequestProfile(c, scheduler.ChannelKindGemini, model, "completion", userID, bodyBytes, 0)
 
 		// 检查是否为多渠道模式
 		isMultiChannel := channelScheduler.IsMultiChannelMode(scheduler.ChannelKindGemini)

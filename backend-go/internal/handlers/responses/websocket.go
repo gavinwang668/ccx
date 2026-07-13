@@ -183,6 +183,7 @@ func selectResponsesWebSocketChannel(
 	cfg := cfgManager.GetConfig()
 	contextRequirement := common.BuildResponsesContextRequirement(payload, cfg.ContextRouting)
 	common.ApplyAgentModelProfile(contextRequirement, model, cfg)
+	common.AttachAutopilotRequestProfile(c, scheduler.ChannelKindResponses, model, "completion", userID, payload, 0)
 
 	return channelScheduler.SelectChannelWithOptions(c.Request.Context(), scheduler.SelectionOptions{
 		UserID:             userID,

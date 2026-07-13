@@ -424,6 +424,7 @@ func TestIntentExec_SupervisorProtection_ThirdPartyBlocked(t *testing.T) {
 		profileStore.Upsert(&KeyEndpointProfile{
 			EndpointUID:    "ep-economy-0",
 			ChannelUID:     ch2UID,
+			ChannelKind:    "messages",
 			MetricsKey:     "https://economy.example.com|sk-economy",
 			HealthState:    HealthStateHealthy,
 			OriginTier:     "third",

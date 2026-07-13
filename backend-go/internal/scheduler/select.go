@@ -1191,7 +1191,7 @@ func (s *ChannelScheduler) buildSmartFilterFromProvider(ctx context.Context, kin
 		return nil
 	}
 
-	filter := s.candidateFilterProvider(kind, model)
+	filter := s.candidateFilterProvider(ctx, kind, model)
 	if filter == nil {
 		return nil // off / kill switch
 	}

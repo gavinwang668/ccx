@@ -67,6 +67,7 @@ func Handler(
 		c.Set("agentContext", agentCtx)
 		common.SetRequestLogContextWithAgent(c, userID, 0, agentCtx)
 		common.LogOriginalRequest(c, bodyBytes, envCfg, "Images")
+		common.AttachAutopilotRequestProfile(c, scheduler.ChannelKindImages, model, operation, userID, bodyBytes, 0)
 
 		if channelScheduler.IsMultiChannelMode(scheduler.ChannelKindImages) {
 			handleMultiChannel(c, envCfg, cfgManager, channelScheduler, bodyBytes, model, userID, startTime, operation, contentType, isStream)

@@ -248,6 +248,31 @@ func TestClassify_Worker(t *testing.T) {
 	}
 }
 
+func TestClassify_UnknownTokenEstimateDoesNotDemote(t *testing.T) {
+	got := Classify(ClassifierInput{
+		ChannelKind: "messages",
+		Operation:   "completion",
+		AgentRole:   "",
+		EstTokens:   0,
+	})
+	if got != TaskClassSupervisor {
+		t.Fatalf("Classify() = %v, want %v", got, TaskClassSupervisor)
+	}
+}
+
+func TestClassify_WhitelistedOperationStillRespectsHardNeeds(t *testing.T) {
+	tests := []ClassifierInput{
+		{ChannelKind: "messages", Operation: "summarize", EstTokens: 500, ToolUseNeed: true},
+		{ChannelKind: "messages", Operation: "translation", EstTokens: 500, ReasoningNeed: true},
+		{ChannelKind: "messages", Operation: "title_generation", EstTokens: 500, HasImage: true, VisionNeed: true},
+	}
+	for _, input := range tests {
+		if got := Classify(input); got == TaskClassLightweight {
+			t.Fatalf("Classify(%+v) unexpectedly returned lightweight", input)
+		}
+	}
+}
+
 // ── 边界条件测试 ──
 
 func TestClassify_EdgeCases(t *testing.T) {
@@ -327,9 +352,9 @@ func TestClassify_EdgeCases(t *testing.T) {
 			expected: TaskClassImageGen,
 		},
 		{
-			name:     "全部零值 + 未知角色（EstTokens=0 触发 lightweight）",
+			name:     "全部零值 + 未知角色（EstTokens=0 保守兜底）",
 			input:    ClassifierInput{AgentRole: "unknown"},
-			expected: TaskClassLightweight,
+			expected: TaskClassWorker,
 		},
 		{
 			name: "lightweight 硬条件全满足但有 AgentType（不触发 lightweight）",

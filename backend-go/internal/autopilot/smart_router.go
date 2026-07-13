@@ -31,9 +31,9 @@ type SmartRouter struct {
 	intentStore       *ManualIntentStore
 	traceStore        *TraceStore
 	configManager     *config.ConfigManager
-	advisor           *TrustedRoutingAdvisor      // Phase 2: 可信路由顾问（nil = 不启用）
-	decisionStore     *AdvisorDecisionStore        // Phase 2: advisor 决策记录存储
-	localRuntimeStore *LocalRuntimeStore           // Phase 2: 本地运行时存储（nil = 不纳入本地候选）
+	advisor           *TrustedRoutingAdvisor // Phase 2: 可信路由顾问（nil = 不启用）
+	decisionStore     *AdvisorDecisionStore  // Phase 2: advisor 决策记录存储
+	localRuntimeStore *LocalRuntimeStore     // Phase 2: 本地运行时存储（nil = 不纳入本地候选）
 
 	// onCandidatesRanked Phase 4 Item 8: 候选排名回调（A/B 测试用）。
 	// executeFilter 完成评分排序后调用，传入 ranked candidates。
@@ -355,7 +355,7 @@ func (r *SmartRouter) executeFilter(
 		if disabledChannelUIDs[upstream.ChannelUID] {
 			continue
 		}
-		entry := r.buildChannelEntry(ch, upstream)
+		entry := r.buildChannelEntry(ch, upstream, profile.ChannelKind)
 		entries = append(entries, entry)
 		costMap[entry.ChannelUID] = entry.EstimatedCost
 	}
@@ -786,10 +786,10 @@ type channelScoreEntry struct {
 	HealthState         HealthState
 	EstimatedCost       float64
 	ChannelIndex        int
-	SupportsVision      bool  // 渠道是否支持识图（来自画像聚合 + 手动配置覆盖）
-	SupportsToolCalls   bool  // 渠道是否支持工具调用（来自画像聚合）
-	SupportsReasoning   bool  // 渠道是否支持推理（来自画像聚合）
-	ContextWindowTokens int   // 渠道上下文窗口大小（0 = 未知，来自画像聚合）
+	SupportsVision      bool // 渠道是否支持识图（来自画像聚合 + 手动配置覆盖）
+	SupportsToolCalls   bool // 渠道是否支持工具调用（来自画像聚合）
+	SupportsReasoning   bool // 渠道是否支持推理（来自画像聚合）
+	ContextWindowTokens int  // 渠道上下文窗口大小（0 = 未知，来自画像聚合）
 	ScoringCandidate    ScoringCandidate
 }
 
@@ -798,14 +798,18 @@ type channelScoreEntry struct {
 func (r *SmartRouter) buildChannelEntry(
 	ch scheduler.ChannelInfo,
 	upstream *config.UpstreamConfig,
+	channelKind string,
 ) channelScoreEntry {
 	channelUID := upstream.ChannelUID
 	if channelUID == "" {
 		channelUID = fmt.Sprintf("ch_%d", ch.Index)
 	}
+	if channelKind == "" {
+		channelKind = string(scheduler.ChannelKindMessages)
+	}
 	entry := channelScoreEntry{
 		ChannelUID:   channelUID,
-		ChannelKind:  string(scheduler.ChannelKindMessages),
+		ChannelKind:  channelKind,
 		ChannelIndex: ch.Index,
 		HealthState:  HealthStateUnknown,
 		OriginTier:   OriginTierUnknown, // 无画像时默认 unknown
@@ -814,16 +818,22 @@ func (r *SmartRouter) buildChannelEntry(
 	// 从 ProfileStore 读取画像
 	if r.profileStore != nil {
 		profiles := r.profileStore.ListByChannel(channelUID)
-		if len(profiles) > 0 {
+		matchingProfiles := make([]*KeyEndpointProfile, 0, len(profiles))
+		for _, profile := range profiles {
+			if profile != nil && profile.ChannelKind == entry.ChannelKind {
+				matchingProfiles = append(matchingProfiles, profile)
+			}
+		}
+		if len(matchingProfiles) > 0 {
 			// 解引用指针切片
-			profileValues := make([]KeyEndpointProfile, len(profiles))
-			for i, p := range profiles {
+			profileValues := make([]KeyEndpointProfile, len(matchingProfiles))
+			for i, p := range matchingProfiles {
 				profileValues[i] = *p
 			}
 			agg := AggregateChannelProfile(channelUID, ch.Index, entry.ChannelKind, profileValues)
 			entry.HealthState = agg.HealthState
 			entry.OriginTier = ChannelOriginTier(agg.OriginTier)
-			entry.MetricsKey = profiles[0].MetricsKey
+			entry.MetricsKey = matchingProfiles[0].MetricsKey
 
 			// 识图能力：画像聚合（Layer 1）+ 手动配置覆盖（Layer 0 优先级最高）
 			entry.SupportsVision = agg.SupportsVision
@@ -963,8 +973,7 @@ func (r *SmartRouter) collectChannelEntries(channelKind, model string) []channel
 			Priority: upstream.Priority,
 			Status:   status,
 		}
-		entry := r.buildChannelEntry(ch, &upstream)
-		entry.ChannelKind = channelKind
+		entry := r.buildChannelEntry(ch, &upstream, channelKind)
 		entries = append(entries, entry)
 	}
 	return entries

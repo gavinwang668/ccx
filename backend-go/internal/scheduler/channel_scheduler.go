@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"sync"
 
 	"github.com/BenedictKing/ccx/internal/config"
@@ -33,8 +34,8 @@ type ChannelScheduler struct {
 	conversationTracker      *conversation.ConversationTracker
 	overrideManager          *conversation.OverrideManager
 	rateLimitManager         *ratelimit.Manager
-	candidateFilterProvider   CandidateFilterProvider       // SmartRouter shadow 注入点
-	modelSupportResolverFunc  ModelSupportResolverFunc      // Autopilot 模型支持解析注入点
+	candidateFilterProvider  CandidateFilterProvider  // SmartRouter shadow 注入点
+	modelSupportResolverFunc ModelSupportResolverFunc // Autopilot 模型支持解析注入点
 	loadShedMu               sync.Mutex
 	loadShedStates           map[string]rateLimitLoadShedState
 	loadShedStopCh           chan struct{}
@@ -116,9 +117,9 @@ func (s *ChannelScheduler) SetRateLimitManager(m *ratelimit.Manager) {
 	s.rateLimitManager = m
 }
 
-// CandidateFilterProvider 根据渠道类型和模型返回对应的 CandidateFilter。
+// CandidateFilterProvider 根据请求 context、渠道类型和模型返回对应的 CandidateFilter。
 // 用于 SmartRouter shadow 注入：main.go 注册后，SelectChannelWithOptions 自动调用。
-type CandidateFilterProvider func(kind ChannelKind, model string) CandidateFilterFunc
+type CandidateFilterProvider func(ctx context.Context, kind ChannelKind, model string) CandidateFilterFunc
 
 // SetCandidateFilterProvider 设置全局候选过滤提供器。
 // 由 main.go 在 autopilot SmartRouter 初始化后注册。

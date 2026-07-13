@@ -718,6 +718,7 @@ func TestInvariant_AutoMode_VisionFilter(t *testing.T) {
 		err := profileStore.Upsert(&KeyEndpointProfile{
 			EndpointUID:    "ep-premium-0",
 			ChannelUID:     ch0UID,
+			ChannelKind:    "messages",
 			MetricsKey:     "https://premium.example.com|sk-premium",
 			HealthState:    HealthStateHealthy,
 			SupportsVision: true,
@@ -735,6 +736,7 @@ func TestInvariant_AutoMode_VisionFilter(t *testing.T) {
 		err = profileStore.Upsert(&KeyEndpointProfile{
 			EndpointUID:    "ep-standard-0",
 			ChannelUID:     ch1UID,
+			ChannelKind:    "messages",
 			MetricsKey:     "https://standard.example.com|sk-standard",
 			HealthState:    HealthStateHealthy,
 			SupportsVision: false,
@@ -752,6 +754,7 @@ func TestInvariant_AutoMode_VisionFilter(t *testing.T) {
 		err = profileStore.Upsert(&KeyEndpointProfile{
 			EndpointUID:    "ep-economy-0",
 			ChannelUID:     ch2UID,
+			ChannelKind:    "messages",
 			MetricsKey:     "https://economy.example.com|sk-economy",
 			HealthState:    HealthStateHealthy,
 			SupportsVision: false,

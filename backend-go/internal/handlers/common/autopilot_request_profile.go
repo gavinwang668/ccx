@@ -1,0 +1,188 @@
+package common
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"strings"
+
+	"github.com/BenedictKing/ccx/internal/autopilot"
+	"github.com/BenedictKing/ccx/internal/scheduler"
+	"github.com/BenedictKing/ccx/internal/utils"
+	"github.com/gin-gonic/gin"
+)
+
+// AttachAutopilotRequestProfile 从已校验的请求体提取脱敏特征，并绑定到请求 context。
+// channel 级 SmartRouter 与 endpoint policy 必须读取这一份画像，避免能力下界漂移。
+func AttachAutopilotRequestProfile(
+	c *gin.Context,
+	kind scheduler.ChannelKind,
+	model string,
+	operation string,
+	sessionID string,
+	bodyBytes []byte,
+	embeddingDimension int,
+) autopilot.RequestProfile {
+	agentRole, agentType := "", ""
+	if agentCtx := AgentContextFromGin(c); agentCtx != nil {
+		agentRole = agentCtx.AgentRole
+		agentType = agentCtx.AgentType
+	} else if c != nil {
+		agentCtx := utils.ExtractAgentContext(c, bodyBytes)
+		c.Set("agentContext", agentCtx)
+		agentRole = agentCtx.AgentRole
+		agentType = agentCtx.AgentType
+	}
+
+	hasImage := c != nil && HasImageContent(c, bodyBytes)
+	estTokens := estimateAutopilotInputTokens(kind, bodyBytes)
+	profile := autopilot.BuildRequestProfile(autopilot.RequestProfileFeatures{
+		Model:              model,
+		ChannelKind:        string(kind),
+		Operation:          normalizeAutopilotOperation(kind, operation, c),
+		AgentRole:          agentRole,
+		AgentType:          agentType,
+		HasImage:           hasImage,
+		EstTokens:          estTokens,
+		ContextNeed:        estTokens,
+		VisionNeed:         hasImage,
+		ImageGenNeed:       kind == scheduler.ChannelKindImages,
+		EmbeddingNeed:      kind == scheduler.ChannelKindVectors,
+		ToolUseNeed:        autopilotRequestUsesTools(bodyBytes),
+		ReasoningNeed:      autopilotRequestNeedsReasoning(bodyBytes),
+		EmbeddingDimension: embeddingDimension,
+		SessionID:          sessionID,
+		PromptHash:         hashAutopilotRequest(bodyBytes),
+	})
+
+	if c != nil && c.Request != nil {
+		ctx := autopilot.ContextWithRequestProfile(c.Request.Context(), profile)
+		c.Request = c.Request.WithContext(ctx)
+	}
+	return profile
+}
+
+// EnsureAutopilotRequestProfile 为未显式接线的多渠道入口提供保守兜底。
+func EnsureAutopilotRequestProfile(
+	c *gin.Context,
+	kind scheduler.ChannelKind,
+	model string,
+	operation string,
+	sessionID string,
+	bodyBytes []byte,
+) autopilot.RequestProfile {
+	if c != nil && c.Request != nil {
+		if profile, ok := autopilot.RequestProfileFromContext(c.Request.Context()); ok {
+			return profile
+		}
+	}
+	return AttachAutopilotRequestProfile(c, kind, model, operation, sessionID, bodyBytes, 0)
+}
+
+func estimateAutopilotInputTokens(kind scheduler.ChannelKind, bodyBytes []byte) int {
+	switch kind {
+	case scheduler.ChannelKindResponses:
+		return utils.EstimateResponsesRequestTokens(bodyBytes)
+	case scheduler.ChannelKindGemini:
+		return utils.EstimateGeminiRequestTokens(bodyBytes)
+	case scheduler.ChannelKindMessages, scheduler.ChannelKindChat:
+		return utils.EstimateRequestTokens(bodyBytes)
+	default:
+		return 0
+	}
+}
+
+func normalizeAutopilotOperation(kind scheduler.ChannelKind, operation string, c *gin.Context) string {
+	op := strings.ToLower(strings.TrimSpace(operation))
+	switch op {
+	case "generations", "generation", "image_generation":
+		return "image_generation"
+	case "edits", "edit", "image_edit":
+		return "image_edit"
+	case "variations", "variation", "image_variation":
+		return "image_variation"
+	case "compact", "compaction", "summarize":
+		return "summarize"
+	case "count_tokens", "title_generation", "classification", "format_conversion", "translation", "completion", "embedding":
+		return op
+	}
+
+	switch kind {
+	case scheduler.ChannelKindImages:
+		return "image_generation"
+	case scheduler.ChannelKindVectors:
+		return "embedding"
+	}
+	if c != nil && c.Request != nil && c.Request.URL != nil {
+		path := strings.ToLower(c.Request.URL.Path)
+		if strings.Contains(path, "count_tokens") {
+			return "count_tokens"
+		}
+		if strings.Contains(path, "/compact") {
+			return "summarize"
+		}
+	}
+	return "completion"
+}
+
+func autopilotRequestUsesTools(bodyBytes []byte) bool {
+	req := decodeAutopilotRequest(bodyBytes)
+	return hasNonEmptyAutopilotFeature(req["tools"])
+}
+
+func autopilotRequestNeedsReasoning(bodyBytes []byte) bool {
+	req := decodeAutopilotRequest(bodyBytes)
+	for _, key := range []string{"thinking", "reasoning", "reasoning_effort", "reasoningEffort", "enable_thinking"} {
+		if hasNonEmptyAutopilotFeature(req[key]) {
+			return true
+		}
+	}
+	if generationConfig, ok := req["generationConfig"].(map[string]interface{}); ok {
+		return hasNonEmptyAutopilotFeature(generationConfig["thinkingConfig"])
+	}
+	return false
+}
+
+func decodeAutopilotRequest(bodyBytes []byte) map[string]interface{} {
+	var req map[string]interface{}
+	if len(bodyBytes) == 0 || json.Unmarshal(bodyBytes, &req) != nil {
+		return nil
+	}
+	return req
+}
+
+func hasNonEmptyAutopilotFeature(value interface{}) bool {
+	switch v := value.(type) {
+	case nil:
+		return false
+	case bool:
+		return v
+	case string:
+		normalized := strings.ToLower(strings.TrimSpace(v))
+		return normalized != "" && normalized != "none" && normalized != "off" && normalized != "disabled" && normalized != "false"
+	case []interface{}:
+		return len(v) > 0
+	case map[string]interface{}:
+		if rawType, ok := v["type"]; ok {
+			return hasNonEmptyAutopilotFeature(rawType)
+		}
+		for _, nested := range v {
+			if hasNonEmptyAutopilotFeature(nested) {
+				return true
+			}
+		}
+		return false
+	case float64:
+		return v > 0
+	default:
+		return true
+	}
+}
+
+func hashAutopilotRequest(bodyBytes []byte) string {
+	if len(bodyBytes) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(bodyBytes)
+	return hex.EncodeToString(sum[:8])
+}

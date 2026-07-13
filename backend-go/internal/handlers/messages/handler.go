@@ -101,6 +101,14 @@ func Handler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, channel
 			return
 		}
 
+		operation := "completion"
+		if isTitleRequest {
+			operation = "title_generation"
+		} else if isRecapRequest {
+			operation = "summarize"
+		}
+		common.AttachAutopilotRequestProfile(c, scheduler.ChannelKindMessages, claudeReq.Model, operation, userID, bodyBytes, 0)
+
 		// 检查是否为多渠道模式
 		isMultiChannel := channelScheduler.IsMultiChannelMode(scheduler.ChannelKindMessages)
 

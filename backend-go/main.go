@@ -615,12 +615,18 @@ func main() {
 	// off / kill switch：不注入任何 filter，行为完全不变。
 	if autopilotManager != nil && autopilotManager.SmartRouter() != nil {
 		sr := autopilotManager.SmartRouter()
-		channelScheduler.SetCandidateFilterProvider(func(kind scheduler.ChannelKind, model string) scheduler.CandidateFilterFunc {
-			profile := &autopilot.RequestProfile{
-				Model:       model,
-				ChannelKind: string(kind),
+		channelScheduler.SetCandidateFilterProvider(func(ctx context.Context, kind scheduler.ChannelKind, model string) scheduler.CandidateFilterFunc {
+			profile, ok := autopilot.RequestProfileFromContext(ctx)
+			if !ok {
+				profile = autopilot.BuildRequestProfile(autopilot.RequestProfileFeatures{
+					Model:       model,
+					ChannelKind: string(kind),
+					Operation:   "completion",
+				})
 			}
-			return sr.CandidateFilterFor(profile)
+			profile.Model = model
+			profile.ChannelKind = string(kind)
+			return sr.CandidateFilterFor(&profile)
 		})
 		log.Printf("[Scheduler-Init] SmartRouter shadow filter 已注册 (默认模式: shadow)")
 	}
@@ -643,9 +649,12 @@ func main() {
 				return nil
 			}
 			mode := autopilot.RoutingMode(effectiveMode)
-			req := &autopilot.RequestProfile{
-				Model:       model,
-				ChannelKind: "", // channel kind 由 handler 层传入，hook 签名暂不含；shadow 模式下不影响评分
+			req := autopilot.BuildRequestProfile(autopilot.RequestProfileFeatures{Model: model})
+			if c != nil && c.Request != nil {
+				if profile, ok := autopilot.RequestProfileFromContext(c.Request.Context()); ok {
+					req = profile
+					req.Model = model
+				}
 			}
 			deps := autopilot.EndpointPolicyDeps{
 				ProfileStore:  profileStore,
@@ -654,7 +663,7 @@ func main() {
 				ModelResolver: autopilotManager.ModelResolver(),
 				GetRoutingCfg: func() config.AutopilotRoutingConfig { return cfgManager.GetAutopilotRouting() },
 			}
-			return autopilot.BuildEndpointPolicy(deps, req, mode)
+			return autopilot.BuildEndpointPolicy(deps, &req, mode)
 		})
 
 		// FastDecay 通知 hook：请求成功/失败时实时更新 FastDecayScorer
