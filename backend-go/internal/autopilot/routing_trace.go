@@ -384,6 +384,50 @@ func (s *TraceStore) Record(t *RoutingDecisionTrace) {
 	}
 }
 
+// UpdateActualChannel 按 TraceUID 回填 shadow 决策对应的真实渠道。
+// 仅 channel 级、具有 ShadowChannelUID 的 trace 可比较；endpoint trace 会被忽略。
+func (s *TraceStore) UpdateActualChannel(traceUID, actualChannelUID string) error {
+	if traceUID == "" || actualChannelUID == "" {
+		return nil
+	}
+
+	var updated *RoutingDecisionTrace
+	s.mu.Lock()
+	for i := len(s.records) - 1; i >= 0; i-- {
+		trace := s.records[i]
+		if trace.TraceUID != traceUID {
+			continue
+		}
+		if trace.Mode != RoutingModeShadow || trace.ShadowChannelUID == "" {
+			break
+		}
+		trace.ActualChannelUID = actualChannelUID
+		trace.Match = trace.ShadowChannelUID == actualChannelUID
+		copy := *trace
+		updated = &copy
+		break
+	}
+	s.mu.Unlock()
+
+	if updated == nil || s.db == nil {
+		return nil
+	}
+	if !updated.Match {
+		return s.persistTrace(updated)
+	}
+
+	// 匹配样本保持 1/10 抽样：仅更新已抽样落盘的记录，不插入新行。
+	_, err := s.db.Exec(`
+UPDATE autopilot_routing_traces
+SET actual_uid = ?, match = 1
+WHERE trace_uid = ?
+`, updated.ActualChannelUID, updated.TraceUID)
+	if err != nil {
+		return fmt.Errorf("[TraceStore-UpdateActual] 更新失败 uid=%s: %w", updated.TraceUID, err)
+	}
+	return nil
+}
+
 // ListRecent 返回最近 N 条记录（脱敏副本，时间降序）。
 func (s *TraceStore) ListRecent(n int) []*RoutingDecisionTrace {
 	s.mu.RLock()
@@ -446,6 +490,7 @@ func SanitizeTracesInPlace(traces []*RoutingDecisionTrace) {
 // TraceStats 路由追踪统计汇总。
 type TraceStats struct {
 	TotalCount    int            `json:"totalCount"`
+	ComparedCount int            `json:"comparedCount"`
 	MismatchCount int            `json:"mismatchCount"`
 	MismatchRate  float64        `json:"mismatchRate"`
 	TaskClassDist map[string]int `json:"taskClassDist"` // key=TaskClass, value=数量
@@ -464,15 +509,18 @@ func (s *TraceStore) GetStats() TraceStats {
 	}
 
 	for _, t := range s.records {
-		if !t.Match && t.ActualChannelUID != "" && t.ShadowChannelUID != "" {
-			stats.MismatchCount++
+		if t.ActualChannelUID != "" && t.ShadowChannelUID != "" {
+			stats.ComparedCount++
+			if !t.Match {
+				stats.MismatchCount++
+			}
 		}
 		stats.TaskClassDist[string(t.TaskClass)]++
 		stats.ModeDist[string(t.Mode)]++
 	}
 
-	if stats.TotalCount > 0 {
-		stats.MismatchRate = float64(stats.MismatchCount) / float64(stats.TotalCount)
+	if stats.ComparedCount > 0 {
+		stats.MismatchRate = float64(stats.MismatchCount) / float64(stats.ComparedCount)
 	}
 
 	return stats

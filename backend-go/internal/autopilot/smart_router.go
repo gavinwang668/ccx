@@ -219,6 +219,41 @@ func (r *SmartRouter) BuildPlan(profile *RequestProfile) *RoutingPlan {
 // auto 模式：硬约束过滤 + 重排；过滤后为空则 fail-open 回退到只重排。
 // active 模式：返回评分排序后的候选列表。
 func (r *SmartRouter) CandidateFilterFor(profile *RequestProfile) scheduler.CandidateFilterFunc {
+	return r.candidateFilterFor(profile, nil)
+}
+
+// CandidateFilterForWithActual 返回请求级 CandidateFilter 与真实渠道回填回调。
+// 回调只更新该 filter 本次执行生成的 trace，避免并发请求串写“最近一条”记录。
+func (r *SmartRouter) CandidateFilterForWithActual(
+	profile *RequestProfile,
+) (scheduler.CandidateFilterFunc, scheduler.CandidateSelectionObserver) {
+	var traceMu sync.Mutex
+	traceUID := ""
+
+	filter := r.candidateFilterFor(profile, func(uid string) {
+		traceMu.Lock()
+		traceUID = uid
+		traceMu.Unlock()
+	})
+	if filter == nil {
+		return nil, nil
+	}
+
+	observer := func(actualChannelUID string) {
+		traceMu.Lock()
+		uid := traceUID
+		traceMu.Unlock()
+		if uid != "" {
+			r.UpdateActualChannel(uid, actualChannelUID)
+		}
+	}
+	return filter, observer
+}
+
+func (r *SmartRouter) candidateFilterFor(
+	profile *RequestProfile,
+	onTraceRecorded func(traceUID string),
+) scheduler.CandidateFilterFunc {
 	if profile == nil {
 		return nil
 	}
@@ -282,6 +317,7 @@ func (r *SmartRouter) CandidateFilterFor(profile *RequestProfile) scheduler.Cand
 		return r.executeFilter(
 			channels, upstreamFor, candidateAvailable,
 			profile, weights, familyPrefs, routerMode, traceStore, disabledChannelUIDs,
+			onTraceRecorded,
 		)
 	}
 }
@@ -319,6 +355,7 @@ func (r *SmartRouter) executeFilter(
 	mode RoutingMode,
 	traceStore *TraceStore,
 	disabledChannelUIDs map[string]bool,
+	onTraceRecorded func(traceUID string),
 ) ([]scheduler.ChannelInfo, error) {
 	startTime := time.Now()
 
@@ -752,6 +789,9 @@ func (r *SmartRouter) executeFilter(
 	// 持久化 trace
 	if traceStore != nil {
 		traceStore.Record(trace)
+		if onTraceRecorded != nil {
+			onTraceRecorded(trace.TraceUID)
+		}
 	}
 
 	// Phase 4 Item 8: 候选排名回调（A/B 测试用）
@@ -991,34 +1031,13 @@ func (r *SmartRouter) loadFamilyPrefs(cfg config.ModelFamilyPreferenceConfig) []
 	return prefs
 }
 
-// UpdateActualChannel 供调度完成后回调：用实际调度结果更新最近一条 shadow trace。
+// UpdateActualChannel 供调度完成后按 TraceUID 回填真实渠道。
 // shadow trace 与实际一致时 Match=true，否则 Match=false。
-func (r *SmartRouter) UpdateActualChannel(actualChannelUID string) {
-	if r.traceStore == nil || actualChannelUID == "" {
+func (r *SmartRouter) UpdateActualChannel(traceUID, actualChannelUID string) {
+	if r.traceStore == nil || traceUID == "" || actualChannelUID == "" {
 		return
 	}
-
-	r.traceStore.mu.RLock()
-	defer r.traceStore.mu.RUnlock()
-
-	total := len(r.traceStore.records)
-	if total == 0 {
-		return
-	}
-
-	// 取最近一条 shadow trace
-	latest := r.traceStore.records[total-1]
-	if latest.Mode != RoutingModeShadow {
-		return
-	}
-
-	latest.ActualChannelUID = actualChannelUID
-	latest.Match = latest.ShadowChannelUID == actualChannelUID
-
-	// mismatch 样本强制落盘
-	if !latest.Match && r.traceStore.db != nil {
-		if err := r.traceStore.persistTrace(latest); err != nil {
-			log.Printf("[SmartRouter-Update] 警告: mismatch 样本落盘失败: %v", err)
-		}
+	if err := r.traceStore.UpdateActualChannel(traceUID, actualChannelUID); err != nil {
+		log.Printf("[SmartRouter-Update] 警告: trace=%s 真实渠道回填失败: %v", traceUID, err)
 	}
 }

@@ -72,13 +72,13 @@ const props = defineProps<{ stats: AutopilotTraceStats }>()
 const { t } = useI18n()
 
 const mismatchRateDisplay = computed(() => {
-  if (props.stats.totalCount === 0) return '-'
+  if (props.stats.comparedCount === 0) return '-'
   return (props.stats.mismatchRate * 100).toFixed(1) + '%'
 })
 
 const mismatchRateColor = computed(() => {
   const rate = props.stats.mismatchRate
-  if (props.stats.totalCount === 0) return 'grey'
+  if (props.stats.comparedCount === 0) return 'grey'
   if (rate <= 0.05) return 'success'
   if (rate <= 0.15) return 'warning'
   return 'error'

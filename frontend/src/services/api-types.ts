@@ -1283,6 +1283,7 @@ export interface AutopilotTraceListResponse {
 
 export interface AutopilotTraceStats {
   totalCount: number
+  comparedCount: number
   mismatchCount: number
   mismatchRate: number
   taskClassDist: Record<string, number>

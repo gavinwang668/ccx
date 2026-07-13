@@ -117,9 +117,14 @@ func (s *ChannelScheduler) SetRateLimitManager(m *ratelimit.Manager) {
 	s.rateLimitManager = m
 }
 
-// CandidateFilterProvider 根据请求 context、渠道类型和模型返回对应的 CandidateFilter。
+// CandidateSelectionObserver 在本次 CandidateFilter 对应的真实渠道选定后回调。
+// actualChannelUID 已按与 SmartRouter 相同的规则补齐（缺失时为 ch_<index>）。
+type CandidateSelectionObserver func(actualChannelUID string)
+
+// CandidateFilterProvider 根据请求 context、渠道类型和模型返回对应的 CandidateFilter
+// 及其请求级选择回调。
 // 用于 SmartRouter shadow 注入：main.go 注册后，SelectChannelWithOptions 自动调用。
-type CandidateFilterProvider func(ctx context.Context, kind ChannelKind, model string) CandidateFilterFunc
+type CandidateFilterProvider func(ctx context.Context, kind ChannelKind, model string) (CandidateFilterFunc, CandidateSelectionObserver)
 
 // SetCandidateFilterProvider 设置全局候选过滤提供器。
 // 由 main.go 在 autopilot SmartRouter 初始化后注册。

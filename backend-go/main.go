@@ -615,7 +615,7 @@ func main() {
 	// off / kill switch：不注入任何 filter，行为完全不变。
 	if autopilotManager != nil && autopilotManager.SmartRouter() != nil {
 		sr := autopilotManager.SmartRouter()
-		channelScheduler.SetCandidateFilterProvider(func(ctx context.Context, kind scheduler.ChannelKind, model string) scheduler.CandidateFilterFunc {
+		channelScheduler.SetCandidateFilterProvider(func(ctx context.Context, kind scheduler.ChannelKind, model string) (scheduler.CandidateFilterFunc, scheduler.CandidateSelectionObserver) {
 			profile, ok := autopilot.RequestProfileFromContext(ctx)
 			if !ok {
 				profile = autopilot.BuildRequestProfile(autopilot.RequestProfileFeatures{
@@ -626,7 +626,7 @@ func main() {
 			}
 			profile.Model = model
 			profile.ChannelKind = string(kind)
-			return sr.CandidateFilterFor(&profile)
+			return sr.CandidateFilterForWithActual(&profile)
 		})
 		log.Printf("[Scheduler-Init] SmartRouter shadow filter 已注册 (默认模式: shadow)")
 	}

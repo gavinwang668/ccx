@@ -79,12 +79,20 @@ func (s *ChannelScheduler) SelectChannelWithOptions(ctx context.Context, opts Se
 
 	// 若 opts.SmartFilter 未显式设置但全局 provider 已注册，自动注入。
 	// 这样 handler 不需要感知 SmartRouter，由 main.go 统一注册。
+	var candidateSelectionObserver CandidateSelectionObserver
 	if opts.SmartFilter == nil && s.candidateFilterProvider != nil {
-		opts.SmartFilter = s.buildSmartFilterFromProvider(ctx, kind, model)
+		opts.SmartFilter, candidateSelectionObserver = s.buildSmartFilterFromProvider(ctx, kind, model)
 	}
 
 	finish := func(upstream *config.UpstreamConfig, channelIndex int, reason string) *SelectionResult {
 		result := s.selectionResultWithRecord(kind, upstream, channelIndex, reason, !opts.DryRun)
+		if !opts.DryRun && candidateSelectionObserver != nil {
+			actualChannelUID := fmt.Sprintf("ch_%d", channelIndex)
+			if upstream != nil && upstream.ChannelUID != "" {
+				actualChannelUID = upstream.ChannelUID
+			}
+			candidateSelectionObserver(actualChannelUID)
+		}
 		channelName := ""
 		if upstream != nil {
 			channelName = upstream.Name
@@ -1186,14 +1194,18 @@ func (s *ChannelScheduler) getUpstreamByIndex(index int, kind ChannelKind) *conf
 // 返回的 SmartFilter 包装了 SmartRouter 的 CandidateFilterFunc，
 // 并通过 availableFn 过滤掉不满足基础条件的候选（非 active、无 key、熔断中）。
 // 返回 nil 表示 provider 返回了 nil filter（off / kill switch），不注入。
-func (s *ChannelScheduler) buildSmartFilterFromProvider(ctx context.Context, kind ChannelKind, model string) func(context.Context, []ChannelInfo) []ChannelInfo {
+func (s *ChannelScheduler) buildSmartFilterFromProvider(
+	ctx context.Context,
+	kind ChannelKind,
+	model string,
+) (func(context.Context, []ChannelInfo) []ChannelInfo, CandidateSelectionObserver) {
 	if s.candidateFilterProvider == nil {
-		return nil
+		return nil, nil
 	}
 
-	filter := s.candidateFilterProvider(ctx, kind, model)
+	filter, observer := s.candidateFilterProvider(ctx, kind, model)
 	if filter == nil {
-		return nil // off / kill switch
+		return nil, nil // off / kill switch
 	}
 
 	return func(ctx context.Context, channels []ChannelInfo) []ChannelInfo {
@@ -1207,5 +1219,5 @@ func (s *ChannelScheduler) buildSmartFilterFromProvider(ctx context.Context, kin
 			return nil
 		}
 		return result
-	}
+	}, observer
 }
