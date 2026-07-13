@@ -65,6 +65,7 @@ export function useAppController() {
     { value: 'health', labelKey: 'app.tabs.healthCenter', route: '/health', icon: 'mdi-stethoscope' },
     { value: 'subscriptions', labelKey: 'app.tabs.subscriptions', route: '/subscriptions', icon: 'mdi-cash-multiple' },
     { value: 'cockpit', labelKey: 'app.tabs.cockpitOverview', route: '/cockpit', icon: 'mdi-view-dashboard-outline' },
+    { value: 'autopilot', labelKey: 'app.tabs.autopilot', route: '/autopilot', icon: 'mdi-steering' },
   ] as const
 
   const translatedApiTabOptions = computed(() => {

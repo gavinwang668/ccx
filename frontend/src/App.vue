@@ -88,7 +88,7 @@
             <v-list-item
               v-for="tab in translatedApiTabOptions"
               :key="tab.value"
-              :active="tab.value === 'conversations' ? route.path === '/conversations' : channelStore.activeTab === tab.value"
+              :active="route.path === tab.route"
               :to="tab.route"
             >
               <v-list-item-title>{{ tab.label }}</v-list-item-title>
@@ -98,15 +98,15 @@
 
         <!-- 桌面端：平铺链接 -->
         <div v-else class="text-h6 font-weight-bold d-flex align-center">
-          <router-link to="/channels/messages" class="api-type-text" :class="{ active: channelStore.activeTab === 'messages' && route.path !== '/conversations' }">
+          <router-link to="/channels/messages" class="api-type-text" :class="{ active: route.path === '/channels/messages' }">
             {{ t('app.tabs.channels') }}
           </router-link>
           <span class="api-type-text separator">/</span>
-          <router-link to="/channels/images" class="api-type-text" :class="{ active: channelStore.activeTab === 'images' && route.path !== '/conversations' }">
+          <router-link to="/channels/images" class="api-type-text" :class="{ active: route.path === '/channels/images' }">
             {{ t('app.tabs.images') }}
           </router-link>
           <span class="api-type-text separator">/</span>
-          <router-link to="/channels/vectors" class="api-type-text" :class="{ active: channelStore.activeTab === 'vectors' && route.path !== '/conversations' }">
+          <router-link to="/channels/vectors" class="api-type-text" :class="{ active: route.path === '/channels/vectors' }">
             {{ t('app.tabs.vectors') }}
           </router-link>
           <span class="api-type-text separator">/</span>
@@ -232,7 +232,6 @@
         <v-icon size="20">mdi-logout</v-icon>
       </v-btn>
     </v-app-bar>
-
 
     <!-- 主要内容 -->
     <v-main>
