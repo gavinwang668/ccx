@@ -317,6 +317,7 @@ func (r *SmartRouter) candidateFilterFor(
 		return r.executeFilter(
 			channels, upstreamFor, candidateAvailable,
 			profile, weights, familyPrefs, routerMode, traceStore, disabledChannelUIDs,
+			cfg.UpstreamModelCapabilities,
 			onTraceRecorded,
 		)
 	}
@@ -355,6 +356,7 @@ func (r *SmartRouter) executeFilter(
 	mode RoutingMode,
 	traceStore *TraceStore,
 	disabledChannelUIDs map[string]bool,
+	upstreamModelCapabilities map[string]config.UpstreamModelCapability,
 	onTraceRecorded func(traceUID string),
 ) ([]scheduler.ChannelInfo, error) {
 	startTime := time.Now()
@@ -392,7 +394,13 @@ func (r *SmartRouter) executeFilter(
 		if disabledChannelUIDs[upstream.ChannelUID] {
 			continue
 		}
-		entry := r.buildChannelEntry(ch, upstream, profile.ChannelKind)
+		entry := r.buildChannelEntry(
+			ch,
+			upstream,
+			profile.ChannelKind,
+			profile.Model,
+			upstreamModelCapabilities,
+		)
 		entries = append(entries, entry)
 		costMap[entry.ChannelUID] = entry.EstimatedCost
 	}
@@ -829,7 +837,7 @@ type channelScoreEntry struct {
 	SupportsVision      bool // 渠道是否支持识图（来自画像聚合 + 手动配置覆盖）
 	SupportsToolCalls   bool // 渠道是否支持工具调用（来自画像聚合）
 	SupportsReasoning   bool // 渠道是否支持推理（来自画像聚合）
-	ContextWindowTokens int  // 渠道上下文窗口大小（0 = 未知，来自画像聚合）
+	ContextWindowTokens int  // 渠道上下文窗口大小（0 = 未知，来自模型能力注册表）
 	ScoringCandidate    ScoringCandidate
 }
 
@@ -839,6 +847,8 @@ func (r *SmartRouter) buildChannelEntry(
 	ch scheduler.ChannelInfo,
 	upstream *config.UpstreamConfig,
 	channelKind string,
+	model string,
+	upstreamModelCapabilities map[string]config.UpstreamModelCapability,
 ) channelScoreEntry {
 	channelUID := upstream.ChannelUID
 	if channelUID == "" {
@@ -853,6 +863,12 @@ func (r *SmartRouter) buildChannelEntry(
 		ChannelIndex: ch.Index,
 		HealthState:  HealthStateUnknown,
 		OriginTier:   OriginTierUnknown, // 无画像时默认 unknown
+	}
+	if model != "" {
+		resolved := config.ResolveUpstreamCapability(model, upstream, upstreamModelCapabilities)
+		if resolved.Known {
+			entry.ContextWindowTokens = resolved.Capability.ContextWindowTokens
+		}
 	}
 
 	// 从 ProfileStore 读取画像
@@ -881,12 +897,9 @@ func (r *SmartRouter) buildChannelEntry(
 				entry.SupportsVision = false
 			}
 
-			// 工具调用、推理、上下文窗口能力（画像聚合）
+			// 工具调用、推理能力来自 endpoint 画像；上下文窗口来自模型能力注册表。
 			entry.SupportsToolCalls = agg.SupportsToolCalls
 			entry.SupportsReasoning = agg.SupportsReasoning
-			// ContextWindowTokens：ChannelProfile 当前无此聚合字段，
-			// 画像聚合层尚未从模型注册表获取。
-			// 暂填 0（未知），后续模型注册表 Phase 3 接入后填充。
 
 			entry.ScoringCandidate = ScoringCandidate{
 				ChannelUID:                channelUID,
@@ -1013,7 +1026,7 @@ func (r *SmartRouter) collectChannelEntries(channelKind, model string) []channel
 			Priority: upstream.Priority,
 			Status:   status,
 		}
-		entry := r.buildChannelEntry(ch, &upstream, channelKind)
+		entry := r.buildChannelEntry(ch, &upstream, channelKind, model, cfg.UpstreamModelCapabilities)
 		entries = append(entries, entry)
 	}
 	return entries

@@ -38,6 +38,8 @@ func TestBuildChannelEntryUsesRequestedChannelKind(t *testing.T) {
 		scheduler.ChannelInfo{Index: 0, Name: "shared", Status: "active"},
 		&config.UpstreamConfig{ChannelUID: "ch_shared", Name: "shared"},
 		"responses",
+		"",
+		nil,
 	)
 
 	if entry.ChannelKind != "responses" {
