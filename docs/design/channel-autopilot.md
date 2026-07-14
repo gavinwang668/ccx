@@ -2043,6 +2043,22 @@ L3 深度探测（默认来源）：
   - 不同模型族的 ProviderQualityScore 独立评估（opus 在kiro的质量不等于sonnet在kiro的质量）
 ```
 
+**手动 L3 第一版状态（2026-07-15）**：已实现 `pq-v1-20260715` 固定 JSON canary，覆盖
+Messages、Chat Completions、Responses 与 Gemini 上游协议。调用方只能指定 `endpointUid`、
+`modelId` 和 1～3 次重复数，不能注入 prompt。评分仍按 40% 完整性、30% 语义正确性、
+15% 严格 JSON 格式、15% 延迟执行；第一版使用非流式完整响应延迟作为首 token 延迟代理，
+后续引入流式采样时再替换该维度。单次有效样本 confidence=0.6，最多三次提升到 0.8；
+失败样本按 0 分计入均值，全部失败不写画像。
+
+安全边界：仅管理 API 手动触发，不启动自动 worker；当前进程按 UTC 日设置 12 次硬预算，
+请求前原子预留，单次 90 秒超时、响应体上限 64 KiB。同一 endpoint×model 不并发执行；
+单次请求最多允许 2048 个输出 token，以容纳推理模型的隐藏思考并限制最坏额度消耗。
+对声明可控推理的模型固定采用最低可用 effort；Claude 兼容端点若只暴露
+`reasoning_content` 而未声明 thinking 模式，则与 capability-test 一致显式关闭 thinking。
+原始模型输出和明文 Key 既不落盘也不返回，只保存分数、canary 版本、置信度和脱敏判定。
+`user_feedback` 仍高于 `probe`，自动发现重建 ModelProfile 时必须保留既有质量证据。
+跨进程共享预算与 LLM-as-judge/语义向量评分仍属于后续阶段。
+
 ### 5.5 模型派系偏好 (Model Family Preference)
 
 用户在不同派系的模型（Claude / GPT / Gemini / DeepSeek 等）之间有主观偏好，且偏好本身与渠道质量无关。本章定义派系偏好的数据模型、推导逻辑和排序语义。
@@ -2799,6 +2815,8 @@ GET  /api/health-center/overview            → 全局健康概览（跨所有 k
 GET  /api/health-center/channels            → 渠道健康列表（支持过滤/排序）
 POST /api/health-center/batch-action        → 批量操作（refresh/probe/pause）
 POST /api/health-center/channels/{id}/probe → 手动深度探测
+GET  /api/health-center/provider-quality/budget → 查看本进程手动 L3 每日预算
+POST /api/health-center/provider-quality/probe  → 对指定 endpoint×model 执行固定质量 canary
 ```
 
 #### 订阅中心

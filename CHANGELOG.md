@@ -3,6 +3,7 @@
 ### 新增
 
 - **Autopilot 规范模型能力基准** - 模型注册表新增独立 benchmark 领域向量，按渠道质量证据向下折算并写入路由 trace；首批覆盖 Claude Opus 4.8、GPT-5.6 Terra 与 GPT-5.6 Sol
+- **Autopilot 手动 L3 供应商质量探测** - 新增固定 canary、每日预算与 endpoint×model 画像回写，支持 Messages、Chat、Responses、Gemini 上游协议，响应和持久化均不包含明文 Key 或模型原始输出
 
 ### 修复
 

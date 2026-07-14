@@ -99,6 +99,8 @@ func RegisterRoutes(router gin.IRouter, mgr *Manager) {
 		group.GET("/channels", handleChannels(mgr))
 		group.GET("/channels/:channelUid/endpoints", handleEndpoints(mgr))
 		group.POST("/endpoints/:endpointUid/token-plan-usage/refresh", handleRefreshTokenPlanUsage(mgr))
+		group.GET("/provider-quality/budget", handleProviderQualityBudget(mgr.ProviderQualityProbe()))
+		group.POST("/provider-quality/probe", handleProviderQualityProbe(mgr.ProviderQualityProbe()))
 
 		// Phase 3A：画像变更事件（只读展示，不影响调度）
 		group.GET("/changelog", handleChangelog(mgr))

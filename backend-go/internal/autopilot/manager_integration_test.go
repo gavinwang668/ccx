@@ -3,7 +3,51 @@ package autopilot
 import (
 	"net/http"
 	"testing"
+
+	"github.com/BenedictKing/ccx/internal/config"
 )
+
+func TestManagerCollectAllPreservesUpstreamServiceType(t *testing.T) {
+	const (
+		channelUID = "ch-service-type"
+		baseURL    = "https://service-type.example.com"
+		apiKey     = "sk-service-type"
+	)
+	db := newTestDB(t)
+	store, err := NewProfileStoreWithDB(db)
+	if err != nil {
+		t.Fatalf("NewProfileStoreWithDB: %v", err)
+	}
+	cfgManager, cleanup := createTestConfigManager(t, config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				ChannelUID:  channelUID,
+				BaseURL:     baseURL,
+				APIKeys:     []string{apiKey},
+				ServiceType: "openai",
+			},
+		},
+	})
+	t.Cleanup(cleanup)
+
+	metrics := NewMetricsAdapterManager(map[string]MetricsProvider{
+		"messages": newMockProvider(TimeWindowStats{}, KeyCircuitSnapshot{}),
+	})
+	mgr, err := NewManager(store, metrics, cfgManager, ManagerConfig{QuietLogs: true})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	mgr.collectAll()
+
+	endpointUID := GenerateEndpointUID(channelUID, baseURL, KeyHashFromAPIKey(apiKey))
+	profile := store.Get(endpointUID)
+	if profile == nil {
+		t.Fatal("collectAll 未写入 endpoint 画像")
+	}
+	if profile.ChannelKind != "messages" || profile.ServiceType != "openai" {
+		t.Fatalf("画像协议身份错误: channelKind=%q serviceType=%q", profile.ChannelKind, profile.ServiceType)
+	}
+}
 
 // TestObserveRateLimitSignal_FeedsDiscovererAndBuckets 验证 ObserveRateLimitSignal
 // 同时喂 RateLimitDiscoverer 和 TimeBucketStore。

@@ -166,6 +166,25 @@ func (s *ModelProfileStore) Upsert(profile *ModelProfile) error {
 	return nil
 }
 
+// Get 返回指定复合主键对应的模型画像副本。不存在时返回 nil。
+func (s *ModelProfileStore) Get(channelUID, channelKind, metricsKey, modelID string) *ModelProfile {
+	key := modelProfileKey(&ModelProfile{
+		ChannelUID:  channelUID,
+		ChannelKind: channelKind,
+		MetricsKey:  metricsKey,
+		ModelID:     modelID,
+	})
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	profile := s.cache[key]
+	if profile == nil {
+		return nil
+	}
+	copy := *profile
+	return &copy
+}
+
 // GetModelProfiles 返回指定 (channelUID, channelKind, metricsKey) 下的全部模型画像副本。
 // 这是 ModelResolver 设计 doc §5.4 的直接查询签名；返回 slice 可能为空但绝不为 nil。
 func (s *ModelProfileStore) GetModelProfiles(channelUID, channelKind, metricsKey string) []ModelProfile {

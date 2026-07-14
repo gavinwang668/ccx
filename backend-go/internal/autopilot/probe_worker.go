@@ -236,16 +236,30 @@ func (b *ProbeBudget) maybeReset() {
 // TryConsume 尝试消耗一次探测额度。
 // 成功返回 true，预算耗尽返回 false。
 func (b *ProbeBudget) TryConsume() bool {
+	return b.TryConsumeN(1)
+}
+
+// TryConsumeN 原子预留 n 次探测额度。
+// n<=0 视为无需消耗；剩余额度不足时不做部分扣减。
+func (b *ProbeBudget) TryConsumeN(n int) bool {
+	if n <= 0 {
+		return true
+	}
 	b.maybeReset()
 	for {
 		cur := b.used.Load()
-		if cur >= b.dailyLimit {
+		if int64(cur)+int64(n) > int64(b.dailyLimit) {
 			return false
 		}
-		if b.used.CompareAndSwap(cur, cur+1) {
+		if b.used.CompareAndSwap(cur, cur+int32(n)) {
 			return true
 		}
 	}
+}
+
+// Limit 返回每日探测上限。
+func (b *ProbeBudget) Limit() int {
+	return int(b.dailyLimit)
 }
 
 // Remaining 返回今日剩余探测额度。

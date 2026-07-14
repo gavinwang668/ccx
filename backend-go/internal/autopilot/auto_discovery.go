@@ -625,6 +625,17 @@ func (r *AutoDiscoveryRunner) writeProfiles(channelUID string, channel *config.U
 					ProbeSuccess:      true, // 出现在 GET /v1/models 响应视为存在
 					Source:            "auto_discovery",
 				}
+				// 自动发现会周期性重建能力画像，但不应清除 L3 探测或用户反馈写入的
+				// endpoint×model 质量证据。证据只在同一复合主键下继承，避免跨 Key 污染。
+				if existing := r.ModelProfileStore.Get(channelUID, channelKind, metricsKey, modelID); existing != nil {
+					modelProfile.ProviderQualityScore = existing.ProviderQualityScore
+					modelProfile.ProviderQualitySource = existing.ProviderQualitySource
+					modelProfile.ProviderQualityConfidence = existing.ProviderQualityConfidence
+					modelProfile.ProviderQualityProbeVersion = existing.ProviderQualityProbeVersion
+					modelProfile.LastProbeAt = existing.LastProbeAt
+					modelProfile.ProbeLatencyMs = existing.ProbeLatencyMs
+					modelProfile.ProbeConfidence = existing.ProbeConfidence
+				}
 				if err := r.ModelProfileStore.Upsert(modelProfile); err != nil {
 					log.Printf("[AutoDiscovery-ModelProfile] 写入模型画像失败 channel=%s model=%s: %v",
 						channelUID, modelID, err)

@@ -18,6 +18,7 @@ type channelEntry struct {
 	ChannelUID  string
 	ChannelID   int
 	ChannelKind string
+	ServiceType string
 	BaseURL     string
 	APIKeys     []string
 	OriginType  string
@@ -148,6 +149,9 @@ type Manager struct {
 	// Phase 3B-2：模型画像存储（用于 ModelResolver 查询）
 	modelProfileStore *ModelProfileStore
 
+	// 手动 L3：固定 canary 的 endpoint×model ProviderQuality 探测器。
+	providerQualityProbe *ProviderQualityProbe
+
 	// Phase 3B-2：模型自动映射器（用于 resolveMappedModel + ResolveModelSupport）
 	modelResolver *ModelResolver
 
@@ -218,7 +222,7 @@ func NewManager(
 
 	// 初始化 Phase 1 新组件（shadow/read-only，不修改调度链路）
 	timeBucketStore := NewTimeBucketStore()
-	return &Manager{
+	manager := &Manager{
 		store:      store,
 		profiler:   NewProfiler(metrics),
 		analyzer:   NewHealthAnalyzer(),
@@ -248,7 +252,15 @@ func NewManager(
 		modelResolver:     NewModelResolver(modelProfileStore, cfgManager),
 
 		usagePatternAccumulator: NewUsagePatternAccumulator(defaultUsagePatternRetentionDays),
-	}, nil
+	}
+	manager.providerQualityProbe = NewProviderQualityProbe(
+		store,
+		modelProfileStore,
+		cfgManager,
+		manager.ResolveAPIKey,
+		ProviderQualityProbeConfig{},
+	)
+	return manager, nil
 }
 
 // RateLimitDiscoverer 返回内部限速发现器引用（供 main.go 注册信号回调）。
@@ -622,6 +634,11 @@ func (m *Manager) ModelProfileStore() *ModelProfileStore {
 	return m.modelProfileStore
 }
 
+// ProviderQualityProbe 返回手动 L3 ProviderQuality 探测器。
+func (m *Manager) ProviderQualityProbe() *ProviderQualityProbe {
+	return m.providerQualityProbe
+}
+
 // ModelResolver 返回内部 ModelResolver 引用（供 EndpointPolicyDeps 和 main.go 接线）。
 func (m *Manager) ModelResolver() *ModelResolver {
 	return m.modelResolver
@@ -752,6 +769,9 @@ func (m *Manager) collectAll() {
 				entry.OriginType,
 				entry.OriginTier,
 			)
+			// Profiler 的 metrics provider 以入口 ChannelKind 分片；画像中的
+			// ServiceType 则必须保留真实上游协议，供 L2/L3 直连探测构造请求。
+			profile.ServiceType = entry.ServiceType
 			oldProfile := m.store.Get(profile.EndpointUID)
 			carryForwardDiscoveryFields(oldProfile, &profile)
 			profiled++
@@ -991,6 +1011,7 @@ func (m *Manager) gatherChannelEntries() []channelEntry {
 				ChannelUID:  ch.ChannelUID,
 				ChannelID:   i,
 				ChannelKind: ul.channelKind,
+				ServiceType: ch.ServiceType,
 				BaseURL:     baseURL,
 				APIKeys:     ch.APIKeys,
 				OriginType:  ch.OriginType,

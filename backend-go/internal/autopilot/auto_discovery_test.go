@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/presetstore"
@@ -35,6 +36,76 @@ func TestAutoDiscoveryRunner_TriggerRejectsDuplicate(t *testing.T) {
 	started = runner.TriggerDiscovery("ch_test_001", ch, nil)
 	if started {
 		t.Fatal("重复触发应返回 false")
+	}
+}
+
+func TestAutoDiscoveryWriteProfilesPreservesProviderQualityEvidence(t *testing.T) {
+	db := newTestDB(t)
+	profileStore, err := NewProfileStoreWithDB(db)
+	if err != nil {
+		t.Fatalf("NewProfileStoreWithDB: %v", err)
+	}
+	modelStore, err := NewModelProfileStoreWithDB(db)
+	if err != nil {
+		t.Fatalf("NewModelProfileStoreWithDB: %v", err)
+	}
+
+	const (
+		channelUID = "ch-discovery-quality"
+		baseURL    = "https://quality.example.com"
+		apiKey     = "sk-discovery-quality"
+		modelID    = "quality-model"
+	)
+	channel := config.UpstreamConfig{
+		ChannelUID:  channelUID,
+		BaseURL:     baseURL,
+		APIKeys:     []string{apiKey},
+		ServiceType: "openai",
+		AutoManaged: true,
+	}
+	cfgManager, cleanup := createTestConfigManager(t, config.Config{Upstream: []config.UpstreamConfig{channel}})
+	t.Cleanup(cleanup)
+
+	probedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	metricsKey := computeMetricsIdentityKey(baseURL, apiKey, channel.ServiceType)
+	if err := modelStore.Upsert(&ModelProfile{
+		ChannelUID:                  channelUID,
+		ChannelKind:                 "messages",
+		ServiceType:                 channel.ServiceType,
+		MetricsKey:                  metricsKey,
+		ModelID:                     modelID,
+		ProviderQualityScore:        0.73,
+		ProviderQualitySource:       "probe",
+		ProviderQualityConfidence:   0.6,
+		ProviderQualityProbeVersion: "pq-test-v1",
+		LastProbeAt:                 probedAt,
+		ProbeLatencyMs:              1234,
+		ProbeConfidence:             0.6,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewAutoDiscoveryRunner(profileStore, nil)
+	runner.ModelProfileStore = modelStore
+	runner.writeProfiles(channelUID, &channel, []EndpointDiscoveryResult{
+		{
+			KeyMask:     utils.MaskAPIKey(apiKey),
+			BaseURL:     baseURL,
+			Models:      []string{modelID},
+			ModelsCount: 1,
+			ProtocolOk:  true,
+		},
+	}, cfgManager)
+
+	got := modelStore.Get(channelUID, "messages", metricsKey, modelID)
+	if got == nil {
+		t.Fatal("模型画像不存在")
+	}
+	if got.ProviderQualityScore != 0.73 || got.ProviderQualitySource != "probe" || got.ProviderQualityConfidence != 0.6 || got.ProviderQualityProbeVersion != "pq-test-v1" {
+		t.Fatalf("ProviderQuality 证据被自动发现覆盖: %+v", got)
+	}
+	if !got.LastProbeAt.Equal(probedAt) || got.ProbeLatencyMs != 1234 || got.ProbeConfidence != 0.6 {
+		t.Fatalf("L3 探测元数据未保留: %+v", got)
 	}
 }
 

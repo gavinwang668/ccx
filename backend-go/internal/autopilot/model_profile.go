@@ -298,9 +298,10 @@ type ModelProfile struct {
 	SupportsReasoning bool        `json:"supportsReasoning"`
 
 	// ── 上游供应商质量（同模型在不同上游的质量差异）──
-	ProviderQualityScore      float64 `json:"providerQualityScore,omitempty"`      // 0.0-1.0
-	ProviderQualitySource     string  `json:"providerQualitySource,omitempty"`     // probe | user_feedback | inferred | default
-	ProviderQualityConfidence float64 `json:"providerQualityConfidence,omitempty"` // 置信度
+	ProviderQualityScore        float64 `json:"providerQualityScore,omitempty"`        // 0.0-1.0
+	ProviderQualitySource       string  `json:"providerQualitySource,omitempty"`       // probe | user_feedback | inferred | default
+	ProviderQualityConfidence   float64 `json:"providerQualityConfidence,omitempty"`   // 置信度
+	ProviderQualityProbeVersion string  `json:"providerQualityProbeVersion,omitempty"` // 固定 canary 版本，仅 source=probe 时有值
 
 	// ── 任务域优势（不同模型的强项任务不同）──
 	// 缺省时回退到 ModelFamily 级种子矩阵（§5.7），0.5 = 中性
