@@ -784,14 +784,16 @@ func main() {
 				return true
 			}
 			restoredKeys := 0
+			restoredKeyModels := 0
 			activatedChannels := 0
 			for _, result := range results {
 				restoredKeys += len(result.RestoredKeys)
+				restoredKeyModels += len(result.RestoredKeyModels)
 				if result.ActivatedChannel {
 					activatedChannels++
 				}
 			}
-			log.Printf("[Scheduler-Recovery] UTC 自动恢复完成：恢复 %d 个 key，激活 %d 个渠道", restoredKeys, activatedChannels)
+			log.Printf("[Scheduler-Recovery] UTC 自动恢复完成：恢复 %d 个 key，%d 个 (key,模型) 组合，激活 %d 个渠道", restoredKeys, restoredKeyModels, activatedChannels)
 			return true
 		}
 
@@ -932,6 +934,7 @@ func main() {
 		apiGroup.POST("/messages/channels/:id/keys/:apiKey/top", messages.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/messages/channels/:id/keys/:apiKey/bottom", messages.MoveApiKeyToBottom(cfgManager))
 		apiGroup.POST("/messages/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Messages"))
+		apiGroup.POST("/messages/channels/:id/keys/restore-model", handlers.RestoreKeyModel(cfgManager, "Messages"))
 		apiGroup.PUT("/messages/channels/:id/mappings", messages.UpdateModelMapping(cfgManager))
 
 		// Messages 多渠道调度 API
@@ -968,6 +971,7 @@ func main() {
 		apiGroup.POST("/responses/channels/:id/keys/:apiKey/top", responses.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/responses/channels/:id/keys/:apiKey/bottom", responses.MoveApiKeyToBottom(cfgManager))
 		apiGroup.POST("/responses/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Responses"))
+		apiGroup.POST("/responses/channels/:id/keys/restore-model", handlers.RestoreKeyModel(cfgManager, "Responses"))
 		apiGroup.PUT("/responses/channels/:id/mappings", responses.UpdateModelMapping(cfgManager))
 
 		// Responses 多渠道调度 API
@@ -1002,6 +1006,7 @@ func main() {
 		apiGroup.POST("/gemini/channels/:id/keys/:apiKey/top", gemini.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/gemini/channels/:id/keys/:apiKey/bottom", gemini.MoveApiKeyToBottom(cfgManager))
 		apiGroup.POST("/gemini/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Gemini"))
+		apiGroup.POST("/gemini/channels/:id/keys/restore-model", handlers.RestoreKeyModel(cfgManager, "Gemini"))
 		apiGroup.PUT("/gemini/channels/:id/mappings", gemini.UpdateModelMapping(cfgManager))
 
 		// Gemini 多渠道调度 API
@@ -1036,6 +1041,7 @@ func main() {
 		apiGroup.POST("/chat/channels/:id/keys/:apiKey/top", chat.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/chat/channels/:id/keys/:apiKey/bottom", chat.MoveApiKeyToBottom(cfgManager))
 		apiGroup.POST("/chat/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Chat"))
+		apiGroup.POST("/chat/channels/:id/keys/restore-model", handlers.RestoreKeyModel(cfgManager, "Chat"))
 		apiGroup.PUT("/chat/channels/:id/mappings", chat.UpdateModelMapping(cfgManager))
 
 		// Chat 多渠道调度 API
@@ -1071,6 +1077,7 @@ func main() {
 		apiGroup.POST("/images/channels/:id/keys/:apiKey/top", images.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/images/channels/:id/keys/:apiKey/bottom", images.MoveApiKeyToBottom(cfgManager))
 		apiGroup.POST("/images/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Images"))
+		apiGroup.POST("/images/channels/:id/keys/restore-model", handlers.RestoreKeyModel(cfgManager, "Images"))
 		apiGroup.PUT("/images/channels/:id/mappings", images.UpdateModelMapping(cfgManager))
 
 		// Images 多渠道调度 API
@@ -1099,6 +1106,7 @@ func main() {
 		apiGroup.POST("/vectors/channels/:id/keys/:apiKey/top", vectors.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/vectors/channels/:id/keys/:apiKey/bottom", vectors.MoveApiKeyToBottom(cfgManager))
 		apiGroup.POST("/vectors/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Vectors"))
+		apiGroup.POST("/vectors/channels/:id/keys/restore-model", handlers.RestoreKeyModel(cfgManager, "Vectors"))
 		apiGroup.PUT("/vectors/channels/:id/mappings", vectors.UpdateModelMapping(cfgManager))
 
 		// Vectors 多渠道调度 API

@@ -63,9 +63,11 @@
               <ApiKeyManagementSection
                 :api-keys="form.apiKeys"
                 :disabled-keys="disabledKeys"
+                :disabled-key-models="disabledKeyModels"
                 :key-models-status="keyModelsStatus"
                 :is-editing="isEditing"
                 :restoring-key="restoringKey"
+                :restoring-key-model="restoringKeyModel"
                 :service-type="form.serviceType"
                 :is-auto-managed="isAutoManagedChannel"
                 :channel-id="props.channel?.index"
@@ -75,6 +77,7 @@
                 @update:api-keys="form.apiKeys = $event"
                 @update:proxy-url="form.proxyUrl = $event"
                 @restore-key="restoreDisabledKey"
+                @restore-key-model="restoreDisabledKeyModel"
               />
             </section>
 
@@ -495,6 +498,9 @@ const {
   customHeadersArray,
   updateCustomHeaders,
   restoreDisabledKey,
+  restoringKeyModel,
+  disabledKeyModels,
+  restoreDisabledKeyModel,
   appendSupportedModelFilter,
   ensureTargetModelsLoaded,
   updateForm,
