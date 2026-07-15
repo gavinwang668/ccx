@@ -805,7 +805,7 @@ export type ChannelDiscoveryTargetClient = 'codex' | 'claude-code' | 'claude'
 
 export interface ChannelDiscoveryRequest {
   channelKind?: ChannelDiscoveryKind
-  serviceType: Channel['serviceType'] | ''
+  serviceType?: Channel['serviceType'] | ''
   baseUrl?: string
   baseUrls?: string[]
   apiKey: string
@@ -816,7 +816,6 @@ export interface ChannelDiscoveryRequest {
   modelMapping?: Record<string, string>
   reasoningMapping?: Record<string, string>
   targetClients?: ChannelDiscoveryTargetClient[]
-  probeAllModels?: boolean
 }
 
 export interface DiscoverySelectedModels {

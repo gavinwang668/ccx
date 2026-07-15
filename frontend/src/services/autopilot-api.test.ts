@@ -128,7 +128,12 @@ describe('auto add route discovery', () => {
       ]
     })
     const request = discover.mock.calls[0][0]
-    expect(request).toMatchObject({ probeAllModels: true })
+    expect(request).toEqual({
+      baseUrls: ['https://example.com'],
+      apiKey: 'sk-test'
+    })
     expect(request).not.toHaveProperty('channelKind')
+    expect(request).not.toHaveProperty('serviceType')
+    expect(request).not.toHaveProperty('probeAllModels')
   })
 })

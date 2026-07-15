@@ -1,6 +1,5 @@
 import { useAuthStore } from '@/stores/auth'
 import {
-  defaultQuickAddServiceType,
   normalizeDiscoveredChannelKind,
   supportsQuickAddProtocolDiscovery
 } from '@/utils/quickAddChannel'
@@ -232,12 +231,10 @@ export async function discoverAutoAddRoutes(
   const apiKey = apiKeys.find(key => key.trim() !== '')
   if (baseUrls.length === 0 || !apiKey) return null
 
-  // 不传 channelKind，让真实探测结果决定协议，而不是沿用打开弹窗时所在的页签。
+  // 不传 channelKind 和 serviceType，让后端根据真实探测结果决定协议与上游类型。
   const discovery = await api.discoverChannelConfig({
-    serviceType: defaultQuickAddServiceType(kind),
     baseUrls,
-    apiKey,
-    probeAllModels: true
+    apiKey
   })
   const routes: AutoAddRouteRequest[] = []
   for (const protocol of discovery.protocols) {

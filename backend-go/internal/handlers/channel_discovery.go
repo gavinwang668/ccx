@@ -32,7 +32,8 @@ type ChannelDiscoveryRequest struct {
 	ModelMapping       map[string]string `json:"modelMapping"`
 	ReasoningMapping   map[string]string `json:"reasoningMapping"`
 	TargetClients      []string          `json:"targetClients"`
-	ProbeAllModels     bool              `json:"probeAllModels"`
+	// ProbeAllModels 仅用于兼容旧版调用方。serviceType 为空时服务端会自动全量探测。
+	ProbeAllModels bool `json:"probeAllModels"`
 }
 
 type DiscoveryModelsFetchRequest struct {
@@ -154,6 +155,7 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 			globalCapabilities = cfgManager.GetConfig().UpstreamModelCapabilities
 		}
 
+		autoDetectServiceType := strings.TrimSpace(req.ServiceType) == ""
 		models := discoverTransientModelsWithFetchers(c.Request.Context(), channel, normalizeDiscoveryChannelKind(req.ChannelKind), channel.APIKeys[0], modelFetchers)
 		if len(models.Items) == 0 {
 			models.Items = fallbackDiscoveryProbeModels(req.ChannelKind, channel.ServiceType)
@@ -162,10 +164,11 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 		}
 		models.Selected = selectDiscoveryModels(models.Items, globalCapabilities)
 
-		probeModels := discoveryProtocolProbeModels(models, req.ProbeAllModels)
+		probeModels := discoveryProtocolProbeModels(models, req.ProbeAllModels || autoDetectServiceType)
 		protocols := runDiscoveryProtocolProbes(c.Request.Context(), channel, probeModels, cfgManager)
 		successByProtocol := discoverySuccessModelsByProtocol(protocols)
 		recommendedKind := recommendDiscoveryChannelKind(req.ChannelKind, req.TargetClients, protocols)
+		channel.ServiceType = resolveDiscoveryServiceType(req.ServiceType, recommendedKind)
 
 		recommendation := buildDiscoveryMappingRecommendation(recommendedKind, compatProbeProtocol(channel, recommendedKind), models.Selected, successByProtocol, req.TargetClients)
 		recommendation.ServiceType = channel.ServiceType
@@ -219,14 +222,9 @@ func buildTransientDiscoveryChannel(req ChannelDiscoveryRequest) (*config.Upstre
 	if apiKey == "" {
 		return nil, errors.New("apiKey is required")
 	}
-	serviceType := strings.TrimSpace(req.ServiceType)
-	if serviceType == "" {
-		return nil, errors.New("serviceType is required")
-	}
-
 	return &config.UpstreamConfig{
 		Name:               "临时发现渠道",
-		ServiceType:        serviceType,
+		ServiceType:        strings.TrimSpace(req.ServiceType),
 		BaseURL:            baseURLs[0],
 		BaseURLs:           baseURLs,
 		APIKeys:            []string{apiKey},
@@ -1199,6 +1197,63 @@ func discoveryToolCallsContainName(raw interface{}, toolName string) bool {
 }
 
 func discoverTransientModelsWithFetchers(ctx context.Context, channel *config.UpstreamConfig, channelKind string, apiKey string, fetchers ChannelDiscoveryModelFetchers) DiscoveryModelsResult {
+	if channelKind == "" && strings.TrimSpace(channel.ServiceType) == "" {
+		return discoverAutoTransientModelsWithFetchers(ctx, channel, apiKey, fetchers)
+	}
+	return discoverTransientModelsForCandidate(ctx, channel, channelKind, apiKey, fetchers)
+}
+
+func discoverAutoTransientModelsWithFetchers(ctx context.Context, channel *config.UpstreamConfig, apiKey string, fetchers ChannelDiscoveryModelFetchers) DiscoveryModelsResult {
+	type candidate struct {
+		channelKind string
+		serviceType string
+	}
+	candidates := []candidate{
+		{channelKind: "messages", serviceType: "claude"},
+		{channelKind: "gemini", serviceType: "gemini"},
+	}
+
+	items := make([]string, 0)
+	sources := make([]string, 0, len(candidates))
+	sourceSeen := make(map[string]bool, len(candidates))
+	failureWarnings := make([]string, 0)
+	result := DiscoveryModelsResult{Source: "auto_models"}
+	for _, candidate := range candidates {
+		probeChannel := *channel
+		probeChannel.ServiceType = candidate.serviceType
+		candidateResult := discoverTransientModelsForCandidate(ctx, &probeChannel, candidate.channelKind, apiKey, fetchers)
+		if len(candidateResult.Items) == 0 {
+			for _, warning := range candidateResult.Warnings {
+				failureWarnings = append(failureWarnings, candidate.channelKind+": "+warning)
+			}
+			continue
+		}
+
+		items = append(items, candidateResult.Items...)
+		if candidateResult.Source != "" && !sourceSeen[candidateResult.Source] {
+			sourceSeen[candidateResult.Source] = true
+			sources = append(sources, candidateResult.Source)
+		}
+		if result.URL == "" {
+			result.URL = candidateResult.URL
+			result.StatusCode = candidateResult.StatusCode
+		}
+		result.Warnings = append(result.Warnings, candidateResult.Warnings...)
+	}
+
+	result.Items = uniqueDiscoveryModels(items)
+	if len(result.Items) == 0 {
+		result.Warnings = failureWarnings
+		return result
+	}
+	result.Source = strings.Join(sources, "+")
+	if result.Source == "" {
+		result.Source = "auto_models"
+	}
+	return result
+}
+
+func discoverTransientModelsForCandidate(ctx context.Context, channel *config.UpstreamConfig, channelKind string, apiKey string, fetchers ChannelDiscoveryModelFetchers) DiscoveryModelsResult {
 	fetcherKey, fetcher := selectDiscoveryModelsFetcher(channelKind, channel.ServiceType, fetchers)
 	if fetcher == nil {
 		return discoverTransientModels(ctx, channel, channelKind, apiKey)
@@ -1405,8 +1460,14 @@ func runDiscoveryProtocolProbe(ctx context.Context, channel *config.UpstreamConf
 	result := DiscoveryProtocolResult{Protocol: protocol}
 	var successLatency int64
 	var successCount int
+	probeChannel := channel
+	if strings.TrimSpace(channel.ServiceType) == "" {
+		cloned := *channel
+		cloned.ServiceType = resolveDiscoveryServiceType("", protocol)
+		probeChannel = &cloned
+	}
 	for _, model := range models {
-		modelResult := executeModelTest(ctx, channel, protocol, model, timeout, "", cfgManager, -1, protocol, channel.APIKeys[0], nil)
+		modelResult := executeModelTest(ctx, probeChannel, protocol, model, timeout, "", cfgManager, -1, protocol, probeChannel.APIKeys[0], nil)
 		if modelResult.Success {
 			result.Success = true
 			result.SuccessModels = append(result.SuccessModels, model)
@@ -1525,6 +1586,24 @@ func normalizeDiscoveryChannelKind(channelKind string) string {
 	switch strings.TrimSpace(channelKind) {
 	case "messages", "responses", "chat", "gemini":
 		return strings.TrimSpace(channelKind)
+	default:
+		return ""
+	}
+}
+
+func resolveDiscoveryServiceType(requested, detectedProtocol string) string {
+	if serviceType := strings.TrimSpace(requested); serviceType != "" {
+		return serviceType
+	}
+	switch normalizeDiscoveryChannelKind(detectedProtocol) {
+	case "messages":
+		return "claude"
+	case "responses":
+		return "responses"
+	case "chat":
+		return "openai"
+	case "gemini":
+		return "gemini"
 	default:
 		return ""
 	}

@@ -22,6 +22,21 @@ func TestBuildTransientDiscoveryChannelRequiresBaseURLAndKey(t *testing.T) {
 	}
 }
 
+func TestBuildTransientDiscoveryChannelAllowsServiceTypeDetection(t *testing.T) {
+	req := ChannelDiscoveryRequest{
+		BaseURLs: []string{"https://api.example.com"},
+		APIKey:   "sk-test",
+	}
+
+	channel, err := buildTransientDiscoveryChannel(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if channel.ServiceType != "" {
+		t.Fatalf("serviceType=%q, want empty before discovery", channel.ServiceType)
+	}
+}
+
 func TestBuildTransientDiscoveryChannelDoesNotNeedConfigManager(t *testing.T) {
 	req := ChannelDiscoveryRequest{
 		ChannelKind:        "responses",
@@ -168,6 +183,29 @@ func TestRecommendDiscoveryChannelKindFallsBackWithoutExplicitProtocol(t *testin
 	}
 }
 
+func TestResolveDiscoveryServiceType(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested string
+		protocol  string
+		want      string
+	}{
+		{name: "preserve explicit", requested: "openai", protocol: "responses", want: "openai"},
+		{name: "messages", protocol: "messages", want: "claude"},
+		{name: "responses", protocol: "responses", want: "responses"},
+		{name: "chat", protocol: "chat", want: "openai"},
+		{name: "gemini", protocol: "gemini", want: "gemini"},
+		{name: "unknown", protocol: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveDiscoveryServiceType(tt.requested, tt.protocol); got != tt.want {
+				t.Fatalf("resolveDiscoveryServiceType(%q, %q)=%q, want %q", tt.requested, tt.protocol, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDiscoveryProtocolProbeModelsCanCoverEveryDiscoveredModel(t *testing.T) {
 	models := DiscoveryModelsResult{
 		Items:    []string{"model-a", "model-b", "model-c", "model-d", "model-e", "model-f", "model-g"},
@@ -311,6 +349,71 @@ func TestChannelDiscoveryHandlerDiscoversTransientResponsesChannel(t *testing.T)
 	}
 }
 
+func TestChannelDiscoveryAutoDetectsServiceTypeAndProbesEveryModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	models := []string{"actual-a", "actual-b", "actual-c", "actual-d", "actual-e", "actual-f", "actual-g"}
+	seenResponsesModels := make(map[string]bool, len(models))
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"actual-a"},{"id":"actual-b"},{"id":"actual-c"},{"id":"actual-d"},{"id":"actual-e"},{"id":"actual-f"},{"id":"actual-g"}]}`))
+		case "/v1/responses":
+			var body struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.Model != "" {
+				seenResponsesModels[body.Model] = true
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"))
+			_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	router := gin.New()
+	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+	body := []byte(`{
+		"baseUrls":["` + upstream.URL + `"],
+		"apiKey":"sk-test"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/channel-discovery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var resp ChannelDiscoveryResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Recommendation.ChannelKind != "responses" || resp.Recommendation.ServiceType != "responses" {
+		t.Fatalf("recommendation=%#v", resp.Recommendation)
+	}
+	var responsesModels []string
+	for _, protocol := range resp.Protocols {
+		if protocol.Protocol == "responses" {
+			responsesModels = protocol.SuccessModels
+			break
+		}
+	}
+	if !sameStringSet(responsesModels, models) {
+		t.Fatalf("responses successModels=%#v, want %#v", responsesModels, models)
+	}
+	for _, model := range models {
+		if !seenResponsesModels[model] {
+			t.Fatalf("model %q was not probed through responses", model)
+		}
+	}
+}
+
 func TestChannelDiscoveryUsesInjectedModelsFetcher(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -374,6 +477,42 @@ func TestChannelDiscoveryUsesInjectedModelsFetcher(t *testing.T) {
 		if strings.Contains(warning, "404") || strings.Contains(warning, "built-in probe") {
 			t.Fatalf("unexpected fallback warning: %#v", resp.Models.Warnings)
 		}
+	}
+}
+
+func TestDiscoverAutoTransientModelsMergesGenericAndGeminiLists(t *testing.T) {
+	channel := &config.UpstreamConfig{
+		BaseURL:  "https://api.example.com",
+		BaseURLs: []string{"https://api.example.com"},
+		APIKeys:  []string{"sk-test"},
+	}
+	seenServiceTypes := make(map[string]string)
+	fetchers := ChannelDiscoveryModelFetchers{
+		"messages": func(_ context.Context, req DiscoveryModelsFetchRequest) (DiscoveryModelsFetchResponse, error) {
+			seenServiceTypes["messages"] = req.ServiceType
+			return DiscoveryModelsFetchResponse{
+				StatusCode: http.StatusOK,
+				Body:       []byte(`{"data":[{"id":"shared"},{"id":"generic-only"}]}`),
+			}, nil
+		},
+		"gemini": func(_ context.Context, req DiscoveryModelsFetchRequest) (DiscoveryModelsFetchResponse, error) {
+			seenServiceTypes["gemini"] = req.ServiceType
+			return DiscoveryModelsFetchResponse{
+				StatusCode: http.StatusOK,
+				Body:       []byte(`{"models":[{"name":"models/shared"},{"name":"models/gemini-only"}]}`),
+			}, nil
+		},
+	}
+
+	result := discoverAutoTransientModelsWithFetchers(context.Background(), channel, "sk-test", fetchers)
+	if !sameStringSet(result.Items, []string{"shared", "generic-only", "gemini-only"}) {
+		t.Fatalf("models=%#v", result.Items)
+	}
+	if result.Source != "messages_models_handler+gemini_models_handler" {
+		t.Fatalf("source=%q", result.Source)
+	}
+	if seenServiceTypes["messages"] != "claude" || seenServiceTypes["gemini"] != "gemini" {
+		t.Fatalf("service types=%#v", seenServiceTypes)
 	}
 }
 
