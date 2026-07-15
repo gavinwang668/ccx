@@ -26,6 +26,9 @@ describe('buildQuickAddChannelName', () => {
 describe('quick add protocol discovery', () => {
   it('与标准模式一致地清理后台路径和协议端点', () => {
     expect(recognizeQuickAddBaseUrl('https://www.fastaitoken.com/keys', 'messages')).toBe('https://www.fastaitoken.com')
+    expect(recognizeQuickAddBaseUrl('https://www.fastaitoken.com/usage', 'messages')).toBe(
+      'https://www.fastaitoken.com'
+    )
     expect(recognizeQuickAddBaseUrl('https://relay.example.com/v1/responses', 'messages')).toBe(
       'https://relay.example.com'
     )

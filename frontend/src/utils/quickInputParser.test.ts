@@ -431,6 +431,14 @@ describe('综合解析场景', () => {
     expect(result.detectedBaseUrl).toBe('https://pay.kxaug.xyz')
   })
 
+  it('应剔除 usage 页面路径但保留非根级同名 API 路径', () => {
+    const dashboard = parseQuickInput('https://www.fastaitoken.com/usage sk-key1234567890')
+    const apiPath = parseQuickInput('https://api.example.com/api/usage sk-key1234567890')
+
+    expect(dashboard.detectedBaseUrl).toBe('https://www.fastaitoken.com')
+    expect(apiPath.detectedBaseUrl).toBe('https://api.example.com/api/usage')
+  })
+
   it('应剔除常见 admin 管理后台路径', () => {
     const input = 'https://chybenzun.top/admin sk-key1234567890'
     const result = parseQuickInput(input)
