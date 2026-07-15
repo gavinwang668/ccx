@@ -536,6 +536,21 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 
+@media (max-width: 600px) {
+  .expected-request-list {
+    gap: 6px;
+  }
+
+  .expected-request-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .expected-request-url {
+    padding-left: 12px;
+  }
+}
+
 .apikeys-card {
   border: 1px solid rgba(var(--v-theme-outline), 0.32);
 }
