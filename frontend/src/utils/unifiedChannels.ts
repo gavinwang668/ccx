@@ -137,6 +137,7 @@ const buildProtocolRoutes = (channels: Partial<Record<LlmChannelKind, RoutedChan
       name: channel.name,
       serviceType: channel.serviceType,
       channelUid: channel.channelUid,
+      supportedModels: [...(channel.supportedModels ?? [])],
     }]
   })
 }

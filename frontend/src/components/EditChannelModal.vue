@@ -58,6 +58,7 @@
                 @update:base-urls-text="baseUrlsText = $event"
                 @menu-update="onMenuUpdate"
               />
+              <ProtocolModelAvailability :routes="props.channel?.protocolRoutes" />
             </section>
 
             <!-- 身份认证 -->
@@ -422,6 +423,7 @@ import { computed } from 'vue'
 import AddChannelHeader from './edit-channel/AddChannelHeader.vue'
 import AddChannelSidebarNav from './edit-channel/AddChannelSidebarNav.vue'
 import BasicInfoSection from './edit-channel/BasicInfoSection.vue'
+import ProtocolModelAvailability from './edit-channel/ProtocolModelAvailability.vue'
 import ApiKeyManagementSection from './edit-channel/ApiKeyManagementSection.vue'
 import ModelMappingSection from './edit-channel/ModelMappingSection.vue'
 import ModelCapabilitySection from './edit-channel/ModelCapabilitySection.vue'

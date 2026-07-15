@@ -258,6 +258,7 @@ export interface ChannelProtocolRoute {
   name: string
   serviceType: string
   channelUid?: string
+  supportedModels?: string[]
 }
 
 export interface ChannelsResponse {

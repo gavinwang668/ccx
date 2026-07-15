@@ -58,9 +58,18 @@ describe('buildUnifiedChannelsData account grouping', () => {
     const custom = (name: string, index: number, serviceType: Channel['serviceType']): Channel =>
       channel(name, 'acct-fastaitoken', index, ['sk-fastaitoken'], { providerId: '', autoManaged: true, serviceType })
     const data: Record<LlmChannelKind, ChannelsResponse> = {
-      messages: response([custom('fastaitoken-com-test-claude', 0, 'claude')]),
-      chat: response([custom('fastaitoken-com-test-chat', 0, 'openai')]),
-      responses: response([custom('fastaitoken-com-test-codex', 0, 'responses')]),
+      messages: response([{
+        ...custom('fastaitoken-com-test-claude', 0, 'claude'),
+        supportedModels: ['gpt-5.6-sol', 'gpt-5.6-terra'],
+      }]),
+      chat: response([{
+        ...custom('fastaitoken-com-test-chat', 0, 'openai'),
+        supportedModels: ['gpt-5.6-sol'],
+      }]),
+      responses: response([{
+        ...custom('fastaitoken-com-test-codex', 0, 'responses'),
+        supportedModels: ['codex-auto-review', 'gpt-5.6-sol'],
+      }]),
       gemini: response([]),
     }
 
@@ -69,6 +78,13 @@ describe('buildUnifiedChannelsData account grouping', () => {
     expect(result.channels[0].name).toBe('fastaitoken-com-test')
     expect(result.channels[0].protocolCapsules?.map(item => item.label)).toEqual(['CLAUDE', 'CHAT', 'CODEX'])
     expect(result.channels[0].protocolRoutes?.map(item => item.kind)).toEqual(['messages', 'chat', 'responses'])
+    expect(Object.fromEntries(
+      result.channels[0].protocolRoutes?.map(route => [route.kind, route.supportedModels]) ?? [],
+    )).toEqual({
+      messages: ['gpt-5.6-sol', 'gpt-5.6-terra'],
+      chat: ['gpt-5.6-sol'],
+      responses: ['codex-auto-review', 'gpt-5.6-sol'],
+    })
   })
 
   it('协议标签只展示上游实际提供的 serviceType', () => {
