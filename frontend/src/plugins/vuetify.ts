@@ -208,6 +208,7 @@ import {
   mdiCashRemove,
   mdiCashMultiple,
   mdiCash,
+  mdiWalletOutline,
   mdiAccountSwitch,
   mdiChatOutline,
   mdiSourceBranch,
@@ -460,6 +461,7 @@ const iconMap: Record<string, string> = {
   'cash-remove': mdiCashRemove,
   'cash-multiple': mdiCashMultiple,
   'cash': mdiCash,
+  'wallet-outline': mdiWalletOutline,
 
   // 渠道配置
   'account-switch': mdiAccountSwitch,
