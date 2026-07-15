@@ -816,6 +816,7 @@ export interface ChannelDiscoveryRequest {
   modelMapping?: Record<string, string>
   reasoningMapping?: Record<string, string>
   targetClients?: ChannelDiscoveryTargetClient[]
+  probeAllModels?: boolean
 }
 
 export interface DiscoverySelectedModels {

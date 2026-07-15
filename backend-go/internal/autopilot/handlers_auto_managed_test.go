@@ -318,6 +318,115 @@ func TestCustomAutoAddResponseIncludesActualRoute(t *testing.T) {
 	}
 }
 
+func TestCustomAutoAddCreatesAllDetectedRoutesWithProtocolModels(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	data := `{
+  "upstream": [], "chatUpstream": [], "responsesUpstream": [],
+  "geminiUpstream": [], "imagesUpstream": [], "vectorsUpstream": []
+}`
+	if err := os.WriteFile(configPath, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := config.NewConfigManager(configPath, filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	router := setupAutoManagedRouter(&AutoManagedDeps{CfgManager: manager})
+	body := `{
+  "name":"fastaitoken-com-test",
+  "baseUrls":["https://example.com/keys"],
+  "apiKeys":["sk-test"],
+  "routes":[
+    {"channelKind":"messages","supportedModels":["shared","messages-only"]},
+    {"channelKind":"responses","supportedModels":["shared","responses-only"]},
+    {"channelKind":"chat","supportedModels":["shared","chat-only"]}
+  ]
+}`
+	req := httptest.NewRequest(http.MethodPost, "/api/responses/channels/auto-add", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	var response AutoAddResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Channels) != 3 {
+		t.Fatalf("channels=%+v, want three detected routes", response.Channels)
+	}
+	for _, route := range response.Channels {
+		if route.AccountUID != response.AccountUID {
+			t.Fatalf("route account=%q, want %q", route.AccountUID, response.AccountUID)
+		}
+	}
+	if response.Channels[1].ChannelKind != "responses" || response.ChannelUID != response.Channels[1].ChannelUID {
+		t.Fatalf("请求协议应作为主路由: response=%+v", response)
+	}
+
+	cfg := manager.GetConfig()
+	if len(cfg.Upstream) != 1 || len(cfg.ResponsesUpstream) != 1 || len(cfg.ChatUpstream) != 1 || len(cfg.GeminiUpstream) != 0 {
+		t.Fatalf("协议路由数量错误: messages=%d responses=%d chat=%d gemini=%d",
+			len(cfg.Upstream), len(cfg.ResponsesUpstream), len(cfg.ChatUpstream), len(cfg.GeminiUpstream))
+	}
+	checks := []struct {
+		channel config.UpstreamConfig
+		name    string
+		models  []string
+	}{
+		{cfg.Upstream[0], "fastaitoken-com-test-claude", []string{"shared", "messages-only"}},
+		{cfg.ResponsesUpstream[0], "fastaitoken-com-test-codex", []string{"shared", "responses-only"}},
+		{cfg.ChatUpstream[0], "fastaitoken-com-test-chat", []string{"shared", "chat-only"}},
+	}
+	for _, check := range checks {
+		if check.channel.Name != check.name || check.channel.AccountUID != response.AccountUID {
+			t.Fatalf("route identity=%+v, want name=%q account=%q", check.channel, check.name, response.AccountUID)
+		}
+		if strings.Join(check.channel.SupportedModels, ",") != strings.Join(check.models, ",") {
+			t.Fatalf("route %s models=%v, want %v", check.name, check.channel.SupportedModels, check.models)
+		}
+	}
+}
+
+func TestPlanCustomManagedAccountUpdatesRenamesAndSyncsCredentials(t *testing.T) {
+	channels := []config.AccountChannel{
+		{Kind: "messages", Upstream: config.UpstreamConfig{
+			AccountUID: "acct-custom", ChannelUID: "ch-messages", Name: "old-claude",
+			ServiceType: "claude", AutoManaged: true, BaseURL: "https://example.com",
+			BaseURLs: []string{"https://example.com"}, APIKeys: []string{"sk-old"},
+			APIKeyConfigs: []config.APIKeyConfig{{Key: "sk-old", BaseURL: "https://example.com"}},
+		}},
+		{Kind: "responses", Upstream: config.UpstreamConfig{
+			AccountUID: "acct-custom", ChannelUID: "ch-responses", Name: "old-codex",
+			ServiceType: "responses", AutoManaged: true, BaseURL: "https://example.com",
+			BaseURLs: []string{"https://example.com"}, APIKeys: []string{"sk-old"},
+			APIKeyConfigs: []config.APIKeyConfig{{Key: "sk-old", BaseURL: "https://example.com"}},
+		}},
+	}
+	updates, status, err := planCustomManagedAccountUpdates("acct-custom", updateAccountRequest{
+		Name: "renamed", APIKeys: []string{"sk-old", "sk-new"},
+	}, channels)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("status=%d err=%v", status, err)
+	}
+	if len(updates) != 2 || updates[0].Name != "renamed-claude" || updates[1].Name != "renamed-codex" {
+		t.Fatalf("route names=%+v", updates)
+	}
+	for _, update := range updates {
+		if len(update.APIKeyConfig) != 2 || update.APIKeyConfig[1].BaseURL != "https://example.com" {
+			t.Fatalf("route credentials=%+v", update.APIKeyConfig)
+		}
+		if update.APIKeyConfig[1].CredentialUID == "" {
+			t.Fatalf("new credential missing stable uid: %+v", update.APIKeyConfig[1])
+		}
+	}
+}
+
 func TestProviderRouteNameAndPrimaryResult(t *testing.T) {
 	base := "mimo-test"
 	tests := []struct {

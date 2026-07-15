@@ -477,13 +477,15 @@ func applyAccountChannelChanges(cfg *Config, accountUID string, updates []Accoun
 	known := 0
 	total := 0
 	providerID := ""
+	providerKnown := false
 	providerMismatch := false
 	countKnown := func(channels []UpstreamConfig) {
 		for i := range channels {
 			if channels[i].AccountUID == accountUID {
 				total++
-				if providerID == "" {
+				if !providerKnown {
 					providerID = channels[i].ProviderID
+					providerKnown = true
 				} else if channels[i].ProviderID != providerID {
 					providerMismatch = true
 				}
@@ -504,8 +506,9 @@ func applyAccountChannelChanges(cfg *Config, accountUID string, updates []Accoun
 	}
 	for _, addition := range additions {
 		additionProvider := strings.TrimSpace(addition.Upstream.ProviderID)
-		if providerID == "" {
+		if !providerKnown {
 			providerID = additionProvider
+			providerKnown = true
 		} else if additionProvider != providerID {
 			return fmt.Errorf("账号 %s 的新增渠道 provider 不一致", accountUID)
 		}
@@ -578,8 +581,8 @@ func appendAccountChannelAddition(cfg *Config, accountUID string, addition Accou
 		return err
 	}
 	upstream := *addition.Upstream.Clone()
-	if upstream.AccountUID != accountUID || !upstream.AutoManaged || strings.TrimSpace(upstream.ProviderID) == "" {
-		return fmt.Errorf("新增渠道必须属于账号 %s 的官方自动托管 provider", accountUID)
+	if upstream.AccountUID != accountUID || !upstream.AutoManaged {
+		return fmt.Errorf("新增渠道必须属于自动托管账号 %s", accountUID)
 	}
 	if strings.TrimSpace(upstream.ChannelUID) == "" || strings.TrimSpace(upstream.Name) == "" {
 		return fmt.Errorf("新增 %s 渠道缺少 name 或 channelUID", addition.Kind)

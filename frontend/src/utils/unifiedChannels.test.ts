@@ -54,6 +54,23 @@ describe('buildUnifiedChannelsData account grouping', () => {
     expect(buildUnifiedChannelsData(data).channels).toHaveLength(2)
   })
 
+  it('按 accountUid 聚合自定义自动托管的全部成功协议', () => {
+    const custom = (name: string, index: number, serviceType: Channel['serviceType']): Channel =>
+      channel(name, 'acct-fastaitoken', index, ['sk-fastaitoken'], { providerId: '', autoManaged: true, serviceType })
+    const data: Record<LlmChannelKind, ChannelsResponse> = {
+      messages: response([custom('fastaitoken-com-test-claude', 0, 'claude')]),
+      chat: response([custom('fastaitoken-com-test-chat', 0, 'openai')]),
+      responses: response([custom('fastaitoken-com-test-codex', 0, 'responses')]),
+      gemini: response([]),
+    }
+
+    const result = buildUnifiedChannelsData(data)
+    expect(result.channels).toHaveLength(1)
+    expect(result.channels[0].name).toBe('fastaitoken-com-test')
+    expect(result.channels[0].protocolCapsules?.map(item => item.label)).toEqual(['CLAUDE', 'CHAT', 'CODEX'])
+    expect(result.channels[0].protocolRoutes?.map(item => item.kind)).toEqual(['messages', 'chat', 'responses'])
+  })
+
   it('协议标签只展示上游实际提供的 serviceType', () => {
     const data: Record<LlmChannelKind, ChannelsResponse> = {
       messages: response([channel('volcengine-claude', 'acct-volcengine', 0, ['ark-key'], {

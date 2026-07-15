@@ -4,6 +4,10 @@ vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({ apiKey: 'test-admin-key' })
 }))
 
+vi.mock('./api', () => ({
+  default: { discoverChannelConfig: vi.fn() }
+}))
+
 function providerTemplatesResponse(providers: unknown[]): Response {
   return {
     ok: true,
@@ -91,5 +95,40 @@ describe('smart routing diagnose', () => {
       'x-api-key': 'test-admin-key'
     })
     expect(JSON.parse(options.body as string)).toEqual(request)
+  })
+})
+
+describe('auto add route discovery', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  it('全量探测所有协议并保留各协议各自成功的模型', async () => {
+    const apiModule = await import('./api')
+    const discover = vi.mocked(apiModule.default.discoverChannelConfig)
+    discover.mockResolvedValue({
+      models: { source: 'models_endpoint', items: ['shared', 'messages-only', 'responses-only'], selected: {} },
+      protocols: [
+        { protocol: 'messages', success: true, successModels: ['shared', 'messages-only'] },
+        { protocol: 'responses', success: true, successModels: ['shared', 'responses-only'] },
+        { protocol: 'chat', success: true, successModels: ['shared'] },
+        { protocol: 'gemini', success: false, failedModels: ['shared'] }
+      ],
+      capabilities: {} as never,
+      recommendation: { channelKind: 'responses', serviceType: 'responses', modelMapping: {} }
+    })
+    const { discoverAutoAddRoutes } = await import('./autopilot-api')
+
+    await expect(discoverAutoAddRoutes('messages', ['https://example.com'], ['sk-test'])).resolves.toEqual({
+      primaryKind: 'responses',
+      routes: [
+        { channelKind: 'messages', supportedModels: ['shared', 'messages-only'] },
+        { channelKind: 'responses', supportedModels: ['shared', 'responses-only'] },
+        { channelKind: 'chat', supportedModels: ['shared'] }
+      ]
+    })
+    const request = discover.mock.calls[0][0]
+    expect(request).toMatchObject({ probeAllModels: true })
+    expect(request).not.toHaveProperty('channelKind')
   })
 })

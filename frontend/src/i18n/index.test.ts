@@ -124,13 +124,28 @@ describe('localized components', () => {
   })
 })
 
-describe('official provider naming constraints', () => {
-  it('官方 provider 添加与编辑均不暴露名称输入', () => {
+describe('channel naming constraints', () => {
+  it('所有新增渠道均自动命名，编辑时仅官方 provider 隐藏名称输入', () => {
     const quickAdd = readFileSync(resolve(__dirname, '../components/QuickAddChannelForm.vue'), 'utf8')
+    const addModal = readFileSync(resolve(__dirname, '../components/AddChannelModal.vue'), 'utf8')
     const basicInfo = readFileSync(resolve(__dirname, '../components/edit-channel/BasicInfoSection.vue'), 'utf8')
 
-    expect(quickAdd).toContain('v-if="!isProviderMode"\n      v-model="channelName"')
-    expect(basicInfo).toContain('<v-col v-if="!managedAccount"')
+    expect(quickAdd).not.toContain('v-model="channelName"')
+    expect(addModal).not.toContain('v-model="channelName"')
+    expect(basicInfo).toContain('<v-col v-if="!managedAccount || !providerName"')
     expect(basicInfo).not.toContain('channelEditor.basic.accountName')
+  })
+})
+
+describe('mandatory automatic channel discovery', () => {
+  it('标准与结构化添加均走自动探测，且不再提供自动托管开关', () => {
+    const addModal = readFileSync(resolve(__dirname, '../components/AddChannelModal.vue'), 'utf8')
+    const quickAdd = readFileSync(resolve(__dirname, '../components/QuickAddChannelForm.vue'), 'utf8')
+
+    expect(addModal).toContain('await discoverAutoAddRoutes(')
+    expect(addModal).toContain('await autoAddChannel(targetChannelType')
+    expect(quickAdd).toContain('recognizedBaseUrls[idx]')
+    expect(quickAdd).not.toContain('v-model="autoManaged"')
+    expect(quickAdd).not.toContain("t('autopilot.quickAdd.autoManagedHint')")
   })
 })

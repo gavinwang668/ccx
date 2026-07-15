@@ -119,28 +119,6 @@
                           {{ t('addChannel.count', { count: detectedApiKeys.length }) }}
                         </v-chip>
                       </div>
-
-                      <div
-                        class="d-flex align-center ga-3 pa-3 rounded-lg cursor-pointer placement-switch-card"
-                        @click="togglePlacement"
-                      >
-                        <v-icon color="primary" size="20">mdi-arrow-collapse-down</v-icon>
-                        <div class="flex-grow-1">
-                          <div class="text-body-2 font-weight-medium">
-                            {{ t('addChannel.newChannelPlacementLabel') }}
-                          </div>
-                        </div>
-                        <v-switch
-                          :model-value="getNewChannelPlacement() === 'bottom'"
-                          density="compact"
-                          hide-details
-                          readonly
-                          color="primary"
-                          inset
-                          class="placement-switch ma-0 pa-0"
-                          tabindex="-1"
-                        />
-                      </div>
                     </div>
                   </v-col>
                 </v-row>
@@ -157,6 +135,16 @@
               </div>
             </v-card-text>
           </v-card>
+
+          <v-alert
+            v-if="standardSubmitError"
+            color="error"
+            variant="tonal"
+            density="comfortable"
+            icon="mdi-alert-circle-outline"
+          >
+            {{ standardSubmitError }}
+          </v-alert>
         </div>
       </v-card-text>
 
@@ -169,8 +157,8 @@
         <v-btn
           color="primary"
           variant="elevated"
-          :disabled="quickAddMode ? !quickAddFormRef?.isFormValid : !isQuickFormValid"
-          :loading="quickAddMode ? quickAddFormRef?.submitting : false"
+          :disabled="quickAddMode ? !quickAddFormRef?.isFormValid : !isQuickFormValid || standardSubmitting"
+          :loading="quickAddMode ? quickAddFormRef?.submitting : standardSubmitting"
           prepend-icon="mdi-check"
           @click="handleSubmitByMode"
         >
@@ -183,16 +171,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, unref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTheme } from 'vuetify'
 import type { Channel } from '../services/api'
 import { buildExpectedRequestUrls } from '../utils/expectedRequestUrls'
-import { extractChannelNamePrefix } from '../utils/add-channel-modal-state'
 import { parseQuickInput as parseQuickInputUtil } from '../utils/quickInputParser'
+import { buildQuickAddChannelName } from '../utils/quickAddChannel'
 import { useI18n } from '../i18n'
 import { useAuthStore } from '../stores/auth'
-import { usePreferencesStore } from '../stores/preferences'
-import { preloadProviderTemplates } from '../services/autopilot-api'
+import {
+  autoAddChannel,
+  discoverAutoAddRoutes,
+  extractAutoAddErrorMessage,
+  preloadProviderTemplates
+} from '../services/autopilot-api'
 import QuickAddChannelForm from './QuickAddChannelForm.vue'
 
 type ServiceType = 'openai' | 'gemini' | 'claude' | 'responses' | 'copilot'
@@ -220,16 +212,16 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const theme = useTheme()
 const authStore = useAuthStore()
-const preferencesStore = usePreferencesStore()
-const getNewChannelPlacement = () => unref(preferencesStore.newChannelPlacement)
 
 const quickInput = ref('')
 const detectedBaseUrl = ref('')
 const detectedBaseUrls = ref<string[]>([])
 const detectedApiKeys = ref<string[]>([])
-// 标准模式仅自动识别类型；无法识别时按当前渠道页签使用默认类型。
+// 标准模式先做本地预览识别，提交时仍以真实协议探测结果为准。
 const quickServiceType = ref<ServiceType>(getDefaultServiceTypeValue())
 const randomSuffix = ref(generateRandomString(6))
+const standardSubmitting = ref(false)
+const standardSubmitError = ref('')
 
 // 快速添加模式
 const quickAddMode = ref(false)
@@ -278,11 +270,7 @@ const apiKeyStatusMessage = computed(() => {
 })
 
 const generatedChannelName = computed(() => {
-  if (!detectedBaseUrl.value) {
-    return `channel-${randomSuffix.value}`
-  }
-  const prefix = extractChannelNamePrefix(detectedBaseUrl.value)
-  return `${prefix}-${randomSuffix.value}`
+  return buildQuickAddChannelName(detectedBaseUrl.value, randomSuffix.value)
 })
 
 const isQuickFormValid = computed(() => {
@@ -310,6 +298,7 @@ function generateRandomString(length: number): string {
 }
 
 function parseQuickInput() {
+  standardSubmitError.value = ''
   const fallbackServiceType = getDefaultServiceTypeValue()
   const result = parseQuickInputUtil(quickInput.value, fallbackServiceType)
   detectedBaseUrl.value = result.detectedBaseUrl
@@ -334,37 +323,61 @@ function resetQuickState() {
   detectedApiKeys.value = []
   quickServiceType.value = getDefaultServiceTypeValue()
   randomSuffix.value = generateRandomString(6)
+  standardSubmitting.value = false
+  standardSubmitError.value = ''
 }
 
-function togglePlacement() {
-  preferencesStore.setNewChannelPlacement(getNewChannelPlacement() === 'bottom' ? 'top' : 'bottom')
-}
-
-function handleQuickSubmit() {
+async function handleQuickSubmit() {
   parseQuickInput()
-  if (!isQuickFormValid.value) return
+  if (!isQuickFormValid.value || standardSubmitting.value) return
 
-  const channel = {
-    name: generatedChannelName.value,
-    serviceType: props.channelType === 'images' || props.channelType === 'vectors' ? 'openai' : quickServiceType.value,
-    baseUrl: detectedBaseUrl.value,
-    baseUrls: detectedBaseUrls.value,
-    apiKeys: detectedApiKeys.value,
-    modelMapping: {}
+  // Copilot 在 OAuth 前没有可用于协议探测的凭据，保留原有创建后授权流程。
+  if (isCopilotQuickAdd.value) {
+    emit(
+      'save',
+      {
+        name: generatedChannelName.value,
+        serviceType: 'copilot',
+        baseUrl: detectedBaseUrl.value,
+        baseUrls: detectedBaseUrls.value,
+        apiKeys: detectedApiKeys.value,
+        modelMapping: {},
+        normalizeMetadataUserId: false
+      },
+      { isQuickAdd: true }
+    )
+    return
   }
 
-  if (props.channelType !== 'messages') {
-    Object.assign(channel, { normalizeMetadataUserId: false })
+  standardSubmitting.value = true
+  standardSubmitError.value = ''
+  try {
+    const routeDiscovery = await discoverAutoAddRoutes(props.channelType, detectedBaseUrls.value, detectedApiKeys.value)
+    if (!routeDiscovery) {
+      throw new Error(t('autopilot.quickAdd.discoveryFailed'))
+    }
+    const targetChannelType = routeDiscovery.primaryKind
+    const result = await autoAddChannel(targetChannelType, {
+      name: generatedChannelName.value,
+      baseUrls: detectedBaseUrls.value,
+      apiKeys: detectedApiKeys.value,
+      routes: routeDiscovery.routes
+    })
+    const currentChannel = result.channels?.find(channel => channel.channelKind === targetChannelType)
+    onQuickAddSuccess(currentChannel?.index ?? result.index)
+  } catch (err) {
+    standardSubmitError.value = extractAutoAddErrorMessage(err)
+    console.error('[StandardAdd-Submit] 自动添加渠道失败:', err)
+  } finally {
+    standardSubmitting.value = false
   }
-
-  emit('save', channel, { isQuickAdd: true })
 }
 
 function handleSubmitByMode() {
   if (quickAddMode.value) {
     quickAddFormRef.value?.handleSubmit()
   } else {
-    handleQuickSubmit()
+    void handleQuickSubmit()
   }
 }
 
@@ -464,23 +477,6 @@ onUnmounted(() => {
 
 .apikeys-card {
   border: 1px solid rgba(var(--v-theme-outline), 0.32);
-}
-.placement-switch-card {
-  border: 1px solid rgba(var(--v-theme-outline), 0.32);
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-.placement-switch-card:hover {
-  border-color: rgba(var(--v-theme-primary), 0.45);
-  background: rgba(var(--v-theme-primary), 0.04);
-}
-.placement-switch {
-  flex-shrink: 0;
-  pointer-events: none;
-}
-.placement-switch :deep(.v-selection-control) {
-  min-height: auto;
 }
 
 .shortcut-hint {

@@ -319,7 +319,9 @@ export const useChannelStore = defineStore('channel', () => {
       // 更新现有渠道
       if (options?.autoManaged && options.accountUid) {
         const original = options.originalChannel
-        if (original) {
+        if (original && !original.providerId) {
+          await api.updateManagedAccount(options.accountUid, { name: channel.name, apiKeys: channel.apiKeys })
+        } else if (original) {
           const originalKeys = new Set(original.apiKeys)
           const nextKeys = new Set(channel.apiKeys)
           const addApiKeys = channel.apiKeys.filter(key => !originalKeys.has(key))

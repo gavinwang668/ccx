@@ -14,7 +14,7 @@ import { useAppTheme } from './useTheme'
 import { useCapabilityTestManager } from './useCapabilityTestManager'
 import { useToasts } from './useToasts'
 import { streamTimeoutPresets as sharedStreamPresets } from '../utils/streamTimeoutPresets'
-import { isManagedProviderChannel } from '../utils/providerDisplay'
+import { isAutoManagedAccountChannel } from '../utils/providerDisplay'
 
 export function useAppController() {
 // 路由
@@ -145,7 +145,7 @@ export function useAppController() {
         {
           ...options,
           channelType: getChannelRouteKind(editingChannel),
-          autoManaged: isManagedProviderChannel(editingChannel),
+          autoManaged: isAutoManagedAccountChannel(editingChannel),
           accountUid: editingChannel?.accountUid,
           originalChannel: editingChannel ?? undefined,
         },
@@ -194,7 +194,7 @@ export function useAppController() {
     try {
       const channelId = typeof target === 'number' ? target : getChannelRouteIndex(target)
       const channelType = typeof target === 'number' ? channelStore.activeTab : getChannelRouteKind(target)
-      const accountUid = typeof target === 'number' || !isManagedProviderChannel(target) ? undefined : target.accountUid
+      const accountUid = typeof target === 'number' || !isAutoManagedAccountChannel(target) ? undefined : target.accountUid
       const result = await channelStore.deleteChannel(channelId, channelType, accountUid)
       showToast(result.message, 'success')
     } catch (error) {

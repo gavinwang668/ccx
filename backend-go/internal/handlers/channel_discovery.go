@@ -32,6 +32,7 @@ type ChannelDiscoveryRequest struct {
 	ModelMapping       map[string]string `json:"modelMapping"`
 	ReasoningMapping   map[string]string `json:"reasoningMapping"`
 	TargetClients      []string          `json:"targetClients"`
+	ProbeAllModels     bool              `json:"probeAllModels"`
 }
 
 type DiscoveryModelsFetchRequest struct {
@@ -161,7 +162,7 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 		}
 		models.Selected = selectDiscoveryModels(models.Items, globalCapabilities)
 
-		probeModels := discoveryProbeModels(models.Selected, models.Items)
+		probeModels := discoveryProtocolProbeModels(models, req.ProbeAllModels)
 		protocols := runDiscoveryProtocolProbes(c.Request.Context(), channel, probeModels, cfgManager)
 		successByProtocol := discoverySuccessModelsByProtocol(protocols)
 		recommendedKind := recommendDiscoveryChannelKind(req.ChannelKind, req.TargetClients, protocols)
@@ -1382,6 +1383,13 @@ func discoveryProbeModels(selected DiscoverySelectedModels, all []string) []stri
 		}
 	}
 	return uniqueDiscoveryModels(candidates)
+}
+
+func discoveryProtocolProbeModels(models DiscoveryModelsResult, probeAll bool) []string {
+	if probeAll && len(models.Items) > 0 {
+		return uniqueDiscoveryModels(models.Items)
+	}
+	return discoveryProbeModels(models.Selected, models.Items)
 }
 
 func runDiscoveryProtocolProbes(ctx context.Context, channel *config.UpstreamConfig, models []string, cfgManager *config.ConfigManager) []DiscoveryProtocolResult {

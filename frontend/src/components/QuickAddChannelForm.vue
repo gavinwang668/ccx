@@ -34,18 +34,6 @@
       {{ selectedProvider.description }}
     </v-alert>
 
-    <!-- 名称（仅自定义模式可选） -->
-    <v-text-field
-      v-if="!isProviderMode"
-      v-model="channelName"
-      :label="t('addChannel.channelName')"
-      :placeholder="t('autopilot.quickAdd.namePlaceholder')"
-      variant="outlined"
-      density="compact"
-      hide-details
-      prepend-inner-icon="mdi-tag"
-    />
-
     <!-- Base URL 输入（provider 模式下由后端按 key 前缀判定，隐藏） -->
     <div v-if="!isProviderMode">
       <div class="d-flex align-center justify-space-between mb-2">
@@ -59,17 +47,32 @@
         </v-btn>
       </div>
       <div class="d-flex flex-column ga-2">
-        <div v-for="(url, idx) in baseUrls" :key="'url-' + idx" class="d-flex align-center ga-2">
-          <v-text-field
-            v-model="baseUrls[idx]"
-            :placeholder="t('addChannel.baseUrl') + ' ' + (idx + 1)"
-            variant="outlined"
-            density="compact"
-            hide-details
-            class="flex-grow-1"
-            @input="validateForm"
-          />
-          <v-btn v-if="baseUrls.length > 1" size="small" icon variant="text" color="error" @click="removeBaseUrl(idx)">
+        <div v-for="(_, idx) in baseUrls" :key="'url-' + idx" class="d-flex align-start ga-2">
+          <div class="base-url-field">
+            <v-text-field
+              v-model="baseUrls[idx]"
+              :placeholder="t('addChannel.baseUrl') + ' ' + (idx + 1)"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+            <div
+              v-if="recognizedBaseUrls[idx]"
+              class="recognized-base-url d-flex align-start ga-1 mt-1 text-caption text-medium-emphasis"
+            >
+              <v-icon size="14" color="success" class="mt-1">mdi-arrow-right</v-icon>
+              <span>{{ t('autopilot.quickAdd.recognizedBaseUrl', { url: recognizedBaseUrls[idx] }) }}</span>
+            </div>
+          </div>
+          <v-btn
+            v-if="baseUrls.length > 1"
+            size="small"
+            icon
+            variant="text"
+            color="error"
+            class="mt-1"
+            @click="removeBaseUrl(idx)"
+          >
             <v-icon size="small">mdi-close</v-icon>
           </v-btn>
         </div>
@@ -98,7 +101,6 @@
             hide-details
             :type="showKeys[idx] ? 'text' : 'password'"
             class="flex-grow-1"
-            @input="validateForm"
           >
             <template #append-inner>
               <v-icon size="small" class="cursor-pointer" @click="toggleKeyVisibility(idx)">
@@ -112,30 +114,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 自动托管开关 -->
-    <v-card variant="outlined" class="auto-managed-card" rounded="lg">
-      <v-card-text class="pa-3">
-        <div class="d-flex align-center ga-3">
-          <v-checkbox
-            v-model="autoManaged"
-            color="primary"
-            density="compact"
-            hide-details
-            class="ma-0 pa-0 flex-shrink-0"
-          />
-          <div class="flex-grow-1">
-            <div class="text-body-2 font-weight-medium">
-              {{ t('autopilot.quickAdd.autoManaged') }}
-            </div>
-            <div class="text-caption text-medium-emphasis">
-              {{ t('autopilot.quickAdd.autoManagedHint') }}
-            </div>
-          </div>
-          <v-icon color="primary" size="24">mdi-auto-fix</v-icon>
-        </div>
-      </v-card-text>
-    </v-card>
 
     <!-- 提交错误（provider 模式 key 无效等） -->
     <v-alert v-if="submitError" color="error" variant="tonal" density="comfortable" icon="mdi-alert-circle-outline">
@@ -157,15 +135,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from '../i18n'
-import api from '../services/api'
-import { autoAddChannel, getProviderTemplates } from '../services/autopilot-api'
-import type { ProviderTemplate } from '../services/autopilot-api'
 import {
-  buildQuickAddChannelName,
-  defaultQuickAddServiceType,
-  normalizeDiscoveredChannelKind,
-  supportsQuickAddProtocolDiscovery
-} from '../utils/quickAddChannel'
+  autoAddChannel,
+  discoverAutoAddRoutes,
+  extractAutoAddErrorMessage,
+  getProviderTemplates
+} from '../services/autopilot-api'
+import type { ProviderTemplate } from '../services/autopilot-api'
+import { buildQuickAddChannelName, normalizeQuickAddBaseUrls, recognizeQuickAddBaseUrl } from '../utils/quickAddChannel'
 
 type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
@@ -183,11 +160,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 // ---- 表单状态 ----
-const channelName = ref('')
 const baseUrls = ref<string[]>([''])
 const apiKeys = ref<string[]>([''])
 const showKeys = ref<boolean[]>([false])
-const autoManaged = ref(true)
 const submitting = ref(false)
 const submitError = ref('')
 
@@ -212,13 +187,14 @@ const providerItems = computed(() => [
 const selectedProvider = computed(() => availableProviders.value.find(p => p.providerId === providerId.value))
 
 const isProviderMode = computed(() => providerId.value !== '')
+const recognizedBaseUrls = computed(() => baseUrls.value.map(url => recognizeQuickAddBaseUrl(url, props.channelType)))
+const normalizedBaseUrls = computed(() => normalizeQuickAddBaseUrls(baseUrls.value, props.channelType))
 
 const isFormValid = computed(() => {
   const hasKey = apiKeys.value.some(k => k.trim() !== '')
   // provider 模式：baseURL 由后端判定，只需 key
   if (isProviderMode.value) return hasKey
-  const hasUrl = baseUrls.value.some(u => u.trim() !== '')
-  return hasUrl && hasKey
+  return normalizedBaseUrls.value.length > 0 && hasKey
 })
 
 // ---- 方法 ----
@@ -270,12 +246,8 @@ function toggleKeyVisibility(idx: number) {
   showKeys.value[idx] = !showKeys.value[idx]
 }
 
-function validateForm() {
-  // 触发响应式更新
-}
-
 function getFilteredBaseUrls(): string[] {
-  return baseUrls.value.filter(u => u.trim() !== '')
+  return [...normalizedBaseUrls.value]
 }
 
 function getFilteredApiKeys(): string[] {
@@ -296,20 +268,12 @@ function getGeneratedName(): string {
   return buildQuickAddChannelName(filtered[0] || '', generateRandomSuffix())
 }
 
-async function discoverCustomChannelKind(baseUrls: string[], apiKeys: string[]): Promise<ChannelType> {
-  if (!supportsQuickAddProtocolDiscovery(props.channelType)) return props.channelType
-
-  // 不传 channelKind，让真实探测结果决定落入哪个协议渠道，而不是沿用当前页签。
-  const discovery = await api.discoverChannelConfig({
-    serviceType: defaultQuickAddServiceType(props.channelType),
-    baseUrls,
-    apiKey: apiKeys[0]
-  })
-  const discoveredKind = normalizeDiscoveredChannelKind(discovery.recommendation.channelKind)
-  if (!discoveredKind) {
+async function discoverCustomRoutes(baseUrls: string[], apiKeys: string[]) {
+  const discovery = await discoverAutoAddRoutes(props.channelType, baseUrls, apiKeys)
+  if (!discovery) {
     throw new Error(t('autopilot.quickAdd.discoveryFailed'))
   }
-  return discoveredKind
+  return discovery
 }
 
 async function handleSubmit() {
@@ -321,9 +285,8 @@ async function handleSubmit() {
   try {
     const filteredBaseUrls = getFilteredBaseUrls()
     const filteredApiKeys = getFilteredApiKeys()
-    const targetChannelType = isProviderMode.value
-      ? props.channelType
-      : await discoverCustomChannelKind(filteredBaseUrls, filteredApiKeys)
+    const routeDiscovery = isProviderMode.value ? null : await discoverCustomRoutes(filteredBaseUrls, filteredApiKeys)
+    const targetChannelType = routeDiscovery?.primaryKind ?? props.channelType
     const result = await autoAddChannel(
       targetChannelType,
       isProviderMode.value
@@ -332,9 +295,10 @@ async function handleSubmit() {
             apiKeys: filteredApiKeys
           }
         : {
-            name: channelName.value.trim() || getGeneratedName(),
+            name: getGeneratedName(),
             baseUrls: filteredBaseUrls,
-            apiKeys: filteredApiKeys
+            apiKeys: filteredApiKeys,
+            routes: routeDiscovery?.routes
           }
     )
 
@@ -345,34 +309,16 @@ async function handleSubmit() {
   } catch (err) {
     submitting.value = false
     // provider 模式下后端会对无效 key 返回 400（含明确原因），提取给用户
-    submitError.value = extractErrorMessage(err)
+    submitError.value = extractAutoAddErrorMessage(err)
     console.error('[QuickAdd-Submit] 自动添加渠道失败:', err)
   }
 }
 
-// 从 auto-add 抛出的 Error 中提取后端返回的错误正文
-function extractErrorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
-  // autopilot-api 抛出格式：`auto-add failed (400): {"error":"..."}`
-  const jsonStart = raw.indexOf('{')
-  if (jsonStart >= 0) {
-    try {
-      const parsed = JSON.parse(raw.slice(jsonStart))
-      if (parsed?.error) return String(parsed.error)
-    } catch {
-      // 非 JSON 正文，回退到原始消息
-    }
-  }
-  return raw
-}
-
 function resetForm() {
   providerId.value = ''
-  channelName.value = ''
   baseUrls.value = ['']
   apiKeys.value = ['']
   showKeys.value = [false]
-  autoManaged.value = true
   submitting.value = false
   submitError.value = ''
 }
@@ -396,9 +342,13 @@ defineExpose({ handleSubmit, resetForm, isFormValid, submitting })
   max-width: 260px;
 }
 
-.auto-managed-card {
-  border-color: rgba(var(--v-theme-primary), 0.3);
-  background: rgba(var(--v-theme-primary), 0.03);
+.base-url-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.recognized-base-url {
+  overflow-wrap: anywhere;
 }
 
 .discovery-card {

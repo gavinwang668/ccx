@@ -67,20 +67,21 @@ const apiKeyFingerprint = (channel: Channel): string => {
 }
 
 const logicalGroupKey = (kind: LlmChannelKind, channel: Channel): { key: string; name: string } => {
-  const name = channel.autoManaged && channel.providerId
+  const accountManaged = !!channel.accountUid && (!!channel.autoManaged || !!channel.providerId)
+  const name = accountManaged || (channel.autoManaged && channel.providerId)
     ? stripRouteSuffix(channel.name, kind)
     : channel.name
 
-  if (!channel.autoManaged || !channel.providerId) {
+  if (accountManaged) {
     return {
-      key: `${kind}:${channel.index}:${channel.channelUid || channel.name}`,
+      key: `account:${channel.accountUid}`,
       name,
     }
   }
 
-  if (channel.accountUid) {
+  if (!channel.autoManaged || !channel.providerId) {
     return {
-      key: `account:${channel.accountUid}`,
+      key: `${kind}:${channel.index}:${channel.channelUid || channel.name}`,
       name,
     }
   }

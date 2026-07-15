@@ -168,6 +168,27 @@ func TestRecommendDiscoveryChannelKindFallsBackWithoutExplicitProtocol(t *testin
 	}
 }
 
+func TestDiscoveryProtocolProbeModelsCanCoverEveryDiscoveredModel(t *testing.T) {
+	models := DiscoveryModelsResult{
+		Items:    []string{"model-a", "model-b", "model-c", "model-d", "model-e", "model-f", "model-g"},
+		Selected: DiscoverySelectedModels{Strong: "model-g", Primary: "model-a", Fast: "model-b"},
+	}
+	got := discoveryProtocolProbeModels(models, true)
+	if len(got) != len(models.Items) {
+		t.Fatalf("全量探测模型数=%d, want %d: %v", len(got), len(models.Items), got)
+	}
+	for i, model := range models.Items {
+		if got[i] != model {
+			t.Fatalf("全量探测顺序[%d]=%q, want %q", i, got[i], model)
+		}
+	}
+
+	limited := discoveryProtocolProbeModels(models, false)
+	if len(limited) >= len(models.Items) {
+		t.Fatalf("普通发现仍应使用代表模型，got %v", limited)
+	}
+}
+
 func TestSelectDiscoveryModelsPrefersToolCapableModels(t *testing.T) {
 	global := map[string]config.UpstreamModelCapability{
 		"plain-main": {

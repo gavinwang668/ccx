@@ -13,9 +13,11 @@
         :subtitle-classes="subtitleClasses"
         :edit-title="t('addChannel.editTitle')"
         :create-title="t('addChannel.createTitle')"
-        :edit-subtitle="isAutoManagedChannel
+        :edit-subtitle="isManagedProvider
           ? t('channelEditor.managed.editSubtitle', { provider: managedProviderName })
-          : t('addChannel.editSubtitle')"
+          : isAutoManagedChannel
+            ? t('channelEditor.managed.customEditSubtitle')
+            : t('addChannel.editSubtitle')"
         :create-subtitle="t('addChannel.quickSubtitle')"
         :test-capability-label="t('addChannel.testCapability')"
         :vision-tooltip="form.noVision ? t('channelCard.noVision') : t('channelCard.hasVision')"
@@ -431,7 +433,7 @@ import AdvancedOptionsSection from './edit-channel/AdvancedOptionsSection.vue'
 import TransportConfigGroup from './edit-channel/TransportConfigGroup.vue'
 import RateLimitGroup from './edit-channel/RateLimitGroup.vue'
 import { useEditChannelModal, type EditChannelModalEmits, type EditChannelModalProps } from '../composables/useEditChannelModal'
-import { providerDisplayName } from '../utils/providerDisplay'
+import { isManagedProviderChannel, providerDisplayName } from '../utils/providerDisplay'
 
 const props = withDefaults(defineProps<EditChannelModalProps>(), {
   channelType: 'messages',
@@ -439,6 +441,7 @@ const props = withDefaults(defineProps<EditChannelModalProps>(), {
 
 const emit = defineEmits<EditChannelModalEmits>()
 const managedProviderName = computed(() => providerDisplayName(props.channel?.providerId))
+const isManagedProvider = computed(() => isManagedProviderChannel(props.channel))
 
 const {
   formRef,

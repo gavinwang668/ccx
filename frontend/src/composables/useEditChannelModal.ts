@@ -36,7 +36,7 @@ import { useSupportedModelFilters } from './useSupportedModelFilters'
 import { useEditChannelOptions } from '../utils/editChannelOptions'
 import { isValidUrl, normalizeModelCapabilities } from '../utils/editChannelHelpers'
 import { createHandleTestCapability } from '../utils/editChannelPayload'
-import { isManagedProviderChannel } from '../utils/providerDisplay'
+import { isAutoManagedAccountChannel } from '../utils/providerDisplay'
 
 export interface EditChannelModalProps {
   show: boolean
@@ -118,7 +118,7 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
   } = useEditChannelSectionNav(t)
 
   const { isAnySelectMenuOpen, suppressDialogEscapeUntil, onMenuUpdate } = useDialogMenuWorkaround()
-  const isAutoManagedChannel = computed(() => isManagedProviderChannel(props.channel))
+  const isAutoManagedChannel = computed(() => isAutoManagedAccountChannel(props.channel))
   const sections = computed(() => {
     if (!isAutoManagedChannel.value) return allSections
     return allSections.filter(section => section.id === 'basic' || section.id === 'auth')

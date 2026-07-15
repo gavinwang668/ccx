@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildQuickAddChannelName,
   defaultQuickAddServiceType,
+  normalizeQuickAddBaseUrls,
   normalizeDiscoveredChannelKind,
+  recognizeQuickAddBaseUrl,
   supportsQuickAddProtocolDiscovery
 } from './quickAddChannel'
 
@@ -22,6 +24,19 @@ describe('buildQuickAddChannelName', () => {
 })
 
 describe('quick add protocol discovery', () => {
+  it('与标准模式一致地清理后台路径和协议端点', () => {
+    expect(recognizeQuickAddBaseUrl('https://www.fastaitoken.com/keys', 'messages')).toBe('https://www.fastaitoken.com')
+    expect(recognizeQuickAddBaseUrl('https://relay.example.com/v1/responses', 'messages')).toBe(
+      'https://relay.example.com'
+    )
+  })
+
+  it('规范化并去重多个 Base URL', () => {
+    expect(
+      normalizeQuickAddBaseUrls(['https://api.example.com/keys', 'https://api.example.com', 'not-a-url'], 'responses')
+    ).toEqual(['https://api.example.com'])
+  })
+
   it('仅对四类 LLM 协议执行发现', () => {
     expect(supportsQuickAddProtocolDiscovery('messages')).toBe(true)
     expect(supportsQuickAddProtocolDiscovery('responses')).toBe(true)

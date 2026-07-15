@@ -22,13 +22,20 @@ import (
 //
 // 两种模式：
 //   - provider 模板模式：带 ProviderID + APIKeys，系统自动判别 baseURL（按 key 前缀探测验证），无需填 BaseURLs
-//   - 自定义模式：带 BaseURLs + APIKeys，保持原有行为
+//   - 自定义模式：带 BaseURLs + APIKeys；可通过 Routes 原子创建探测成功的多协议路由
 type AutoAddRequest struct {
-	Name            string   `json:"name,omitempty"`
-	ProviderID      string   `json:"providerId,omitempty"`
-	BaseURLs        []string `json:"baseUrls"`
-	APIKeys         []string `json:"apiKeys"`
-	SubscriptionUID string   `json:"subscriptionUid,omitempty"`
+	Name            string                `json:"name,omitempty"`
+	ProviderID      string                `json:"providerId,omitempty"`
+	BaseURLs        []string              `json:"baseUrls"`
+	APIKeys         []string              `json:"apiKeys"`
+	Routes          []AutoAddRouteRequest `json:"routes,omitempty"`
+	SubscriptionUID string                `json:"subscriptionUid,omitempty"`
+}
+
+// AutoAddRouteRequest 描述自定义渠道探测成功的一条原生协议路由。
+type AutoAddRouteRequest struct {
+	ChannelKind     string   `json:"channelKind"`
+	SupportedModels []string `json:"supportedModels,omitempty"`
 }
 
 // AutoAddResponse POST /:kind/channels/auto-add 响应体。
@@ -654,10 +661,16 @@ func applyManagedAccountUpdate(ctx context.Context, deps *AutoManagedDeps, accou
 	}
 	providerID := channels[0].Upstream.ProviderID
 	tmpl, ok := config.GetProviderTemplate(providerID)
-	if !ok || providerID == "" {
-		return updateAccountResponse{}, http.StatusBadRequest, fmt.Errorf("仅 provider 自动托管账号支持账号级更新")
+	var updates []config.AccountChannelUpdate
+	var status int
+	var err error
+	if ok && providerID != "" {
+		updates, status, err = planManagedAccountUpdates(ctx, accountUID, req, channels, tmpl, len(channels))
+	} else if providerID == "" {
+		updates, status, err = planCustomManagedAccountUpdates(accountUID, req, channels)
+	} else {
+		return updateAccountResponse{}, http.StatusBadRequest, fmt.Errorf("provider %s 模板不存在", providerID)
 	}
-	updates, status, err := planManagedAccountUpdates(ctx, accountUID, req, channels, tmpl, len(channels))
 	if err != nil {
 		return updateAccountResponse{}, status, err
 	}
@@ -671,6 +684,59 @@ func applyManagedAccountUpdate(ctx context.Context, deps *AutoManagedDeps, accou
 		}
 	}
 	return updateAccountResponse{AccountUID: accountUID, KeyCount: len(req.APIKeys), ChannelCount: len(channels), DiscoveryStarted: started}, http.StatusOK, nil
+}
+
+func planCustomManagedAccountUpdates(
+	accountUID string,
+	req updateAccountRequest,
+	channels []config.AccountChannel,
+) ([]config.AccountChannelUpdate, int, error) {
+	if len(channels) == 0 {
+		return nil, http.StatusNotFound, fmt.Errorf("账号不存在")
+	}
+	req.APIKeys = uniqueNonEmptyStrings(req.APIKeys)
+	if len(req.APIKeys) == 0 {
+		return nil, http.StatusBadRequest, fmt.Errorf("apiKeys 不能为空")
+	}
+	baseName := strings.TrimSpace(req.Name)
+	if baseName == "" {
+		baseName = strings.TrimSuffix(channels[0].Upstream.Name, accountRouteSuffix(channels[0].Kind))
+	}
+	multiRoute := len(channels) > 1
+	updates := make([]config.AccountChannelUpdate, 0, len(channels))
+	for _, accountChannel := range channels {
+		channel := accountChannel.Upstream
+		if !channel.AutoManaged || channel.ProviderID != "" {
+			return nil, http.StatusConflict, fmt.Errorf("账号包含非自定义自动托管渠道")
+		}
+		existing := make(map[string]config.APIKeyConfig, len(channel.APIKeyConfigs))
+		for _, keyConfig := range channel.APIKeyConfigs {
+			existing[keyConfig.Key] = keyConfig
+		}
+		baseURLs := channel.GetAllBaseURLs()
+		configs := make([]config.APIKeyConfig, 0, len(req.APIKeys))
+		for _, key := range req.APIKeys {
+			keyConfig, exists := existing[key]
+			if !exists {
+				keyConfig = config.APIKeyConfig{Key: key}
+				if len(baseURLs) > 0 {
+					keyConfig.BaseURL = baseURLs[0]
+				}
+			}
+			if keyConfig.CredentialUID == "" {
+				keyConfig.CredentialUID = config.GenerateCredentialUID(accountUID, key)
+			}
+			configs = append(configs, keyConfig)
+		}
+		updates = append(updates, config.AccountChannelUpdate{
+			ChannelUID:   channel.ChannelUID,
+			Name:         customAutoAddRouteName(baseName, accountChannel.Kind, multiRoute),
+			APIKeys:      append([]string(nil), req.APIKeys...),
+			APIKeyConfig: configs,
+			BaseURLs:     append([]string(nil), baseURLs...),
+		})
+	}
+	return updates, http.StatusOK, nil
 }
 
 func planManagedAccountUpdates(
@@ -991,63 +1057,119 @@ func handleAutoAdd(deps *AutoManagedDeps) gin.HandlerFunc {
 			return
 		}
 
-		// 推导 serviceType
-		serviceType := kindToDefaultServiceType(kind)
-		name := req.Name
-		if name == "" {
-			name = fmt.Sprintf("auto-%s-%d", kind, time.Now().UnixMilli()%100000)
-		}
+		handleCustomAutoAdd(c, deps, kind, req)
+	}
+}
 
-		// 构建 UpstreamConfig
-		now := time.Now()
-		upstream := config.UpstreamConfig{
-			Name:          name,
-			AccountUID:    config.GenerateAccountUID(),
-			ChannelUID:    config.GenerateChannelUID(), // 预分配 channelUID，避免竞态
-			ServiceType:   serviceType,
-			Status:        "active",
-			AutoManaged:   true,
-			AutoManagedAt: &now,
-		}
+func handleCustomAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind string, req AutoAddRequest) {
+	routes, err := normalizeCustomAutoAddRoutes(requestKind, req.Routes)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	baseURLs := uniqueNonEmptyStrings(req.BaseURLs)
+	if len(baseURLs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "baseUrls 不能为空"})
+		return
+	}
+	baseName := strings.TrimSpace(req.Name)
+	if baseName == "" {
+		baseName = fmt.Sprintf("auto-%s-%d", requestKind, time.Now().UnixMilli()%100000)
+	}
 
-		// 自定义模式：保持原有行为
-		upstream.BaseURL = req.BaseURLs[0]
-		upstream.BaseURLs = req.BaseURLs
-		upstream.APIKeys = req.APIKeys
-
-		// 调用对应类型的 Add 方法
-		if err := addUpstreamByKind(deps.CfgManager, kind, upstream); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("创建渠道失败: %v", err)})
+	cfg := deps.CfgManager.GetConfig()
+	multiRoute := len(routes) > 1
+	for _, route := range routes {
+		name := customAutoAddRouteName(baseName, route.ChannelKind, multiRoute)
+		if channelNameExists(getChannelSlice(cfg, route.ChannelKind), name) {
+			c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("渠道名称 '%s' 已存在", name)})
 			return
 		}
+	}
 
-		// 获取创建后的 channelUid 和 index
-		cfg := deps.CfgManager.GetConfig()
-		channels := getChannelSlice(cfg, kind)
-		index := findChannelIndexByUID(channels, upstream.ChannelUID)
-		channelUID := upstream.ChannelUID
+	now := time.Now()
+	accountUID := config.GenerateAccountUID()
+	additions := make([]config.AccountChannelAddition, 0, len(routes))
+	for _, route := range routes {
+		upstream := config.UpstreamConfig{
+			Name:            customAutoAddRouteName(baseName, route.ChannelKind, multiRoute),
+			AccountUID:      accountUID,
+			ChannelUID:      config.GenerateChannelUID(),
+			ServiceType:     kindToDefaultServiceType(route.ChannelKind),
+			Status:          "active",
+			AutoManaged:     true,
+			AutoManagedAt:   &now,
+			BaseURL:         baseURLs[0],
+			BaseURLs:        append([]string(nil), baseURLs...),
+			APIKeys:         append([]string(nil), req.APIKeys...),
+			SupportedModels: append([]string(nil), route.SupportedModels...),
+		}
+		additions = append(additions, config.AccountChannelAddition{Kind: route.ChannelKind, Upstream: upstream})
+	}
+	if err := deps.CfgManager.ApplyAccountChannelChanges(accountUID, nil, additions); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("创建渠道失败: %v", err)})
+		return
+	}
 
-		// 异步触发发现（best-effort，不影响返回）
-		discoveryStarted := triggerDiscoveryForChannel(deps, kind, channelUID)
-
-		log.Printf("[AutoManaged-Add] 创建自动托管渠道: kind=%s name=%s uid=%s", kind, name, channelUID)
-
-		c.JSON(http.StatusCreated, AutoAddResponse{
-			AccountUID:       upstream.AccountUID,
-			ChannelUID:       channelUID,
+	cfg = deps.CfgManager.GetConfig()
+	results := make([]AutoAddChannelResult, 0, len(additions))
+	for _, addition := range additions {
+		upstream := addition.Upstream
+		index := findChannelIndexByUID(getChannelSlice(cfg, addition.Kind), upstream.ChannelUID)
+		discoveryStarted := triggerDiscoveryForChannel(deps, addition.Kind, upstream.ChannelUID)
+		results = append(results, AutoAddChannelResult{
+			AccountUID:       accountUID,
+			ChannelKind:      addition.Kind,
+			ChannelUID:       upstream.ChannelUID,
 			Index:            index,
+			Name:             upstream.Name,
+			ServiceType:      upstream.ServiceType,
 			DiscoveryStarted: discoveryStarted,
-			Channels: []AutoAddChannelResult{{
-				AccountUID:       upstream.AccountUID,
-				ChannelKind:      kind,
-				ChannelUID:       channelUID,
-				Index:            index,
-				Name:             upstream.Name,
-				ServiceType:      upstream.ServiceType,
-				DiscoveryStarted: discoveryStarted,
-			}},
+		})
+		log.Printf("[AutoManaged-Add] 创建自定义自动托管路由: kind=%s serviceType=%s models=%d name=%s uid=%s",
+			addition.Kind, upstream.ServiceType, len(upstream.SupportedModels), upstream.Name, upstream.ChannelUID)
+	}
+	primary := primaryAutoAddResult(results, requestKind)
+	c.JSON(http.StatusCreated, AutoAddResponse{
+		AccountUID: accountUID, ChannelUID: primary.ChannelUID, Index: primary.Index,
+		DiscoveryStarted: primary.DiscoveryStarted, Channels: results,
+	})
+}
+
+func normalizeCustomAutoAddRoutes(requestKind string, requested []AutoAddRouteRequest) ([]AutoAddRouteRequest, error) {
+	if len(requested) == 0 {
+		return []AutoAddRouteRequest{{ChannelKind: requestKind}}, nil
+	}
+	seen := make(map[string]bool, len(requested))
+	routes := make([]AutoAddRouteRequest, 0, len(requested))
+	for _, route := range requested {
+		kind := strings.TrimSpace(route.ChannelKind)
+		if !validChannelKinds[kind] {
+			return nil, fmt.Errorf("不支持的渠道类型: %s", kind)
+		}
+		if len(requested) > 1 && (kind == "images" || kind == "vectors") {
+			return nil, fmt.Errorf("%s 渠道不支持多协议自动添加", kind)
+		}
+		if seen[kind] {
+			continue
+		}
+		seen[kind] = true
+		routes = append(routes, AutoAddRouteRequest{
+			ChannelKind:     kind,
+			SupportedModels: uniqueNonEmptyStrings(route.SupportedModels),
 		})
 	}
+	if len(routes) == 0 {
+		return nil, fmt.Errorf("routes 不能为空")
+	}
+	return routes, nil
+}
+
+func customAutoAddRouteName(baseName, kind string, multiRoute bool) string {
+	if !multiRoute {
+		return baseName
+	}
+	return baseName + accountRouteSuffix(kind)
 }
 
 func handleProviderAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind string, req AutoAddRequest) {
@@ -1421,25 +1543,6 @@ func missingProviderAccountRoutes(tmpl *config.ProviderTemplate, existing []conf
 		}
 	}
 	return missing
-}
-
-func addUpstreamByKind(cfgManager *config.ConfigManager, kind string, upstream config.UpstreamConfig) error {
-	switch kind {
-	case "messages":
-		return cfgManager.AddUpstream(upstream)
-	case "chat":
-		return cfgManager.AddChatUpstream(upstream)
-	case "responses":
-		return cfgManager.AddResponsesUpstream(upstream)
-	case "gemini":
-		return cfgManager.AddGeminiUpstream(upstream)
-	case "images":
-		return cfgManager.AddImagesUpstream(upstream)
-	case "vectors":
-		return cfgManager.AddVectorsUpstream(upstream)
-	default:
-		return fmt.Errorf("不支持的渠道类型: %s", kind)
-	}
 }
 
 func providerRouteName(baseName string, route config.ProviderRoute, multiRoute bool) string {

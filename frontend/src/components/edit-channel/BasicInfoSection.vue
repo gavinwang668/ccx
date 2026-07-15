@@ -15,7 +15,7 @@
 
     <v-row>
       <!-- 渠道名称 -->
-      <v-col v-if="!managedAccount" cols="12" :sm="hideServiceType ? 12 : 8">
+      <v-col v-if="!managedAccount || !providerName" cols="12" :sm="hideServiceType ? 12 : 8">
         <v-text-field
           :model-value="form.name"
           :label="t('channelEditor.basic.name.label')"

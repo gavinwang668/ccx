@@ -24,3 +24,7 @@ export const providerDisplayName = (providerId?: string): string => {
 export const isManagedProviderChannel = (channel?: Channel | null): boolean => {
   return !!channel?.providerId && !!channel.accountUid
 }
+
+export const isAutoManagedAccountChannel = (channel?: Channel | null): boolean => {
+  return !!channel?.accountUid && (!!channel.autoManaged || !!channel.providerId)
+}

@@ -1,4 +1,5 @@
 import type { Channel, ChannelDiscoveryKind, ChannelKind } from '@/services/api-types'
+import { parseQuickInput } from './quickInputParser'
 
 const DISCOVERABLE_CHANNEL_KINDS = new Set<ChannelDiscoveryKind>(['messages', 'chat', 'responses', 'gemini'])
 
@@ -26,6 +27,14 @@ export function supportsQuickAddProtocolDiscovery(kind: ChannelKind): kind is Ch
 
 export function defaultQuickAddServiceType(kind: ChannelKind): Channel['serviceType'] {
   return DEFAULT_SERVICE_TYPES[kind]
+}
+
+export function recognizeQuickAddBaseUrl(rawUrl: string, kind: ChannelKind): string {
+  return parseQuickInput(rawUrl, defaultQuickAddServiceType(kind)).detectedBaseUrl
+}
+
+export function normalizeQuickAddBaseUrls(rawUrls: string[], kind: ChannelKind): string[] {
+  return parseQuickInput(rawUrls.join('\n'), defaultQuickAddServiceType(kind)).detectedBaseUrls
 }
 
 export function normalizeDiscoveredChannelKind(kind: string): ChannelDiscoveryKind | null {

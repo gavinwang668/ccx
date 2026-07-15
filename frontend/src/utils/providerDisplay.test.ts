@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isManagedProviderChannel, providerDisplayName } from './providerDisplay'
+import { isAutoManagedAccountChannel, isManagedProviderChannel, providerDisplayName } from './providerDisplay'
 
 describe('providerDisplayName', () => {
   it('保留 provider 品牌的标准大小写', () => {
@@ -17,5 +17,12 @@ describe('providerDisplayName', () => {
     expect(isManagedProviderChannel({ providerId: 'mimo', accountUid: 'acct-1' } as never)).toBe(true)
     expect(isManagedProviderChannel({ autoManaged: true } as never)).toBe(false)
     expect(isManagedProviderChannel({ providerId: 'mimo' } as never)).toBe(false)
+  })
+
+  it('通过 autoManaged 和 accountUid 识别自定义自动托管账号', () => {
+    expect(isAutoManagedAccountChannel({ autoManaged: true, accountUid: 'acct-1' } as never)).toBe(true)
+    expect(isAutoManagedAccountChannel({ providerId: 'mimo', accountUid: 'acct-1' } as never)).toBe(true)
+    expect(isAutoManagedAccountChannel({ autoManaged: true } as never)).toBe(false)
+    expect(isAutoManagedAccountChannel({ accountUid: 'acct-1' } as never)).toBe(false)
   })
 })

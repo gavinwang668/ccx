@@ -1,5 +1,12 @@
 import { useAuthStore } from '@/stores/auth'
+import {
+  defaultQuickAddServiceType,
+  normalizeDiscoveredChannelKind,
+  supportsQuickAddProtocolDiscovery
+} from '@/utils/quickAddChannel'
+import api from './api'
 import { API_BASE } from './api-helpers'
+import type { ChannelKind } from './api-types'
 
 // ─── 类型定义 ───
 
@@ -10,7 +17,18 @@ export interface AutoAddChannelRequest {
   providerId?: string
   baseUrls?: string[]
   apiKeys: string[]
+  routes?: AutoAddRouteRequest[]
   subscriptionUid?: string
+}
+
+export interface AutoAddRouteRequest {
+  channelKind: ChannelKind
+  supportedModels?: string[]
+}
+
+export interface AutoAddRouteDiscovery {
+  primaryKind: ChannelKind
+  routes: AutoAddRouteRequest[]
 }
 
 /** Provider 模板 key 前缀规则 */
@@ -51,6 +69,7 @@ export interface ProviderTemplate {
 
 /** 自动添加创建出的单条渠道 */
 export interface AutoAddChannelResult {
+  accountUid: string
   channelKind: string
   channelUid: string
   index: number
@@ -61,6 +80,7 @@ export interface AutoAddChannelResult {
 
 /** 自动添加渠道响应 */
 export interface AutoAddChannelResponse {
+  accountUid: string
   channelUid: string
   index: number
   discoveryStarted: boolean
@@ -91,13 +111,7 @@ export interface ChannelAutoStatusResponse {
   discovery?: AutoDiscoveryStatus
 }
 
-export type SmartRoutingDiagnoseChannelKind =
-  | 'messages'
-  | 'chat'
-  | 'responses'
-  | 'gemini'
-  | 'images'
-  | 'vectors'
+export type SmartRoutingDiagnoseChannelKind = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 'vectors'
 
 /** 智能路由 dry-run 请求。 */
 export interface SmartRoutingDiagnoseRequest {
@@ -203,6 +217,60 @@ export async function autoAddChannel(kind: string, request: AutoAddChannelReques
   }
 
   return response.json()
+}
+
+/** 全量探测自定义上游，并按协议保留各自实际成功的模型。 */
+export async function discoverAutoAddRoutes(
+  kind: ChannelKind,
+  baseUrls: string[],
+  apiKeys: string[]
+): Promise<AutoAddRouteDiscovery | null> {
+  if (!supportsQuickAddProtocolDiscovery(kind)) {
+    return { primaryKind: kind, routes: [{ channelKind: kind }] }
+  }
+
+  const apiKey = apiKeys.find(key => key.trim() !== '')
+  if (baseUrls.length === 0 || !apiKey) return null
+
+  // 不传 channelKind，让真实探测结果决定协议，而不是沿用打开弹窗时所在的页签。
+  const discovery = await api.discoverChannelConfig({
+    serviceType: defaultQuickAddServiceType(kind),
+    baseUrls,
+    apiKey,
+    probeAllModels: true
+  })
+  const routes: AutoAddRouteRequest[] = []
+  for (const protocol of discovery.protocols) {
+    const channelKind = normalizeDiscoveredChannelKind(protocol.protocol)
+    if (!channelKind || !protocol.success) continue
+    const supportedModels = Array.from(
+      new Set((protocol.successModels ?? []).map(model => model.trim()).filter(Boolean))
+    )
+    if (supportedModels.length === 0) continue
+    routes.push({ channelKind, supportedModels })
+  }
+  if (routes.length === 0) return null
+
+  const recommendedKind = normalizeDiscoveredChannelKind(discovery.recommendation.channelKind)
+  const primaryKind =
+    recommendedKind && routes.some(route => route.channelKind === recommendedKind)
+      ? recommendedKind
+      : routes[0].channelKind
+  return { primaryKind, routes }
+}
+
+export function extractAutoAddErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  const jsonStart = raw.indexOf('{')
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart))
+      if (parsed?.error) return String(parsed.error)
+    } catch {
+      // 非 JSON 正文，回退到原始消息。
+    }
+  }
+  return raw
 }
 
 /**
