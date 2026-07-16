@@ -157,8 +157,8 @@ func (r *ModelResolver) ResolveModelAnyEndpoint(
 	return r.resolveModelAnyEndpoint(requestModel, channelUID, channelKind, CapabilityFloor{})
 }
 
-// ResolveModelAnyEndpointWithFloor 在渠道所有 endpoint 中预览满足完整能力下界的映射。
-// 仅供 dry-run/shadow 诊断使用；它不修改配置，也不把候选注入真实 scheduler。
+// ResolveModelAnyEndpointWithFloor 在渠道所有 endpoint 中查找满足完整能力下界的映射。
+// 该方法只读且不修改配置，可供 dry-run 诊断和 scheduler 首次候选过滤复用。
 func (r *ModelResolver) ResolveModelAnyEndpointWithFloor(
 	requestModel string,
 	channelUID string,

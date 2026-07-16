@@ -735,7 +735,17 @@ func main() {
 	// Phase 3B-2: ModelSupportResolver 注入（无条件注册，安全门控在 ResolveModelSupport 内部）。
 	// 调度器候选筛选时调用，AutoManaged 渠道 + 三条件门控通过才走 ModelResolver，否则回退 ExplainModelSupport。
 	if autopilotManager != nil {
-		channelScheduler.SetModelSupportResolverProvider(func(kind scheduler.ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+		channelScheduler.SetModelSupportResolverProvider(func(ctx context.Context, kind scheduler.ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+			if profile, ok := autopilot.RequestProfileFromContext(ctx); ok {
+				profile.Model = model
+				profile.ChannelKind = string(kind)
+				return autopilotManager.ResolveModelSupportWithFloor(
+					string(kind),
+					upstream,
+					model,
+					autopilot.BuildCapabilityFloorFromRequestProfile(&profile),
+				)
+			}
 			return autopilotManager.ResolveModelSupport(string(kind), upstream, model)
 		})
 		log.Printf("[Autopilot-Init] ModelSupportResolver 已注册到调度器")

@@ -137,6 +137,7 @@ func (s *ChannelScheduler) SetCandidateFilterProvider(provider CandidateFilterPr
 }
 
 // ModelSupportResolverFunc 自动解析模型是否被某渠道支持。
+// ctx 携带请求级画像，允许解析器在首次选渠前应用与 endpoint policy 一致的能力下界。
 // 返回值:
 //   - supported: 渠道是否支持该模型（由解析器裁决）
 //   - actualModel: 解析后的实际模型名（为空时调用方使用原始 model）
@@ -145,7 +146,7 @@ func (s *ChannelScheduler) SetCandidateFilterProvider(provider CandidateFilterPr
 //
 // 由 main.go 在 autopilot ModelResolver 初始化后注册。
 // 为 nil 时回退到 UpstreamConfig.ExplainModelSupport 原有路径（fail-open）。
-type ModelSupportResolverFunc func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (supported bool, actualModel string, source string, reason string)
+type ModelSupportResolverFunc func(ctx context.Context, kind ChannelKind, upstream *config.UpstreamConfig, model string) (supported bool, actualModel string, source string, reason string)
 
 // ModelSupportSourceAuthoritativeDeny 表示 resolver 已掌握该渠道的模型画像，
 // supported=false 是权威拒绝，调度器不得再回退到空 SupportedModels 的“支持全部”语义。

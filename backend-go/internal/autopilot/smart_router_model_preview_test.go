@@ -151,6 +151,27 @@ func TestResolveModelSupportAutoManagedEmptyModelsUsesProfilePolicy(t *testing.T
 	}
 }
 
+func TestResolveModelSupportWithFloorRejectsIncapableAutoMapping(t *testing.T) {
+	cfg := modelPreviewConfig("assist")
+	cfg.Upstream[0].SupportedModels = nil
+	cfgManager, cleanup := createTestConfigManager(t, cfg)
+	defer cleanup()
+	resolver := NewModelResolver(newModelPreviewStore(t, glmPreviewProfile()), cfgManager)
+	manager := &Manager{cfgManager: cfgManager, modelResolver: resolver}
+	upstream := cfgManager.GetConfig().Upstream[0]
+
+	supported, mapped, source, reason := manager.ResolveModelSupportWithFloor(
+		"messages",
+		&upstream,
+		"claude-opus-4-8",
+		CapabilityFloor{MinQualityTier: QualityTierPremium},
+	)
+	if supported || mapped != "" || source != scheduler.ModelSupportSourceAuthoritativeDeny || reason != "no_capable_model" {
+		t.Fatalf("premium floor support = %v mapped=%q source=%q reason=%q",
+			supported, mapped, source, reason)
+	}
+}
+
 func TestResolveModelSupportDoesNotExpandRealCandidatesInShadow(t *testing.T) {
 	cfgManager, cleanup := createTestConfigManager(t, modelPreviewConfig("shadow"))
 	defer cleanup()

@@ -660,6 +660,17 @@ func (m *Manager) ModelResolver() *ModelResolver {
 //   - Resolver nil 时行为与原有路径字节级一致（fail-open）
 //   - 非 AutoManaged 渠道的 ExplainModelSupport/RedirectModel 路径完全不变
 func (m *Manager) ResolveModelSupport(kind string, upstream *config.UpstreamConfig, model string) (supported bool, actualModel string, source string, reason string) {
+	return m.ResolveModelSupportWithFloor(kind, upstream, model, CapabilityFloor{})
+}
+
+// ResolveModelSupportWithFloor 使用请求级能力下界判断 AutoManaged 渠道能否承接模型。
+// scheduler 首次选渠与 endpoint policy 复用同一份 RequestProfile，避免先选中已知不兼容渠道后再 failover。
+func (m *Manager) ResolveModelSupportWithFloor(
+	kind string,
+	upstream *config.UpstreamConfig,
+	model string,
+	floor CapabilityFloor,
+) (supported bool, actualModel string, source string, reason string) {
 	if upstream == nil || model == "" {
 		return false, "", "invalid_input", "upstream or model is nil/empty"
 	}
@@ -693,12 +704,13 @@ func (m *Manager) ResolveModelSupport(kind string, upstream *config.UpstreamConf
 		return sup, "", "explain", rsn
 	}
 
-	// 使用 ResolveModelAnyEndpoint 判断渠道所有 endpoint 是否能通过自动映射承接该模型。
+	// 使用完整能力下界判断渠道所有 endpoint 是否能通过自动映射承接该模型。
 	// 真正请求发送前，resolveMappedModel 会用完整 metricsKey 和 CapabilityFloor 再做 endpoint 级映射。
-	mapped, found, resolverReason := m.modelResolver.ResolveModelAnyEndpoint(
+	mapped, found, resolverReason := m.modelResolver.ResolveModelAnyEndpointWithFloor(
 		model,
 		upstream.ChannelUID,
 		kind,
+		floor,
 	)
 	if found {
 		source := "auto_resolve"

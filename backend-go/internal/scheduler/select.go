@@ -103,7 +103,7 @@ func (s *ChannelScheduler) SelectChannelWithOptions(ctx context.Context, opts Se
 	}
 
 	// 获取活跃渠道列表（含模型过滤）
-	activeChannels := s.getActiveChannelsWithTrace(kind, model, trace)
+	activeChannels := s.getActiveChannelsWithTrace(ctx, kind, model, trace)
 	trace.setStage("active_model_filter", len(activeChannels))
 	if len(activeChannels) == 0 {
 		// 区分"无活跃渠道"和"无渠道支持该模型"
@@ -1093,10 +1093,10 @@ type ChannelInfo struct {
 
 // getActiveChannels 获取活跃渠道列表（按优先级排序）
 func (s *ChannelScheduler) getActiveChannels(kind ChannelKind, model string) []ChannelInfo {
-	return s.getActiveChannelsWithTrace(kind, model, nil)
+	return s.getActiveChannelsWithTrace(context.Background(), kind, model, nil)
 }
 
-func (s *ChannelScheduler) getActiveChannelsWithTrace(kind ChannelKind, model string, trace *SelectionTrace) []ChannelInfo {
+func (s *ChannelScheduler) getActiveChannelsWithTrace(ctx context.Context, kind ChannelKind, model string, trace *SelectionTrace) []ChannelInfo {
 	cfg := s.configManager.GetConfig()
 
 	var upstreams []config.UpstreamConfig
@@ -1137,7 +1137,7 @@ func (s *ChannelScheduler) getActiveChannelsWithTrace(kind ChannelKind, model st
 		if status != "disabled" {
 			// 过滤不支持当前模型的渠道
 			if model != "" {
-				supported, reason := s.resolveModelSupport(kind, &upstream, model)
+				supported, reason := s.resolveModelSupport(ctx, kind, &upstream, model)
 				if !supported {
 					prefix := kindSchedulerLogPrefix(kind)
 					log.Printf("[%s-ModelFilter] 跳过渠道 [%d] %s: 模型 %q 不被 supportedModels 支持 (%s)", prefix, i, upstream.Name, model, reason)
@@ -1164,13 +1164,13 @@ func (s *ChannelScheduler) getActiveChannelsWithTrace(kind ChannelKind, model st
 // 优先调用 modelSupportResolverFunc（autopilot 注入）。普通未命中仍回退到
 // UpstreamConfig.ExplainModelSupport；权威拒绝则直接过滤，避免空 SupportedModels
 // 把画像已确认不支持的模型重新放回候选。
-func (s *ChannelScheduler) resolveModelSupport(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string) {
+func (s *ChannelScheduler) resolveModelSupport(ctx context.Context, kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string) {
 	s.mu.RLock()
 	resolver := s.modelSupportResolverFunc
 	s.mu.RUnlock()
 
 	if resolver != nil {
-		supported, _, source, reason := resolver(kind, upstream, model)
+		supported, _, source, reason := resolver(ctx, kind, upstream, model)
 		if supported {
 			return true, ""
 		}

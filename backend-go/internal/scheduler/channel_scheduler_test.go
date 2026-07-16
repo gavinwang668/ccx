@@ -1051,7 +1051,7 @@ func TestModelSupportResolver_ResolverOverridesExplainModelSupport(t *testing.T)
 	defer cleanup()
 
 	// 注册 resolver：对 strict-claude 始终返回 supported=true
-	scheduler.SetModelSupportResolverProvider(func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+	scheduler.SetModelSupportResolverProvider(func(_ context.Context, kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
 		if upstream.Name == "strict-claude" {
 			return true, "mapped-model", "auto_resolve", ""
 		}
@@ -1088,7 +1088,7 @@ func TestModelSupportResolver_ResolverFalseFallsBackToExplainModelSupport(t *tes
 	defer cleanup()
 
 	// resolver 对所有渠道返回 supported=false
-	scheduler.SetModelSupportResolverProvider(func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+	scheduler.SetModelSupportResolverProvider(func(_ context.Context, kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
 		return false, "", "", "resolver says no"
 	})
 
@@ -1127,7 +1127,7 @@ func TestModelSupportResolver_AuthoritativeDenyDoesNotFallBack(t *testing.T) {
 
 	scheduler, cleanup := createTestScheduler(t, cfg)
 	defer cleanup()
-	scheduler.SetModelSupportResolverProvider(func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+	scheduler.SetModelSupportResolverProvider(func(_ context.Context, kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
 		if upstream.Name == "auto-profile-mismatch" {
 			return false, "", ModelSupportSourceAuthoritativeDeny, "exact_model_required"
 		}
@@ -1140,5 +1140,47 @@ func TestModelSupportResolver_AuthoritativeDenyDoesNotFallBack(t *testing.T) {
 	}
 	if result.ChannelIndex != 1 {
 		t.Fatalf("权威拒绝不应回退到空 SupportedModels，选择 index=%d, want 1", result.ChannelIndex)
+	}
+}
+
+func TestModelSupportResolverReceivesRequestContext(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:        "request-incompatible",
+				BaseURL:     "https://incompatible.example.com",
+				APIKeys:     []string{"sk-1"},
+				Status:      "active",
+				Priority:    1,
+				AutoManaged: true,
+			},
+			{
+				Name:            "request-compatible",
+				BaseURL:         "https://compatible.example.com",
+				APIKeys:         []string{"sk-2"},
+				Status:          "active",
+				Priority:        2,
+				SupportedModels: []string{"gpt-5.6-sol"},
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+	type requestContextKey struct{}
+	ctx := context.WithValue(context.Background(), requestContextKey{}, "premium")
+	scheduler.SetModelSupportResolverProvider(func(gotCtx context.Context, _ ChannelKind, upstream *config.UpstreamConfig, _ string) (bool, string, string, string) {
+		if upstream.Name == "request-incompatible" && gotCtx.Value(requestContextKey{}) == "premium" {
+			return false, "", ModelSupportSourceAuthoritativeDeny, "no_capable_model"
+		}
+		return false, "", "", "not handled by resolver"
+	})
+
+	result, err := scheduler.SelectChannel(ctx, "test-user", nil, ChannelKindMessages, "gpt-5.6-sol", "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 1 {
+		t.Fatalf("请求级能力拒绝应在首次选渠前生效，选择 index=%d, want 1", result.ChannelIndex)
 	}
 }
