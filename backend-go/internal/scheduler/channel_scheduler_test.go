@@ -923,11 +923,11 @@ func TestModelSupportResolver_ResolverOverridesExplainModelSupport(t *testing.T)
 				SupportedModels: []string{"claude-*"}, // ExplainModelSupport 会拒绝 gpt-4o
 			},
 			{
-				Name:            "fallback",
-				BaseURL:         "https://fallback.example.com",
-				APIKeys:         []string{"sk-2"},
-				Status:          "active",
-				Priority:        2,
+				Name:     "fallback",
+				BaseURL:  "https://fallback.example.com",
+				APIKeys:  []string{"sk-2"},
+				Status:   "active",
+				Priority: 2,
 			},
 		},
 	}
@@ -959,11 +959,11 @@ func TestModelSupportResolver_ResolverFalseFallsBackToExplainModelSupport(t *tes
 	cfg := config.Config{
 		Upstream: []config.UpstreamConfig{
 			{
-				Name:            "open-channel",
-				BaseURL:         "https://open.example.com",
-				APIKeys:         []string{"sk-1"},
-				Status:          "active",
-				Priority:        1,
+				Name:     "open-channel",
+				BaseURL:  "https://open.example.com",
+				APIKeys:  []string{"sk-1"},
+				Status:   "active",
+				Priority: 1,
 				// 无 SupportedModels 限制 → ExplainModelSupport 始终返回 true
 			},
 		},
@@ -984,5 +984,46 @@ func TestModelSupportResolver_ResolverFalseFallsBackToExplainModelSupport(t *tes
 	}
 	if result.ChannelIndex != 0 {
 		t.Fatalf("期望选择 index=0 (open-channel)，实际为 %d", result.ChannelIndex)
+	}
+}
+
+func TestModelSupportResolver_AuthoritativeDenyDoesNotFallBack(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:        "auto-profile-mismatch",
+				BaseURL:     "https://auto.example.com",
+				APIKeys:     []string{"sk-1"},
+				Status:      "active",
+				Priority:    1,
+				AutoManaged: true,
+				// 空 SupportedModels 的兼容语义原本会把该渠道重新放回候选。
+			},
+			{
+				Name:            "exact-model-channel",
+				BaseURL:         "https://exact.example.com",
+				APIKeys:         []string{"sk-2"},
+				Status:          "active",
+				Priority:        2,
+				SupportedModels: []string{"deepseek-chat"},
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+	scheduler.SetModelSupportResolverProvider(func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string, string, string) {
+		if upstream.Name == "auto-profile-mismatch" {
+			return false, "", ModelSupportSourceAuthoritativeDeny, "exact_model_required"
+		}
+		return false, "", "", "not handled by resolver"
+	})
+
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "deepseek-chat", "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+	if result.ChannelIndex != 1 {
+		t.Fatalf("权威拒绝不应回退到空 SupportedModels，选择 index=%d, want 1", result.ChannelIndex)
 	}
 }

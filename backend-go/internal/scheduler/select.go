@@ -1109,17 +1109,21 @@ func (s *ChannelScheduler) getActiveChannelsWithTrace(kind ChannelKind, model st
 }
 
 // resolveModelSupport 判断渠道是否支持指定模型。
-// 优先调用 modelSupportResolverFunc（autopilot 注入），若未注册或返回不支持
-// 则回退到 UpstreamConfig.ExplainModelSupport 原有路径（fail-open）。
+// 优先调用 modelSupportResolverFunc（autopilot 注入）。普通未命中仍回退到
+// UpstreamConfig.ExplainModelSupport；权威拒绝则直接过滤，避免空 SupportedModels
+// 把画像已确认不支持的模型重新放回候选。
 func (s *ChannelScheduler) resolveModelSupport(kind ChannelKind, upstream *config.UpstreamConfig, model string) (bool, string) {
 	s.mu.RLock()
 	resolver := s.modelSupportResolverFunc
 	s.mu.RUnlock()
 
 	if resolver != nil {
-		supported, _, _, _ := resolver(kind, upstream, model)
+		supported, _, source, reason := resolver(kind, upstream, model)
 		if supported {
 			return true, ""
+		}
+		if source == ModelSupportSourceAuthoritativeDeny {
+			return false, reason
 		}
 		// resolver 未命中 → 回退到原有 ExplainModelSupport
 	}

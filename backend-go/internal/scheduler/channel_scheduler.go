@@ -147,6 +147,10 @@ func (s *ChannelScheduler) SetCandidateFilterProvider(provider CandidateFilterPr
 // 为 nil 时回退到 UpstreamConfig.ExplainModelSupport 原有路径（fail-open）。
 type ModelSupportResolverFunc func(kind ChannelKind, upstream *config.UpstreamConfig, model string) (supported bool, actualModel string, source string, reason string)
 
+// ModelSupportSourceAuthoritativeDeny 表示 resolver 已掌握该渠道的模型画像，
+// supported=false 是权威拒绝，调度器不得再回退到空 SupportedModels 的“支持全部”语义。
+const ModelSupportSourceAuthoritativeDeny = "resolver_authoritative_deny"
+
 // SetModelSupportResolverProvider 设置模型支持解析提供器。
 // 由 main.go 在 autopilot ModelResolver 初始化后注册。
 // provider 为 nil 时清除（恢复默认行为：直接调用 UpstreamConfig.ExplainModelSupport）。

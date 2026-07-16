@@ -2563,6 +2563,7 @@ Phase 3 落地 ModelResolver 时必须调整为以下顺序：
    - 显式 supportedModels 支持请求模型 → 保留
    - 显式 modelMapping 可把请求模型映射到上游模型 → 保留
    - autoManaged 且存在满足 CapabilityFloor 的 ModelProfile → 保留
+   - autoManaged 的空 supportedModels 不表示支持全部，必须由 endpoint ModelProfile 裁决
    - 其他 → 过滤
 3. 对每个候选 channel/endpoint 计算 request-scoped mappedModel
 4. context filter 使用 mappedModel 的实际能力做窗口校验
@@ -2582,6 +2583,8 @@ type ModelSupportResolution struct {
 ```
 
 这能避免“自动映射尚未运行，channel 已被 supportedModels 过滤掉”的死路。
+
+当 ModelResolver 已正常初始化且路由处于 `assist/auto + autoResolve=true` 时，autoManaged 渠道的画像拒绝是权威结果，调度器不得再 fail-open 到空 `supportedModels` 的兼容语义。Resolver 不可用、开关关闭或 `off/shadow` 时仍保留原有 fail-open，保证急停和降级路径不依赖画像库。
 
 **映射结果回显**：
 

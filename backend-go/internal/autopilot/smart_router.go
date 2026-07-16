@@ -1269,8 +1269,11 @@ func (r *SmartRouter) collectChannelEntries(profile *RequestProfile) []channelSc
 		mappingReason := ""
 
 		// 模型过滤；诊断模式允许预览 autoManaged 渠道的 request-scoped 自动映射。
+		// 自动托管渠道的空 SupportedModels 不代表支持全部，实际模型以 endpoint profile 为准。
 		if model != "" {
-			if supported, _ := upstream.ExplainModelSupport(model); supported {
+			supported, _ := upstream.ExplainModelSupport(model)
+			hasExplicitModelRules := len(upstream.SupportedModels) > 0
+			if supported && (!upstream.AutoManaged || hasExplicitModelRules) {
 				resolved := config.ResolveUpstreamCapability(model, &upstream, cfg.UpstreamModelCapabilities)
 				if resolved.ActualModel != "" && resolved.ActualModel != model {
 					entryModel = resolved.ActualModel
@@ -1292,9 +1295,11 @@ func (r *SmartRouter) collectChannelEntries(profile *RequestProfile) []channelSc
 					continue
 				}
 				entryModel = mapped
-				mappedModel = mapped
-				mappingSource = "auto_resolve_preview"
-				mappingReason = reason
+				if normalizeRoutingModelID(mapped) != normalizeRoutingModelID(model) {
+					mappedModel = mapped
+					mappingSource = "auto_resolve_preview"
+					mappingReason = reason
+				}
 			}
 		}
 		ch := scheduler.ChannelInfo{

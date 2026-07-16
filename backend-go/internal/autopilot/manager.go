@@ -11,6 +11,7 @@ import (
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/metrics"
+	"github.com/BenedictKing/ccx/internal/scheduler"
 )
 
 // channelEntry 内部遍历用：渠道基础信息 + API Key 列表。
@@ -650,8 +651,9 @@ func (m *Manager) ModelResolver() *ModelResolver {
 //
 // 实现策略：
 //   - 非 AutoManaged 渠道：直接委托 ExplainModelSupport（零额外成本）
-//   - AutoManaged 渠道 + 三条件门控通过：ExplainModelSupport 命中则直接返回；
-//     未命中时调用 ModelResolver（最小 CapabilityFloor），fail-open 回退 ExplainModelSupport
+//   - AutoManaged 渠道 + 显式 SupportedModels 命中：直接返回
+//   - AutoManaged 渠道 + 三条件门控通过：其余情况调用 ModelResolver；
+//     空 SupportedModels 下画像未命中是权威拒绝，禁止回退到“支持全部”
 //   - 门控不满足（AutoResolve=false 或 mode=off/shadow 或 KillSwitch）：回退 ExplainModelSupport
 //
 // 安全不变量：
@@ -668,25 +670,27 @@ func (m *Manager) ResolveModelSupport(kind string, upstream *config.UpstreamConf
 		return sup, "", "explain", rsn
 	}
 
-	// AutoManaged 渠道：先走 ExplainModelSupport（fast path，避免不必要的 resolver 调用）
+	// AutoManaged 渠道：显式 SupportedModels 命中时走 fast path。
+	// 空列表的传统语义是“支持全部”，但自动托管渠道的实际模型以 endpoint profile 为准，
+	// 不能在这里短路，否则 ModelResolver 永远没有机会运行。
 	sup, rsn := upstream.ExplainModelSupport(model)
-	if sup {
+	if len(upstream.SupportedModels) > 0 && sup {
 		return true, "", "explain", ""
 	}
 
 	// ExplainModelSupport 拒绝：检查三条件门控
 	routingCfg := m.cfgManager.GetAutopilotRouting()
 	if !routingCfg.ModelMapping.AutoResolve {
-		return false, "", "explain", rsn
+		return sup, "", "explain", rsn
 	}
 	effectiveMode := routingCfg.EffectiveRoutingMode()
 	if effectiveMode != config.AutopilotModeAssist && effectiveMode != config.AutopilotModeAuto {
-		return false, "", "explain", rsn
+		return sup, "", "explain", rsn
 	}
 
 	// 门控通过：调用 ModelResolver（调度器候选筛选阶段，无具体 API Key）
 	if m.modelResolver == nil {
-		return false, "", "explain", rsn
+		return sup, "", "explain", rsn
 	}
 
 	// 使用 ResolveModelAnyEndpoint 判断渠道所有 endpoint 是否能通过自动映射承接该模型。
@@ -697,10 +701,20 @@ func (m *Manager) ResolveModelSupport(kind string, upstream *config.UpstreamConf
 		kind,
 	)
 	if found {
-		return true, mapped, "auto_resolve", resolverReason
+		source := "auto_resolve"
+		if normalizeRoutingModelID(mapped) == normalizeRoutingModelID(model) {
+			source = "model_profile_exact"
+		}
+		return true, mapped, source, resolverReason
 	}
 
-	// Resolver 也未命中 → 回退到 ExplainModelSupport（fail-open）
+	// 自动托管渠道没有显式 SupportedModels 时，画像是模型支持事实源。
+	// 此处若继续 fail-open，空列表会把 exact-only 策略拒绝的模型重新放回候选。
+	if len(upstream.SupportedModels) == 0 {
+		return false, "", scheduler.ModelSupportSourceAuthoritativeDeny, resolverReason
+	}
+
+	// 显式 SupportedModels 已经能给出否定结果，保留原有回退语义。
 	return false, "", "explain", rsn
 }
 

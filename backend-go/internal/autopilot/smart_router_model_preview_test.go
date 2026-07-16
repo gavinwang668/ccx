@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/BenedictKing/ccx/internal/scheduler"
 )
 
 func newModelPreviewStore(t *testing.T, profiles ...ModelProfile) *ModelProfileStore {
@@ -99,6 +100,54 @@ func TestBuildPlanAutoResolvePreviewRespectsCapabilityFloor(t *testing.T) {
 	plan := router.BuildPlan(&requestProfile)
 	if len(plan.Candidates) != 0 {
 		t.Fatalf("ineligible auto-resolve candidates = %+v, want none", plan.Candidates)
+	}
+}
+
+func TestBuildPlanAutoManagedEmptyModelsUsesProfilePolicy(t *testing.T) {
+	cfg := modelPreviewConfig("assist")
+	cfg.Upstream[0].SupportedModels = nil
+	cfgManager, cleanup := createTestConfigManager(t, cfg)
+	defer cleanup()
+	resolver := NewModelResolver(newModelPreviewStore(t, glmPreviewProfile()), cfgManager)
+	router := NewSmartRouter(nil, nil, nil, cfgManager)
+	router.SetModelResolver(resolver)
+
+	adaptive := BuildRequestProfile(RequestProfileFeatures{
+		Model: "claude-sonnet-5", ChannelKind: "messages", Operation: "completion", EstTokens: 2_000,
+	})
+	plan := router.BuildPlan(&adaptive)
+	if len(plan.Candidates) != 1 || plan.Candidates[0].MappedModel != "glm-5.2" {
+		t.Fatalf("adaptive candidates = %+v, want GLM profile mapping", plan.Candidates)
+	}
+
+	exactOnly := BuildRequestProfile(RequestProfileFeatures{
+		Model: "deepseek-chat", ChannelKind: "messages", Operation: "completion", EstTokens: 2_000,
+	})
+	plan = router.BuildPlan(&exactOnly)
+	if len(plan.Candidates) != 0 {
+		t.Fatalf("exact-only candidates = %+v, want none without exact model profile", plan.Candidates)
+	}
+}
+
+func TestResolveModelSupportAutoManagedEmptyModelsUsesProfilePolicy(t *testing.T) {
+	cfg := modelPreviewConfig("assist")
+	cfg.Upstream[0].SupportedModels = nil
+	cfgManager, cleanup := createTestConfigManager(t, cfg)
+	defer cleanup()
+	resolver := NewModelResolver(newModelPreviewStore(t, glmPreviewProfile()), cfgManager)
+	manager := &Manager{cfgManager: cfgManager, modelResolver: resolver}
+	upstream := cfgManager.GetConfig().Upstream[0]
+
+	supported, mapped, source, reason := manager.ResolveModelSupport("messages", &upstream, "claude-sonnet-5")
+	if !supported || mapped != "glm-5.2" || source != "auto_resolve" || reason == "" {
+		t.Fatalf("adaptive support = %v mapped=%q source=%q reason=%q",
+			supported, mapped, source, reason)
+	}
+
+	supported, mapped, source, reason = manager.ResolveModelSupport("messages", &upstream, "deepseek-chat")
+	if supported || mapped != "" || source != scheduler.ModelSupportSourceAuthoritativeDeny || reason != "exact_model_required" {
+		t.Fatalf("exact-only support = %v mapped=%q source=%q reason=%q",
+			supported, mapped, source, reason)
 	}
 }
 
