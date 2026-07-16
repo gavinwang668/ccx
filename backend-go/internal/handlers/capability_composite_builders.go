@@ -51,13 +51,8 @@ func providerServiceTypeForProtocol(protocol CapabilityBaseProtocol) string {
 func buildMessagesProbeBody(probeModel string, global map[string]config.UpstreamModelCapability, channel ...*config.UpstreamConfig) []byte {
 	metadata, _ := newClaudeCodeProbeMetadata()
 	body := map[string]interface{}{
-		"model": probeModel,
-		"system": []map[string]interface{}{
-			{
-				"type": "text",
-				"text": claudeCodeProbeBillingHeader,
-			},
-		},
+		"model":      probeModel,
+		"system":     []map[string]interface{}{newClaudeCodeProbeBillingBlock(), newClaudeCodeProbeIdentityBlock()},
 		"messages":   []map[string]string{{"role": "user", "content": "What are you best at: code generation, creative writing, or math problem solving?"}},
 		"metadata":   metadata,
 		"max_tokens": capabilityProbeMaxTokens,
@@ -78,14 +73,6 @@ func buildMessagesProbeBody(probeModel string, global map[string]config.Upstream
 			{"role": "system", "content": "You are a Claude agent, built on Anthropic's Claude Agent SDK."},
 			{"role": "user", "content": "What are you best at: code generation, creative writing, or math problem solving?"},
 		}
-	} else {
-		body["system"] = append(body["system"].([]map[string]interface{}), map[string]interface{}{
-			"type": "text",
-			"text": "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
-			"cache_control": map[string]string{
-				"type": "ephemeral",
-			},
-		})
 	}
 
 	bodyBytes, _ := json.Marshal(body)

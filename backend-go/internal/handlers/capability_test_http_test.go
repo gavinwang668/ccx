@@ -1298,7 +1298,7 @@ func TestBuildTestRequestWithModel_ClaudeOpus48NormalizesSystemMessageWhenEnable
 	if !ok {
 		t.Fatalf("system=%T, want string", body["system"])
 	}
-	if !strings.Contains(systemText, "cc_entrypoint=cli") || !strings.Contains(systemText, "Claude agent") {
-		t.Fatalf("system=%q, want billing header and Claude agent text", systemText)
+	if !strings.Contains(systemText, "cc_entrypoint=cli") || !strings.Contains(systemText, claudeCodeProbeIdentity) {
+		t.Fatalf("system=%q, want billing header and Claude Code identity", systemText)
 	}
 }

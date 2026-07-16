@@ -171,12 +171,16 @@ func TestBuildMessagesProbeBody_UsesCurrentClaudeCodeMetadata(t *testing.T) {
 	}
 
 	system, ok := body["system"].([]interface{})
-	if !ok || len(system) == 0 {
-		t.Fatalf("system=%#v, want billing block", body["system"])
+	if !ok || len(system) < 2 {
+		t.Fatalf("system=%#v, want billing and identity blocks", body["system"])
 	}
 	first, ok := system[0].(map[string]interface{})
 	if !ok || first["text"] != claudeCodeProbeBillingHeader {
 		t.Fatalf("first system block=%#v, want current billing header", first)
+	}
+	second, ok := system[1].(map[string]interface{})
+	if !ok || second["text"] != claudeCodeProbeIdentity {
+		t.Fatalf("second system block=%#v, want Claude Code identity", second)
 	}
 }
 

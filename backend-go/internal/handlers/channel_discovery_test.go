@@ -257,9 +257,10 @@ func TestRunDiscoveryProtocolProbeMatchesClaudeCodeOnlyRelay(t *testing.T) {
 			http.Error(w, "invalid body", http.StatusBadRequest)
 			return
 		}
-		if len(body.System) == 0 || !strings.HasPrefix(body.System[0].Text, "x-anthropic-billing-header") ||
-			!strings.Contains(body.System[0].Text, "cc_entrypoint=") {
-			http.Error(w, "missing Claude Code billing block", http.StatusServiceUnavailable)
+		if len(body.System) < 2 || !strings.HasPrefix(body.System[0].Text, "x-anthropic-billing-header") ||
+			!strings.Contains(body.System[0].Text, "cc_entrypoint=") ||
+			body.System[1].Text != claudeCodeProbeIdentity {
+			http.Error(w, "invalid Claude Code system fingerprint", http.StatusServiceUnavailable)
 			return
 		}
 		var userID claudeCodeProbeUserID
@@ -319,8 +320,9 @@ func TestBuildClaudeCompatRequestUsesClaudeCodeClientFingerprint(t *testing.T) {
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		t.Fatalf("decode request body: %v", err)
 	}
-	if len(body.System) < 2 || body.System[0].Text != claudeCodeProbeBillingHeader {
-		t.Fatalf("system=%#v, want billing block before probe prompt", body.System)
+	if len(body.System) < 3 || body.System[0].Text != claudeCodeProbeBillingHeader ||
+		body.System[1].Text != claudeCodeProbeIdentity {
+		t.Fatalf("system=%#v, want billing and identity blocks before probe prompt", body.System)
 	}
 	var userID claudeCodeProbeUserID
 	if err := json.Unmarshal([]byte(body.Metadata.UserID), &userID); err != nil {
