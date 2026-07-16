@@ -406,7 +406,7 @@ func (w *ProbeWorker) run(ctx context.Context) {
 
 // scanAndEnqueue 扫描 ProfileStore，将需要探测的 endpoint 入队。
 func (w *ProbeWorker) scanAndEnqueue() {
-	profiles := w.store.ListAll()
+	profiles := w.store.ListActive()
 	now := w.timeFn()
 	var enqueued int
 

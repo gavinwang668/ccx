@@ -290,6 +290,55 @@ func TestProfileStore_ListAll(t *testing.T) {
 	}
 }
 
+func TestProfileStore_ActiveViewsFilterWithoutDeletingHistory(t *testing.T) {
+	db := newTestDB(t)
+	store, err := NewProfileStoreWithDB(db)
+	if err != nil {
+		t.Fatalf("NewProfileStoreWithDB 失败: %v", err)
+	}
+
+	profiles := []*KeyEndpointProfile{
+		newTestProfile("ep-active-a", "ch-a", "messages", "https://a.example.com"),
+		newTestProfile("ep-stale-a", "ch-a", "messages", "https://old-a.example.com"),
+		newTestProfile("ep-active-b", "ch-b", "chat", "https://b.example.com"),
+	}
+	for _, profile := range profiles {
+		if err := store.Upsert(profile); err != nil {
+			t.Fatalf("Upsert 失败: %v", err)
+		}
+	}
+
+	// 清单初始化前保持 fail-open，避免启动瞬间把全部画像隐藏。
+	if got := len(store.ListActive()); got != 3 {
+		t.Fatalf("初始化前有效画像数=%d, want 3", got)
+	}
+	store.ReplaceActiveEndpointUIDs(map[string]struct{}{
+		"ep-active-a": {},
+		"ep-active-b": {},
+	})
+
+	if got := len(store.ListActive()); got != 2 {
+		t.Fatalf("有效画像数=%d, want 2", got)
+	}
+	if got := len(store.ListActiveByChannel("ch-a")); got != 1 {
+		t.Fatalf("ch-a 有效画像数=%d, want 1", got)
+	}
+	if got := len(store.ListAll()); got != 3 {
+		t.Fatalf("历史画像被删除: ListAll=%d, want 3", got)
+	}
+	if store.Get("ep-stale-a") == nil {
+		t.Fatal("失效画像仍应保留，供审计或显式清理")
+	}
+
+	store.ReplaceActiveEndpointUIDs(nil)
+	if got := len(store.ListActive()); got != 0 {
+		t.Fatalf("空配置下有效画像数=%d, want 0", got)
+	}
+	if got := len(store.ListAll()); got != 3 {
+		t.Fatalf("空配置不应删除历史画像: ListAll=%d, want 3", got)
+	}
+}
+
 func TestProfileStore_Flush(t *testing.T) {
 	db := newTestDB(t)
 	store, err := NewProfileStoreWithDB(db)

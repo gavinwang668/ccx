@@ -179,7 +179,7 @@ func (r *ModelResolver) resolveModelAnyEndpoint(
 	}
 
 	candidates := make([]ModelProfile, 0)
-	all := r.profileStore.ListByChannel(channelUID)
+	all := r.profileStore.ListActiveByChannel(channelUID)
 	for _, p := range all {
 		if p.ChannelKind != channelKind {
 			continue

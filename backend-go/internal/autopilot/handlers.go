@@ -116,7 +116,7 @@ func RegisterRoutes(router gin.IRouter, mgr *Manager) {
 // 全局汇总：各 HealthState 计数、渠道数、endpoint 数。
 func handleOverview(mgr *Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		allProfiles := mgr.ProfileStore().ListAll()
+		allProfiles := mgr.ProfileStore().ListActive()
 
 		stateCounts := map[string]int{
 			string(HealthStateUnknown):       0,
@@ -150,7 +150,7 @@ func handleOverview(mgr *Manager) gin.HandlerFunc {
 // 渠道级聚合列表。
 func handleChannels(mgr *Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		allProfiles := mgr.ProfileStore().ListAll()
+		allProfiles := mgr.ProfileStore().ListActive()
 
 		// 按 channelUID 分组
 		grouped := make(map[string][]*KeyEndpointProfile)
@@ -185,7 +185,7 @@ func handleEndpoints(mgr *Manager) gin.HandlerFunc {
 			return
 		}
 
-		profiles := mgr.ProfileStore().ListByChannel(channelUID)
+		profiles := mgr.ProfileStore().ListActiveByChannel(channelUID)
 		endpoints := make([]EndpointDetailItem, 0, len(profiles))
 		for _, p := range profiles {
 			keyHash := p.KeyHash

@@ -24,6 +24,10 @@ type ProfileStore struct {
 
 	cache map[string]*KeyEndpointProfile // key = endpointUID
 	mu    sync.RWMutex
+	// activeEndpointUIDs 是当前配置可达的 endpoint 清单，仅影响运行态视图，
+	// 不删除 SQLite 中的历史画像。未初始化时读取保持 fail-open。
+	activeEndpointUIDs   map[string]struct{}
+	activeInventoryReady bool
 
 	flushMu   sync.Mutex
 	closed    bool
@@ -172,6 +176,30 @@ func (s *ProfileStore) Get(endpointUID string) *KeyEndpointProfile {
 	return &cp
 }
 
+// ReplaceActiveEndpointUIDs 原子替换当前配置中的有效 endpoint 清单。
+// 该清单只存在于内存，不修改或删除历史画像。
+func (s *ProfileStore) ReplaceActiveEndpointUIDs(endpointUIDs map[string]struct{}) {
+	active := make(map[string]struct{}, len(endpointUIDs))
+	for endpointUID := range endpointUIDs {
+		if endpointUID != "" {
+			active[endpointUID] = struct{}{}
+		}
+	}
+
+	s.mu.Lock()
+	s.activeEndpointUIDs = active
+	s.activeInventoryReady = true
+	s.mu.Unlock()
+}
+
+func (s *ProfileStore) isActiveLocked(endpointUID string) bool {
+	if !s.activeInventoryReady {
+		return true
+	}
+	_, ok := s.activeEndpointUIDs[endpointUID]
+	return ok
+}
+
 // ListByChannel 返回指定 channelUID 下的全部 endpoint 画像副本。
 func (s *ProfileStore) ListByChannel(channelUID string) []*KeyEndpointProfile {
 	s.mu.RLock()
@@ -180,6 +208,22 @@ func (s *ProfileStore) ListByChannel(channelUID string) []*KeyEndpointProfile {
 	var result []*KeyEndpointProfile
 	for _, p := range s.cache {
 		if p.ChannelUID == channelUID {
+			cp := *p
+			result = append(result, &cp)
+		}
+	}
+	return result
+}
+
+// ListActiveByChannel 返回当前配置仍可达的指定渠道画像。
+// 有效清单尚未初始化时 fail-open，等价于 ListByChannel。
+func (s *ProfileStore) ListActiveByChannel(channelUID string) []*KeyEndpointProfile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []*KeyEndpointProfile
+	for endpointUID, p := range s.cache {
+		if p.ChannelUID == channelUID && s.isActiveLocked(endpointUID) {
 			cp := *p
 			result = append(result, &cp)
 		}
@@ -224,6 +268,23 @@ func (s *ProfileStore) ListAll() []*KeyEndpointProfile {
 
 	result := make([]*KeyEndpointProfile, 0, len(s.cache))
 	for _, p := range s.cache {
+		cp := *p
+		result = append(result, &cp)
+	}
+	return result
+}
+
+// ListActive 返回当前配置仍可达的全部 endpoint 画像。
+// 历史画像仍由 ListAll 返回，供显式审计或清理流程使用。
+func (s *ProfileStore) ListActive() []*KeyEndpointProfile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*KeyEndpointProfile, 0, len(s.cache))
+	for endpointUID, p := range s.cache {
+		if !s.isActiveLocked(endpointUID) {
+			continue
+		}
 		cp := *p
 		result = append(result, &cp)
 	}

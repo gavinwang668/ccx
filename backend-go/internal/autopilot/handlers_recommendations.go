@@ -78,7 +78,7 @@ func buildChannelScoreLookup(mgr *Manager) channelScoreLookup {
 		return lookup
 	}
 
-	allProfiles := profileStore.ListAll()
+	allProfiles := profileStore.ListActive()
 	grouped := make(map[string][]KeyEndpointProfile)
 	for _, p := range allProfiles {
 		if p == nil {
@@ -99,7 +99,7 @@ func buildChannelScoreLookup(mgr *Manager) channelScoreLookup {
 
 		var modelProfiles []ModelProfile
 		if modelProfileStore != nil {
-			modelProfiles = modelProfileStore.ListByChannel(channelUID)
+			modelProfiles = modelProfileStore.ListActiveByChannel(channelUID)
 		}
 
 		domainScores := make(map[TaskDomain]float64, len(AllTaskDomains()))

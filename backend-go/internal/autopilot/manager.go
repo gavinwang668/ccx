@@ -14,18 +14,6 @@ import (
 	"github.com/BenedictKing/ccx/internal/scheduler"
 )
 
-// channelEntry 内部遍历用：渠道基础信息 + API Key 列表。
-type channelEntry struct {
-	ChannelUID  string
-	ChannelID   int
-	ChannelKind string
-	ServiceType string
-	BaseURL     string
-	APIKeys     []string
-	OriginType  string
-	OriginTier  string
-}
-
 // metricsManagerAdapter 包装 *metrics.MetricsManager，实现 MetricsProvider 接口。
 // MetricsManager 有 GetTimeWindowStatsForKey 和 GetKeyCircuitState / GetKeyMetrics，
 // 但缺少 GetKeySnapshot；此适配器用现有方法组装 KeyCircuitSnapshot。
@@ -263,6 +251,9 @@ func NewManager(
 		manager.ResolveAPIKey,
 		ProviderQualityProbeConfig{},
 	)
+	// 在启动任何后台 worker 前同步建立当前配置的有效画像清单，
+	// 避免 L2 探测启动扫描短暂读到全部历史画像。
+	manager.refreshEndpointInventory()
 	return manager, nil
 }
 
@@ -772,7 +763,8 @@ func (m *Manager) runWorker(ctx context.Context) {
 // collectAll 遍历所有渠道的 endpoint，执行 L1 画像推导 + 健康诊断。
 func (m *Manager) collectAll() {
 	start := time.Now()
-	entries := m.gatherChannelEntries()
+	inventory := m.refreshEndpointInventory()
+	entries := inventory.Entries
 	if len(entries) == 0 {
 		if !m.cfg.QuietLogs {
 			log.Printf("[Autopilot-Worker] 无可遍历渠道，跳过本轮")
@@ -1024,50 +1016,18 @@ func (m *Manager) emitProfileChangeEvents(endpointUID string, current *KeyEndpoi
 	}
 }
 
+func (m *Manager) refreshEndpointInventory() endpointInventory {
+	inventory := buildEndpointInventory(m.cfgManager.GetConfig())
+	m.store.ReplaceActiveEndpointUIDs(inventory.EndpointUIDs)
+	if m.modelProfileStore != nil {
+		m.modelProfileStore.ReplaceActiveBindings(inventory.ModelProfileBindings)
+	}
+	return inventory
+}
+
 // gatherChannelEntries 从当前配置中提取所有渠道及其 API Key。
 func (m *Manager) gatherChannelEntries() []channelEntry {
-	cfg := m.cfgManager.GetConfig()
-	var entries []channelEntry
-
-	type upstreamList struct {
-		channels    []config.UpstreamConfig
-		channelKind string
-	}
-	lists := []upstreamList{
-		{cfg.Upstream, "messages"},
-		{cfg.ResponsesUpstream, "responses"},
-		{cfg.GeminiUpstream, "gemini"},
-		{cfg.ChatUpstream, "chat"},
-		{cfg.ImagesUpstream, "images"},
-		{cfg.VectorsUpstream, "vectors"},
-	}
-
-	for _, ul := range lists {
-		for i, ch := range ul.channels {
-			if len(ch.APIKeys) == 0 {
-				continue
-			}
-			// 使用第一个 BaseURL（多 URL 场景下 ProfileStore 中分别存储）
-			baseURL := ch.BaseURL
-			if len(ch.BaseURLs) > 0 {
-				baseURL = ch.BaseURLs[0]
-			}
-			if baseURL == "" {
-				continue
-			}
-			entries = append(entries, channelEntry{
-				ChannelUID:  ch.ChannelUID,
-				ChannelID:   i,
-				ChannelKind: ul.channelKind,
-				ServiceType: ch.ServiceType,
-				BaseURL:     baseURL,
-				APIKeys:     ch.APIKeys,
-				OriginType:  ch.OriginType,
-				OriginTier:  ch.OriginTier,
-			})
-		}
-	}
-	return entries
+	return buildEndpointInventory(m.cfgManager.GetConfig()).Entries
 }
 
 // collectSignals 从 MetricsManager 收集 endpoint 级被动信号。

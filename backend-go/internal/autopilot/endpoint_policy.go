@@ -773,7 +773,7 @@ func findProfileByBaseURL(store *ProfileStore, baseURL string) *KeyEndpointProfi
 	if store == nil || baseURL == "" {
 		return nil
 	}
-	all := store.ListAll()
+	all := store.ListActive()
 	for _, p := range all {
 		if p.BaseURL == baseURL {
 			return p

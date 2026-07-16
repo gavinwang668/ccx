@@ -98,7 +98,7 @@ func handleCockpitOverview(mgr *Manager) gin.HandlerFunc {
 // ── 内部聚合函数 ────────────────────────────────────────────────────
 
 func populateHealthSummary(mgr *Manager, out *CockpitHealthSummary) {
-	profiles := mgr.ProfileStore().ListAll()
+	profiles := mgr.ProfileStore().ListActive()
 
 	stateCounts := map[string]int{
 		string(HealthStateUnknown):       0,
@@ -186,7 +186,7 @@ func populateManualIntentSummary(mgr *Manager, out *CockpitManualIntentSummary) 
 }
 
 func collectTodoItems(mgr *Manager, limit int) []CockpitTodoItem {
-	profiles := mgr.ProfileStore().ListAll()
+	profiles := mgr.ProfileStore().ListActive()
 
 	var items []CockpitTodoItem
 	for _, p := range profiles {

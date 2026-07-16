@@ -22,6 +22,10 @@ type ModelProfileStore struct {
 
 	cache map[string]*ModelProfile // key = modelProfileKey(profile)
 	mu    sync.RWMutex
+	// activeBindings 来自当前配置的 endpoint 清单，只过滤运行态读取，
+	// 不删除 SQLite 中用于审计的历史模型画像。
+	activeBindings       map[string]struct{}
+	activeInventoryReady bool
 
 	flushMu   sync.Mutex
 	closed    bool
@@ -103,6 +107,10 @@ CREATE INDEX IF NOT EXISTS idx_model_profiles_kind_index ON autopilot_model_prof
 // modelProfileKey 生成 ModelProfile 的内存缓存复合键。
 func modelProfileKey(p *ModelProfile) string {
 	return p.ChannelUID + "|" + p.ChannelKind + "|" + p.MetricsKey + "|" + p.ModelID
+}
+
+func modelProfileBindingKey(channelUID, channelKind, metricsKey string) string {
+	return channelUID + "|" + channelKind + "|" + metricsKey
 }
 
 // parseModelProfileKey 解析复合键为四元组。
@@ -190,6 +198,9 @@ func (s *ModelProfileStore) Get(channelUID, channelKind, metricsKey, modelID str
 func (s *ModelProfileStore) GetModelProfiles(channelUID, channelKind, metricsKey string) []ModelProfile {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if !s.isActiveBindingLocked(channelUID, channelKind, metricsKey) {
+		return []ModelProfile{}
+	}
 
 	var result []ModelProfile
 	for _, p := range s.cache {
@@ -200,6 +211,30 @@ func (s *ModelProfileStore) GetModelProfiles(channelUID, channelKind, metricsKey
 	return result
 }
 
+// ReplaceActiveBindings 原子替换当前配置可达的模型画像 binding 清单。
+// 清单仅存在内存中；空清单表示当前没有可达 endpoint，而不是未初始化。
+func (s *ModelProfileStore) ReplaceActiveBindings(bindings map[string]struct{}) {
+	active := make(map[string]struct{}, len(bindings))
+	for binding := range bindings {
+		if binding != "" {
+			active[binding] = struct{}{}
+		}
+	}
+
+	s.mu.Lock()
+	s.activeBindings = active
+	s.activeInventoryReady = true
+	s.mu.Unlock()
+}
+
+func (s *ModelProfileStore) isActiveBindingLocked(channelUID, channelKind, metricsKey string) bool {
+	if !s.activeInventoryReady {
+		return true
+	}
+	_, ok := s.activeBindings[modelProfileBindingKey(channelUID, channelKind, metricsKey)]
+	return ok
+}
+
 // ListByChannel 返回指定 channelUID 下的全部模型画像副本。
 func (s *ModelProfileStore) ListByChannel(channelUID string) []ModelProfile {
 	s.mu.RLock()
@@ -208,6 +243,21 @@ func (s *ModelProfileStore) ListByChannel(channelUID string) []ModelProfile {
 	var result []ModelProfile
 	for _, p := range s.cache {
 		if p.ChannelUID == channelUID {
+			result = append(result, *p)
+		}
+	}
+	return result
+}
+
+// ListActiveByChannel 返回当前配置仍可达的指定渠道模型画像。
+// 有效清单尚未初始化时 fail-open，等价于 ListByChannel。
+func (s *ModelProfileStore) ListActiveByChannel(channelUID string) []ModelProfile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []ModelProfile
+	for _, p := range s.cache {
+		if p.ChannelUID == channelUID && s.isActiveBindingLocked(p.ChannelUID, p.ChannelKind, p.MetricsKey) {
 			result = append(result, *p)
 		}
 	}

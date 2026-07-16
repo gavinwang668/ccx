@@ -1042,7 +1042,7 @@ func (r *SmartRouter) buildChannelEntry(
 
 	// 从 ProfileStore 读取画像
 	if r.profileStore != nil {
-		profiles := r.profileStore.ListByChannel(channelUID)
+		profiles := r.profileStore.ListActiveByChannel(channelUID)
 		matchingProfiles := make([]*KeyEndpointProfile, 0, len(profiles))
 		for _, profile := range profiles {
 			if profile != nil && profile.ChannelKind == entry.ChannelKind {
@@ -1115,7 +1115,7 @@ func (r *SmartRouter) attachDomainProfiles(entry *channelScoreEntry, provider st
 		return
 	}
 	if r.modelProfileStore != nil && entry.ChannelUID != "" && entry.ModelID != "" {
-		for _, profile := range r.modelProfileStore.ListByChannel(entry.ChannelUID) {
+		for _, profile := range r.modelProfileStore.ListActiveByChannel(entry.ChannelUID) {
 			if profile.ChannelKind != entry.ChannelKind || !strings.EqualFold(profile.ModelID, entry.ModelID) {
 				continue
 			}
