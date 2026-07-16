@@ -443,6 +443,13 @@ describe('综合解析场景', () => {
     expect(result.detectedBaseUrl).toBe('https://pay.kxaug.xyz')
   })
 
+  it('应剔除 api-keys 创建页面路径', () => {
+    const input = 'https://aihub.top/api-keys/create sk-key1234567890'
+    const result = parseQuickInput(input)
+    expect(result.detectedBaseUrl).toBe('https://aihub.top')
+    expect(result.detectedBaseUrls).toEqual(['https://aihub.top'])
+  })
+
   it('应剔除 usage 页面路径但保留非根级同名 API 路径', () => {
     const dashboard = parseQuickInput('https://www.fastaitoken.com/usage sk-key1234567890')
     const apiPath = parseQuickInput('https://api.example.com/api/usage sk-key1234567890')

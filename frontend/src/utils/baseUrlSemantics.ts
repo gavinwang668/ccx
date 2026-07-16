@@ -6,6 +6,8 @@ const dashboardPathPrefixes = [
   '/console',
   '/dashboard',
   '/keys',
+  '/api-keys',
+  '/apikeys',
   '/panel',
   '/token',
   '/profile',
