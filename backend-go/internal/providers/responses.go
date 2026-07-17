@@ -1256,6 +1256,7 @@ func shouldDropResponsesToolObject(tool map[string]interface{}) bool {
 
 func normalizeResponsesInputForPassthrough(reqMap map[string]interface{}) {
 	delete(reqMap, "internal_chat_message_metadata_passthrough")
+	delete(reqMap, "transformer_metadata")
 
 	input, ok := reqMap["input"].([]interface{})
 	if !ok {
