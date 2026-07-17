@@ -107,6 +107,18 @@ export function normalizeQuickAddBaseUrls(rawUrls: string[], kind: ChannelKind):
   return parseQuickInput(rawUrls.join('\n'), defaultQuickAddServiceType(kind)).detectedBaseUrls
 }
 
+export function normalizeQuickAddApiKeys(rawKeys: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const rawKey of rawKeys) {
+    const key = rawKey.trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    result.push(key)
+  }
+  return result
+}
+
 function effectiveURLPort(url: URL): string {
   if (url.port) return url.port
   if (url.protocol === 'https:') return '443'

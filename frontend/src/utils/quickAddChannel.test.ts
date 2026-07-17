@@ -5,6 +5,7 @@ import {
   defaultQuickAddServiceType,
   findExistingQuickAddChannel,
   inferQuickAddProviderId,
+  normalizeQuickAddApiKeys,
   normalizeQuickAddBaseUrls,
   normalizeDiscoveredChannelKind,
   recognizeQuickAddBaseUrl,
@@ -86,6 +87,17 @@ describe('findExistingQuickAddChannel', () => {
 })
 
 describe('quick add protocol discovery', () => {
+  it('探测前清理并去重 API Key，同时保留首次出现顺序', () => {
+    expect(normalizeQuickAddApiKeys([' sk-first ', 'sk-second', 'sk-first', '', '  '])).toEqual([
+      'sk-first',
+      'sk-second'
+    ])
+  })
+
+  it('API Key 去重保持大小写敏感', () => {
+    expect(normalizeQuickAddApiKeys(['sk-key', 'SK-key'])).toEqual(['sk-key', 'SK-key'])
+  })
+
   it('与标准模式一致地清理后台路径和协议端点', () => {
     expect(recognizeQuickAddBaseUrl('https://www.fastaitoken.com/keys', 'messages')).toBe('https://www.fastaitoken.com')
     expect(recognizeQuickAddBaseUrl('https://www.fastaitoken.com/usage', 'messages')).toBe(

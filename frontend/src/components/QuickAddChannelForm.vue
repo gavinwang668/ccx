@@ -157,6 +157,7 @@ import {
   buildQuickAddChannelName,
   findExistingQuickAddChannel,
   inferQuickAddProviderId,
+  normalizeQuickAddApiKeys,
   normalizeQuickAddBaseUrls,
   recognizeQuickAddBaseUrl
 } from '../utils/quickAddChannel'
@@ -285,7 +286,7 @@ function getFilteredBaseUrls(): string[] {
 }
 
 function getFilteredApiKeys(): string[] {
-  return apiKeys.value.filter(k => k.trim() !== '')
+  return normalizeQuickAddApiKeys(apiKeys.value)
 }
 
 function generateRandomSuffix(length = 6): string {
@@ -319,6 +320,8 @@ async function handleSubmit() {
   try {
     const filteredBaseUrls = getFilteredBaseUrls()
     const filteredApiKeys = getFilteredApiKeys()
+    apiKeys.value = [...filteredApiKeys]
+    showKeys.value = filteredApiKeys.map(() => false)
     const routeDiscovery = isProviderMode.value ? null : await discoverCustomRoutes(filteredBaseUrls, filteredApiKeys)
     const targetChannelType = routeDiscovery?.primaryKind ?? props.channelType
     const result = await autoAddChannel(
