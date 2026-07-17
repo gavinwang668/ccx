@@ -29,8 +29,9 @@ const DEFAULT_SERVICE_TYPES: Record<ChannelKind, Channel['serviceType']> = {
 
 export function buildQuickAddChannelName(baseUrl: string, suffix: string): string {
   try {
-    const hostname = new URL(baseUrl).hostname.replace(/^www\./i, '').replace(/\./g, '-')
-    return `${hostname || 'channel'}-${suffix}`
+    const url = new URL(baseUrl)
+    const hostname = url.hostname.replace(/^www\./i, '').replace(/\./g, '-') || 'channel'
+    return url.port ? `${hostname}-${url.port}` : hostname
   } catch {
     return `channel-${suffix}`
   }

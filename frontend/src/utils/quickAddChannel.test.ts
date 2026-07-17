@@ -33,12 +33,17 @@ const providers = [
 ]
 
 describe('buildQuickAddChannelName', () => {
-  it('省略域名前导 www 并保留其余主机名', () => {
-    expect(buildQuickAddChannelName('https://www.fastaitoken.com/v1', 'ivpp0p')).toBe('fastaitoken-com-ivpp0p')
+  it('端口加入渠道名称且不再附加随机后缀', () => {
+    expect(buildQuickAddChannelName('http://localhost:8990/', 'abc123')).toBe('localhost-8990')
+    expect(buildQuickAddChannelName('https://www.example.com:8443/v1', 'abc123')).toBe('example-com-8443')
+  })
+
+  it('明确域名省略前导 www 且不附加随机后缀', () => {
+    expect(buildQuickAddChannelName('https://www.fastaitoken.com/v1', 'ivpp0p')).toBe('fastaitoken-com')
   })
 
   it('不误删主机名中间的 www', () => {
-    expect(buildQuickAddChannelName('https://api.www-example.com', 'abc123')).toBe('api-www-example-com-abc123')
+    expect(buildQuickAddChannelName('https://api.www-example.com', 'abc123')).toBe('api-www-example-com')
   })
 
   it('无效地址回退到通用名称', () => {
