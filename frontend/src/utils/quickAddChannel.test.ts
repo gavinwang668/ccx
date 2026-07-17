@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildQuickAddChannelName,
   defaultQuickAddServiceType,
+  findExistingQuickAddChannel,
   inferQuickAddProviderId,
   normalizeQuickAddBaseUrls,
   normalizeDiscoveredChannelKind,
@@ -48,6 +49,39 @@ describe('buildQuickAddChannelName', () => {
 
   it('无效地址回退到通用名称', () => {
     expect(buildQuickAddChannelName('not a url', 'abc123')).toBe('channel-abc123')
+  })
+})
+
+describe('findExistingQuickAddChannel', () => {
+  const channel = {
+    index: 3,
+    name: 'localhost-8990',
+    serviceType: 'openai' as const,
+    baseUrl: 'http://localhost:8990/v1',
+    apiKeys: ['sk-test']
+  }
+
+  it('识别带端口地址及默认版本前缀的等效渠道', () => {
+    const match = findExistingQuickAddChannel(['http://localhost:8990/'], [channel])
+    expect(match?.channel.name).toBe('localhost-8990')
+    expect(match?.existingBaseUrl).toBe('http://localhost:8990/v1')
+  })
+
+  it('忽略协议和域名大小写但保留不同端口与业务路径', () => {
+    expect(
+      findExistingQuickAddChannel(['HTTPS://API.EXAMPLE.COM/v1'], [{ ...channel, baseUrl: 'https://api.example.com' }])
+        ?.channel.name
+    ).toBe('localhost-8990')
+    expect(findExistingQuickAddChannel(['http://localhost:8991'], [channel])).toBeNull()
+    expect(findExistingQuickAddChannel(['http://localhost:8990/other'], [channel])).toBeNull()
+  })
+
+  it('保留禁止自动追加版本前缀的 # 语义', () => {
+    const hashChannel = { ...channel, baseUrl: 'https://api.example.com#' }
+    expect(findExistingQuickAddChannel(['https://api.example.com'], [hashChannel])).toBeNull()
+    expect(findExistingQuickAddChannel(['https://api.example.com/#'], [hashChannel])?.channel.name).toBe(
+      'localhost-8990'
+    )
   })
 })
 

@@ -79,6 +79,16 @@
       </div>
     </div>
 
+    <v-alert
+      v-if="duplicateChannel"
+      color="info"
+      variant="tonal"
+      density="comfortable"
+      icon="mdi-content-duplicate"
+    >
+      {{ t('autopilot.quickAdd.alreadyAdded', { name: duplicateChannel.channel.logicalName || duplicateChannel.channel.name }) }}
+    </v-alert>
+
     <!-- API Key 输入 -->
     <div>
       <div class="d-flex align-center justify-space-between mb-2">
@@ -135,6 +145,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from '../i18n'
+import type { Channel } from '../services/api'
 import {
   autoAddChannel,
   discoverAutoAddRoutes,
@@ -144,6 +155,7 @@ import {
 import type { ProviderTemplate } from '../services/autopilot-api'
 import {
   buildQuickAddChannelName,
+  findExistingQuickAddChannel,
   inferQuickAddProviderId,
   normalizeQuickAddBaseUrls,
   recognizeQuickAddBaseUrl
@@ -153,9 +165,12 @@ type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images' | 've
 
 interface Props {
   channelType: ChannelType
+  existingChannels?: Channel[]
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  existingChannels: () => []
+})
 
 const emit = defineEmits<{
   added: [channelId: number]
@@ -205,6 +220,9 @@ const isExplicitProviderMode = computed(() => providerId.value !== '')
 const isProviderMode = computed(() => effectiveProviderId.value !== '')
 const recognizedBaseUrls = computed(() => baseUrls.value.map(url => recognizeQuickAddBaseUrl(url, props.channelType)))
 const normalizedBaseUrls = computed(() => normalizeQuickAddBaseUrls(baseUrls.value, props.channelType))
+const duplicateChannel = computed(() =>
+  isProviderMode.value ? null : findExistingQuickAddChannel(normalizedBaseUrls.value, props.existingChannels)
+)
 
 const isFormValid = computed(() => {
   const hasKey = apiKeys.value.some(k => k.trim() !== '')
@@ -314,7 +332,8 @@ async function handleSubmit() {
             name: getGeneratedName(),
             baseUrls: filteredBaseUrls,
             apiKeys: filteredApiKeys,
-            routes: routeDiscovery?.routes
+            routes: routeDiscovery?.routes,
+            rateLimitHint: routeDiscovery?.rateLimitHint
           }
     )
 

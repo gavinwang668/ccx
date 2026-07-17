@@ -1282,6 +1282,7 @@
   "autopilot.quickAdd.addUrl": "Tambah URL",
   "autopilot.quickAdd.addKey": "Tambah Kunci",
   "autopilot.quickAdd.recognizedBaseUrl": "Akan dikenali sebagai {url}",
+  "autopilot.quickAdd.alreadyAdded": "Base URL ini sudah ditambahkan sebagai kanal \"{name}\". Kunci baru akan ditambahkan ke kanal yang ada.",
   "autopilot.quickAdd.discovering": "Menemukan...",
   "autopilot.quickAdd.discoveryDone": "Penemuan selesai",
   "autopilot.quickAdd.discoveryFailed": "Penemuan gagal",

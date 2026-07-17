@@ -115,7 +115,8 @@ describe('auto add route discovery', () => {
         { protocol: 'gemini', success: false, failedModels: ['shared'] }
       ],
       capabilities: {} as never,
-      recommendation: { channelKind: 'responses', serviceType: 'responses', modelMapping: {} }
+      recommendation: { channelKind: 'responses', serviceType: 'responses', modelMapping: {} },
+      rateLimit: { initialRpm: 30, effectiveRpm: 15, rateLimited: true, rateLimitedCount: 1 }
     })
     const { discoverAutoAddRoutes } = await import('./autopilot-api')
 
@@ -125,7 +126,8 @@ describe('auto add route discovery', () => {
         { channelKind: 'messages', supportedModels: ['shared', 'messages-only'] },
         { channelKind: 'responses', supportedModels: ['shared', 'responses-only'] },
         { channelKind: 'chat', supportedModels: ['shared'] }
-      ]
+      ],
+      rateLimitHint: { initialRpm: 30, effectiveRpm: 15, rateLimited: true, rateLimitedCount: 1 }
     })
     const request = discover.mock.calls[0][0]
     expect(request).toEqual({

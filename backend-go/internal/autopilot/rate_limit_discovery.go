@@ -219,19 +219,59 @@ func (d *RateLimitDiscoverer) Observe(endpointUID string, sig RateLimitSignal) {
 	}
 }
 
-// SuggestedLimit 返回 endpoint 的限速建议。并发安全。
-// 返回 zero value（rpm=0, confidence=0, source=unknown）表示信号不足，无建议。
-func (d *RateLimitDiscoverer) SuggestedLimit(endpointUID string) SuggestedLimitResult {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
+// SeedProbeEstimate 用添加渠道时的主动探测结果初始化 endpoint 限速画像。
+// 未遇到 429 的 30 RPM 只表示探测过程安全，不足以直接驱动限速；遇到 429
+// 后的降速结果置信度更高，但仍允许后续显式响应头覆盖。
+func (d *RateLimitDiscoverer) SeedProbeEstimate(endpointUID string, rpm int, rateLimited bool) SuggestedLimitResult {
+	if d == nil || endpointUID == "" || rpm <= 0 {
+		return SuggestedLimitResult{Source: RateLimitSourceUnknown}
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := d.nowFunc()
+	seedRPM := d.clampRPM(rpm)
+	seedConfidence := 0.2
+	if rateLimited {
+		seedConfidence = 0.7
+	}
 
 	state, ok := d.states[endpointUID]
-	if !ok || state.ObserveCount == 0 {
-		return SuggestedLimitResult{
-			Source: RateLimitSourceUnknown,
+	if !ok {
+		state = &endpointLearnState{WindowSeconds: 60}
+		d.states[endpointUID] = state
+	}
+	// 已解析到明确上游响应头，或已有更高置信结论时，不用探测提示降级。
+	if state.Source == RateLimitSourceHeader || state.Confidence > seedConfidence {
+		return suggestedLimitFromState(state)
+	}
+	// 普通探测基线不覆盖已有估算；429 探测只允许收紧，不会放宽已有值。
+	if state.EstimatedRPM > 0 {
+		if !rateLimited || state.EstimatedRPM <= seedRPM {
+			return suggestedLimitFromState(state)
 		}
 	}
 
+	state.EstimatedRPM = seedRPM
+	state.Source = RateLimitSourcePassiveAIMD
+	state.Confidence = seedConfidence
+	state.UpdatedAt = now
+	state.ObserveCount++
+	if rateLimited {
+		state.Last429At = &now
+		state.No429Since = nil
+		state.ConsecutiveSuccessesSince429 = 0
+	} else if state.No429Since == nil {
+		state.No429Since = &now
+	}
+	return suggestedLimitFromState(state)
+}
+
+func suggestedLimitFromState(state *endpointLearnState) SuggestedLimitResult {
+	if state == nil || state.ObserveCount == 0 {
+		return SuggestedLimitResult{Source: RateLimitSourceUnknown}
+	}
 	return SuggestedLimitResult{
 		RPM:        state.EstimatedRPM,
 		TPM:        state.EstimatedTPM,
@@ -239,6 +279,19 @@ func (d *RateLimitDiscoverer) SuggestedLimit(endpointUID string) SuggestedLimitR
 		Confidence: state.Confidence,
 		Source:     state.Source,
 	}
+}
+
+// SuggestedLimit 返回 endpoint 的限速建议。并发安全。
+// 返回 zero value（rpm=0, confidence=0, source=unknown）表示信号不足，无建议。
+func (d *RateLimitDiscoverer) SuggestedLimit(endpointUID string) SuggestedLimitResult {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	state, ok := d.states[endpointUID]
+	if !ok {
+		return SuggestedLimitResult{Source: RateLimitSourceUnknown}
+	}
+	return suggestedLimitFromState(state)
 }
 
 // AllSuggestedLimits 返回所有已观测 endpoint 的限速建议。并发安全。

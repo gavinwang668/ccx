@@ -5,7 +5,7 @@ import {
 } from '@/utils/quickAddChannel'
 import api from './api'
 import { API_BASE } from './api-helpers'
-import type { ChannelKind } from './api-types'
+import type { ChannelKind, DiscoveryRateLimitResult } from './api-types'
 
 // ─── 类型定义 ───
 
@@ -17,6 +17,7 @@ export interface AutoAddChannelRequest {
   baseUrls?: string[]
   apiKeys: string[]
   routes?: AutoAddRouteRequest[]
+  rateLimitHint?: DiscoveryRateLimitResult
   subscriptionUid?: string
 }
 
@@ -28,6 +29,7 @@ export interface AutoAddRouteRequest {
 export interface AutoAddRouteDiscovery {
   primaryKind: ChannelKind
   routes: AutoAddRouteRequest[]
+  rateLimitHint?: DiscoveryRateLimitResult
 }
 
 /** Provider 模板 key 前缀规则 */
@@ -254,7 +256,7 @@ export async function discoverAutoAddRoutes(
     recommendedKind && routes.some(route => route.channelKind === recommendedKind)
       ? recommendedKind
       : routes[0].channelKind
-  return { primaryKind, routes }
+  return { primaryKind, routes, rateLimitHint: discovery.rateLimit }
 }
 
 export function extractAutoAddErrorMessage(err: unknown): string {

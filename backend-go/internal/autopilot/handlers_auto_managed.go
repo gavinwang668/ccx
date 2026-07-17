@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +30,16 @@ type AutoAddRequest struct {
 	BaseURLs        []string              `json:"baseUrls"`
 	APIKeys         []string              `json:"apiKeys"`
 	Routes          []AutoAddRouteRequest `json:"routes,omitempty"`
+	RateLimitHint   *AutoAddRateLimitHint `json:"rateLimitHint,omitempty"`
 	SubscriptionUID string                `json:"subscriptionUid,omitempty"`
+}
+
+// AutoAddRateLimitHint 是添加前主动探测得到的 endpoint 限速提示，不是用户显式限额。
+type AutoAddRateLimitHint struct {
+	InitialRPM       int  `json:"initialRpm"`
+	EffectiveRPM     int  `json:"effectiveRpm"`
+	RateLimited      bool `json:"rateLimited"`
+	RateLimitedCount int  `json:"rateLimitedCount,omitempty"`
 }
 
 // AutoAddRouteRequest 描述自定义渠道探测成功的一条原生协议路由。
@@ -86,10 +96,11 @@ type EndpointDiscoveryInfo struct {
 
 // AutoManagedDeps 自动托管路由的依赖注入。
 type AutoManagedDeps struct {
-	CfgManager        *config.ConfigManager
-	Runner            *AutoDiscoveryRunner
-	MiMoConsoleClient *MiMoConsoleClient
-	DeepSeekClient    *DeepSeekClient
+	CfgManager          *config.ConfigManager
+	Runner              *AutoDiscoveryRunner
+	RateLimitDiscoverer *RateLimitDiscoverer
+	MiMoConsoleClient   *MiMoConsoleClient
+	DeepSeekClient      *DeepSeekClient
 }
 
 // RegisterAutoManagedRoutes 注册自动托管 API 路由。
@@ -667,7 +678,7 @@ func applyManagedAccountUpdate(ctx context.Context, deps *AutoManagedDeps, accou
 	if ok && providerID != "" {
 		updates, status, err = planManagedAccountUpdates(ctx, accountUID, req, channels, tmpl, len(channels))
 	} else if providerID == "" {
-		updates, status, err = planCustomManagedAccountUpdates(accountUID, req, channels)
+		updates, status, err = planCustomManagedAccountUpdates(accountUID, req, channels, len(channels))
 	} else {
 		return updateAccountResponse{}, http.StatusBadRequest, fmt.Errorf("provider %s 模板不存在", providerID)
 	}
@@ -690,6 +701,7 @@ func planCustomManagedAccountUpdates(
 	accountUID string,
 	req updateAccountRequest,
 	channels []config.AccountChannel,
+	totalRouteCount int,
 ) ([]config.AccountChannelUpdate, int, error) {
 	if len(channels) == 0 {
 		return nil, http.StatusNotFound, fmt.Errorf("账号不存在")
@@ -702,7 +714,7 @@ func planCustomManagedAccountUpdates(
 	if baseName == "" {
 		baseName = strings.TrimSuffix(channels[0].Upstream.Name, accountRouteSuffix(channels[0].Kind))
 	}
-	multiRoute := len(channels) > 1
+	multiRoute := totalRouteCount > 1
 	updates := make([]config.AccountChannelUpdate, 0, len(channels))
 	for _, accountChannel := range channels {
 		channel := accountChannel.Upstream
@@ -1110,6 +1122,10 @@ func handleCustomAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind stri
 	}
 
 	cfg := deps.CfgManager.GetConfig()
+	if duplicates := findExistingAutoAddChannels(cfg, baseURLs); len(duplicates) > 0 {
+		handleExistingCustomAutoAdd(c, deps, requestKind, req, routes, duplicates)
+		return
+	}
 	multiRoute := len(routes) > 1
 	for _, route := range routes {
 		name := customAutoAddRouteName(baseName, route.ChannelKind, multiRoute)
@@ -1144,6 +1160,7 @@ func handleCustomAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind stri
 	}
 
 	cfg = deps.CfgManager.GetConfig()
+	seedAutoAddRateLimitHint(deps, deps.CfgManager.GetAccountChannels(accountUID), req.RateLimitHint, req.APIKeys[0], baseURLs[0])
 	results := make([]AutoAddChannelResult, 0, len(additions))
 	for _, addition := range additions {
 		upstream := addition.Upstream
@@ -1163,6 +1180,294 @@ func handleCustomAutoAdd(c *gin.Context, deps *AutoManagedDeps, requestKind stri
 	}
 	primary := primaryAutoAddResult(results, requestKind)
 	c.JSON(http.StatusCreated, AutoAddResponse{
+		AccountUID: accountUID, ChannelUID: primary.ChannelUID, Index: primary.Index,
+		DiscoveryStarted: primary.DiscoveryStarted, Channels: results,
+	})
+}
+
+func handleExistingCustomAutoAdd(
+	c *gin.Context,
+	deps *AutoManagedDeps,
+	requestKind string,
+	req AutoAddRequest,
+	routes []AutoAddRouteRequest,
+	matches []existingAutoAddChannel,
+) {
+	for _, match := range matches {
+		if match.Upstream.AccountUID != "" && match.Upstream.AutoManaged && match.Upstream.ProviderID == "" {
+			appendCredentialsToCustomAccount(c, deps, requestKind, req, routes, match.Upstream.AccountUID)
+			return
+		}
+	}
+	appendCredentialsToLegacyChannels(c, deps, requestKind, req, matches)
+}
+
+func appendCredentialsToCustomAccount(
+	c *gin.Context,
+	deps *AutoManagedDeps,
+	requestKind string,
+	req AutoAddRequest,
+	routes []AutoAddRouteRequest,
+	accountUID string,
+) {
+	channels := deps.CfgManager.GetAccountChannels(accountUID)
+	if len(channels) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "已有自动托管账号不存在"})
+		return
+	}
+
+	var desiredKeys []string
+	presentKinds := make(map[string]bool, len(channels))
+	for _, channel := range channels {
+		desiredKeys = append(desiredKeys, channel.Upstream.APIKeys...)
+		presentKinds[channel.Kind] = true
+	}
+	desiredKeys = append(desiredKeys, req.APIKeys...)
+	desiredKeys = uniqueNonEmptyStrings(desiredKeys)
+	totalRouteCount := len(presentKinds)
+	for _, route := range routes {
+		if !presentKinds[route.ChannelKind] {
+			totalRouteCount++
+		}
+	}
+
+	baseName := strings.TrimSuffix(channels[0].Upstream.Name, accountRouteSuffix(channels[0].Kind))
+	updates, status, err := planCustomManagedAccountUpdates(accountUID, updateAccountRequest{
+		Name: baseName, APIKeys: desiredKeys,
+	}, channels, totalRouteCount)
+	if err != nil {
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	baseURLs := uniqueNonEmptyStrings(req.BaseURLs)
+	now := time.Now()
+	additions := make([]config.AccountChannelAddition, 0, totalRouteCount-len(presentKinds))
+	for _, route := range routes {
+		if presentKinds[route.ChannelKind] {
+			continue
+		}
+		name := customAutoAddRouteName(baseName, route.ChannelKind, totalRouteCount > 1)
+		if channelNameExists(getChannelSlice(deps.CfgManager.GetConfig(), route.ChannelKind), name) {
+			c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("渠道名称 '%s' 已存在", name)})
+			return
+		}
+		upstream := config.UpstreamConfig{
+			Name:            name,
+			AccountUID:      accountUID,
+			ChannelUID:      config.GenerateChannelUID(),
+			ServiceType:     kindToDefaultServiceType(route.ChannelKind),
+			Status:          "active",
+			AutoManaged:     true,
+			AutoManagedAt:   &now,
+			BaseURL:         baseURLs[0],
+			BaseURLs:        append([]string(nil), baseURLs...),
+			APIKeys:         append([]string(nil), desiredKeys...),
+			APIKeyConfigs:   customAutoAddKeyConfigs(accountUID, desiredKeys, baseURLs[0]),
+			SupportedModels: append([]string(nil), route.SupportedModels...),
+		}
+		additions = append(additions, config.AccountChannelAddition{Kind: route.ChannelKind, Upstream: upstream})
+	}
+
+	if err := deps.CfgManager.ApplyAccountChannelChanges(accountUID, updates, additions); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("追加渠道密钥失败: %v", err)})
+		return
+	}
+	seedAutoAddRateLimitHint(deps, deps.CfgManager.GetAccountChannels(accountUID), req.RateLimitHint, req.APIKeys[0], baseURLs[0])
+	log.Printf("[AutoManaged-Add] 已向自定义账号追加凭证: account=%s keys=%d routesAdded=%d", accountUID, len(req.APIKeys), len(additions))
+	respondAutoAddAccountChannels(c, deps, requestKind, accountUID)
+}
+
+func customAutoAddKeyConfigs(accountUID string, apiKeys []string, baseURL string) []config.APIKeyConfig {
+	configs := make([]config.APIKeyConfig, 0, len(apiKeys))
+	for _, apiKey := range apiKeys {
+		configs = append(configs, config.APIKeyConfig{
+			Key: apiKey, BaseURL: baseURL, CredentialUID: config.GenerateCredentialUID(accountUID, apiKey),
+		})
+	}
+	return configs
+}
+
+func appendCredentialsToLegacyChannels(
+	c *gin.Context,
+	deps *AutoManagedDeps,
+	requestKind string,
+	req AutoAddRequest,
+	matches []existingAutoAddChannel,
+) {
+	for _, match := range matches {
+		existingKeys := make(map[string]bool, len(match.Upstream.APIKeys))
+		for _, apiKey := range match.Upstream.APIKeys {
+			existingKeys[apiKey] = true
+		}
+		for _, apiKey := range uniqueNonEmptyStrings(req.APIKeys) {
+			if existingKeys[apiKey] {
+				continue
+			}
+			if err := appendAPIKeyToExistingChannel(deps.CfgManager, match.Kind, match.Index, apiKey); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("向已有渠道追加密钥失败: %v", err)})
+				return
+			}
+			existingKeys[apiKey] = true
+		}
+	}
+
+	cfg := deps.CfgManager.GetConfig()
+	matchedChannels := make([]config.AccountChannel, 0, len(matches))
+	for _, match := range matches {
+		index := findChannelIndexByUID(getChannelSlice(cfg, match.Kind), match.Upstream.ChannelUID)
+		if index >= 0 {
+			matchedChannels = append(matchedChannels, config.AccountChannel{Kind: match.Kind, Upstream: getChannelSlice(cfg, match.Kind)[index]})
+		}
+	}
+	seedAutoAddRateLimitHint(deps, matchedChannels, req.RateLimitHint, req.APIKeys[0], req.BaseURLs[0])
+	results := make([]AutoAddChannelResult, 0, len(matches))
+	for _, match := range matches {
+		index := findChannelIndexByUID(getChannelSlice(cfg, match.Kind), match.Upstream.ChannelUID)
+		discoveryStarted := triggerDiscoveryForChannel(deps, match.Kind, match.Upstream.ChannelUID)
+		results = append(results, AutoAddChannelResult{
+			AccountUID: match.Upstream.AccountUID, ChannelKind: match.Kind, ChannelUID: match.Upstream.ChannelUID,
+			Index: index, Name: match.Upstream.Name, ServiceType: match.Upstream.ServiceType,
+			DiscoveryStarted: discoveryStarted,
+		})
+	}
+	primary := primaryAutoAddResult(results, requestKind)
+	c.JSON(http.StatusOK, AutoAddResponse{
+		AccountUID: primary.AccountUID, ChannelUID: primary.ChannelUID, Index: primary.Index,
+		DiscoveryStarted: primary.DiscoveryStarted, Channels: results,
+	})
+}
+
+func appendAPIKeyToExistingChannel(cfgManager *config.ConfigManager, kind string, index int, apiKey string) error {
+	switch kind {
+	case "messages":
+		return cfgManager.AddAPIKey(index, apiKey)
+	case "chat":
+		return cfgManager.AddChatAPIKey(index, apiKey)
+	case "responses":
+		return cfgManager.AddResponsesAPIKey(index, apiKey)
+	case "gemini":
+		return cfgManager.AddGeminiAPIKey(index, apiKey)
+	case "images":
+		return cfgManager.AddImagesAPIKey(index, apiKey)
+	case "vectors":
+		return cfgManager.AddVectorsAPIKey(index, apiKey)
+	default:
+		return fmt.Errorf("不支持的渠道类型: %s", kind)
+	}
+}
+
+func seedAutoAddRateLimitHint(
+	deps *AutoManagedDeps,
+	channels []config.AccountChannel,
+	hint *AutoAddRateLimitHint,
+	probeAPIKey string,
+	probeBaseURL string,
+) {
+	if deps == nil || deps.RateLimitDiscoverer == nil || hint == nil || strings.TrimSpace(probeAPIKey) == "" {
+		return
+	}
+	rpm := hint.EffectiveRPM
+	if rpm <= 0 {
+		return
+	}
+	if hint.InitialRPM > 0 && rpm > hint.InitialRPM {
+		rpm = hint.InitialRPM
+	}
+	if rpm > 120 {
+		rpm = 120
+	}
+	rateLimited := hint.RateLimited || hint.RateLimitedCount > 0
+	cfg := deps.CfgManager.GetConfig()
+
+	for _, channel := range channels {
+		upstream := channel.Upstream
+		containsProbeKey := false
+		for _, apiKey := range upstream.APIKeys {
+			if apiKey == probeAPIKey {
+				containsProbeKey = true
+				break
+			}
+		}
+		if !containsProbeKey {
+			continue
+		}
+
+		baseURL := upstream.BoundBaseURLForKey(probeAPIKey)
+		if baseURL == "" {
+			baseURL = utils.CanonicalBaseURL(probeBaseURL, upstream.ServiceType)
+		}
+		if baseURL == "" {
+			continue
+		}
+		endpointUID := GenerateEndpointUID(upstream.ChannelUID, baseURL, KeyHashFromAPIKey(probeAPIKey))
+		suggestion := deps.RateLimitDiscoverer.SeedProbeEstimate(endpointUID, rpm, rateLimited)
+		if suggestion.RPM <= 0 || deps.Runner == nil || deps.Runner.store == nil {
+			continue
+		}
+
+		profile := KeyEndpointProfile{}
+		if existing := deps.Runner.store.Get(endpointUID); existing != nil {
+			profile = *existing
+		}
+		profile.AccountUID = upstream.AccountUID
+		profile.ChannelUID = upstream.ChannelUID
+		profile.ChannelID = findChannelIndexByUID(getChannelSlice(cfg, channel.Kind), upstream.ChannelUID)
+		profile.ChannelKind = channel.Kind
+		profile.EndpointUID = endpointUID
+		profile.ServiceType = upstream.ServiceType
+		profile.BaseURL = baseURL
+		profile.IdentityBaseURL = utils.MetricsIdentityBaseURL(baseURL, upstream.ServiceType)
+		profile.KeyMask = utils.MaskAPIKey(probeAPIKey)
+		profile.KeyHash = KeyHashFromAPIKey(probeAPIKey)
+		profile.CredentialUID = upstream.CredentialUIDForKey(probeAPIKey)
+		profile.MetricsKey = computeMetricsIdentityKey(baseURL, probeAPIKey, upstream.ServiceType)
+		profile.DiscoveredRPM = suggestion.RPM
+		profile.RateLimitConfidence = suggestion.Confidence
+		profile.RateLimitSource = string(suggestion.Source)
+		profile.SuggestedRPMSource = string(suggestion.Source)
+		profile.SuggestedRPMTPM = suggestion.TPM
+		profile.SuggestedRPMRPD = suggestion.RPD
+		if profile.HealthState == "" {
+			profile.HealthState = HealthStateUnknown
+		}
+		if profile.QualityTier == "" {
+			profile.QualityTier = QualityTierNormal
+		}
+		if profile.StabilityTier == "" {
+			profile.StabilityTier = StabilityTierNormal
+		}
+		if profile.SpeedTier == "" {
+			profile.SpeedTier = SpeedTierNormal
+		}
+		if profile.CostTier == "" {
+			profile.CostTier = CostTierNormal
+		}
+		if profile.Source == "" {
+			profile.Source = "channel_discovery"
+		}
+		profile.UpdatedAt = time.Now()
+		if err := deps.Runner.store.Upsert(&profile); err != nil {
+			log.Printf("[AutoManaged-RateLimit] 写入探测限速画像失败 endpoint=%s: %v", endpointUID, err)
+		}
+	}
+}
+
+func respondAutoAddAccountChannels(c *gin.Context, deps *AutoManagedDeps, requestKind, accountUID string) {
+	channels := deps.CfgManager.GetAccountChannels(accountUID)
+	cfg := deps.CfgManager.GetConfig()
+	results := make([]AutoAddChannelResult, 0, len(channels))
+	for _, channel := range channels {
+		index := findChannelIndexByUID(getChannelSlice(cfg, channel.Kind), channel.Upstream.ChannelUID)
+		discoveryStarted := triggerDiscoveryForChannel(deps, channel.Kind, channel.Upstream.ChannelUID)
+		results = append(results, AutoAddChannelResult{
+			AccountUID: accountUID, ChannelKind: channel.Kind, ChannelUID: channel.Upstream.ChannelUID,
+			Index: index, Name: channel.Upstream.Name, ServiceType: channel.Upstream.ServiceType,
+			DiscoveryStarted: discoveryStarted,
+		})
+	}
+	primary := primaryAutoAddResult(results, requestKind)
+	c.JSON(http.StatusOK, AutoAddResponse{
 		AccountUID: accountUID, ChannelUID: primary.ChannelUID, Index: primary.Index,
 		DiscoveryStarted: primary.DiscoveryStarted, Channels: results,
 	})
@@ -1604,6 +1909,77 @@ func channelNameExists(channels []config.UpstreamConfig, name string) bool {
 		}
 	}
 	return false
+}
+
+type existingAutoAddChannel struct {
+	Kind     string
+	Index    int
+	Upstream config.UpstreamConfig
+}
+
+var autoAddChannelKinds = []string{"messages", "chat", "responses", "gemini", "images", "vectors"}
+var autoAddURLServiceTypes = []string{"claude", "openai", "responses", "gemini"}
+
+func normalizeAutoAddURLIdentity(rawURL string) string {
+	trimmed := strings.TrimSpace(rawURL)
+	hasHash := strings.HasSuffix(trimmed, "#")
+	parsed, err := url.Parse(strings.TrimSuffix(trimmed, "#"))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	parsed.RawPath = ""
+	parsed.Fragment = ""
+	identity := strings.TrimRight(parsed.String(), "/")
+	if hasHash {
+		return identity + "#"
+	}
+	return identity
+}
+
+func equivalentAutoAddURLIdentities(rawURL string) map[string]struct{} {
+	identities := make(map[string]struct{}, len(autoAddURLServiceTypes))
+	for _, serviceType := range autoAddURLServiceTypes {
+		identity := normalizeAutoAddURLIdentity(utils.CanonicalBaseURL(rawURL, serviceType))
+		if identity != "" {
+			identities[identity] = struct{}{}
+		}
+	}
+	return identities
+}
+
+func findExistingAutoAddChannels(cfg config.Config, baseURLs []string) []existingAutoAddChannel {
+	inputIdentities := make(map[string]struct{})
+	for _, baseURL := range baseURLs {
+		for identity := range equivalentAutoAddURLIdentities(baseURL) {
+			inputIdentities[identity] = struct{}{}
+		}
+	}
+	if len(inputIdentities) == 0 {
+		return nil
+	}
+
+	var matches []existingAutoAddChannel
+	for _, kind := range autoAddChannelKinds {
+		for index, upstream := range getChannelSlice(cfg, kind) {
+			matched := false
+			for _, baseURL := range upstream.GetAllBaseURLs() {
+				for identity := range equivalentAutoAddURLIdentities(baseURL) {
+					if _, exists := inputIdentities[identity]; exists {
+						matches = append(matches, existingAutoAddChannel{Kind: kind, Index: index, Upstream: upstream})
+						matched = true
+						break
+					}
+				}
+				if matched {
+					break
+				}
+			}
+		}
+	}
+	return matches
 }
 
 func findChannelIndexByUID(channels []config.UpstreamConfig, channelUID string) int {

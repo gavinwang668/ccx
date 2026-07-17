@@ -12,12 +12,93 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/httpclient"
 	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
-const discoveryProbeTimeout = 10 * time.Second
+const (
+	discoveryProbeTimeout      = 10 * time.Second
+	defaultChannelDiscoveryRPM = 30
+	maxDiscovery429Retries     = 2
+)
+
+type discoveryProbeWaitFunc func(context.Context, time.Duration) error
+
+type discoveryProbePacer struct {
+	initialRPM       int
+	effectiveRPM     int
+	rateLimitedCount int
+	nextProbeAt      time.Time
+	now              func() time.Time
+	wait             discoveryProbeWaitFunc
+}
+
+func newDiscoveryProbePacer(initialRPM int) *discoveryProbePacer {
+	if initialRPM <= 0 {
+		initialRPM = defaultChannelDiscoveryRPM
+	}
+	return &discoveryProbePacer{
+		initialRPM:   initialRPM,
+		effectiveRPM: initialRPM,
+		now:          time.Now,
+		wait: func(ctx context.Context, delay time.Duration) error {
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	}
+}
+
+func (p *discoveryProbePacer) waitForNext(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+	now := p.now()
+	if p.nextProbeAt.After(now) {
+		if err := p.wait(ctx, p.nextProbeAt.Sub(now)); err != nil {
+			return err
+		}
+		now = p.now()
+	}
+	interval := time.Minute / time.Duration(p.effectiveRPM)
+	p.nextProbeAt = now.Add(interval)
+	return nil
+}
+
+func (p *discoveryProbePacer) observeRateLimited() {
+	if p == nil {
+		return
+	}
+	p.rateLimitedCount++
+	nextRPM := p.effectiveRPM / 2
+	if nextRPM < 1 {
+		nextRPM = 1
+	}
+	p.effectiveRPM = nextRPM
+	candidate := p.now().Add(time.Minute / time.Duration(p.effectiveRPM))
+	if candidate.After(p.nextProbeAt) {
+		p.nextProbeAt = candidate
+	}
+}
+
+func (p *discoveryProbePacer) result() DiscoveryRateLimitResult {
+	if p == nil {
+		return DiscoveryRateLimitResult{}
+	}
+	return DiscoveryRateLimitResult{
+		InitialRPM:       p.initialRPM,
+		EffectiveRPM:     p.effectiveRPM,
+		RateLimited:      p.rateLimitedCount > 0,
+		RateLimitedCount: p.rateLimitedCount,
+	}
+}
 
 type ChannelDiscoveryRequest struct {
 	ChannelKind        string            `json:"channelKind"`
@@ -99,6 +180,13 @@ type DiscoveryCapabilitiesResult struct {
 	ThinkingPassback DiscoveryCapabilityProbeResult `json:"thinkingPassback"`
 }
 
+type DiscoveryRateLimitResult struct {
+	InitialRPM       int  `json:"initialRpm"`
+	EffectiveRPM     int  `json:"effectiveRpm"`
+	RateLimited      bool `json:"rateLimited"`
+	RateLimitedCount int  `json:"rateLimitedCount,omitempty"`
+}
+
 type DiscoveryEvidence struct {
 	Type    string `json:"type"`
 	Key     string `json:"key,omitempty"`
@@ -130,14 +218,27 @@ type ChannelDiscoveryResponse struct {
 	Protocols      []DiscoveryProtocolResult   `json:"protocols"`
 	Capabilities   DiscoveryCapabilitiesResult `json:"capabilities"`
 	Recommendation DiscoveryRecommendation     `json:"recommendation"`
+	RateLimit      DiscoveryRateLimitResult    `json:"rateLimit"`
 	Evidence       []DiscoveryEvidence         `json:"evidence,omitempty"`
 }
 
 func ChannelDiscovery(cfgManager *config.ConfigManager) gin.HandlerFunc {
-	return ChannelDiscoveryWithModelFetchers(cfgManager, nil)
+	return channelDiscoveryWithPacerFactory(cfgManager, nil, func() *discoveryProbePacer {
+		return newDiscoveryProbePacer(defaultChannelDiscoveryRPM)
+	})
 }
 
 func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFetchers ChannelDiscoveryModelFetchers) gin.HandlerFunc {
+	return channelDiscoveryWithPacerFactory(cfgManager, modelFetchers, func() *discoveryProbePacer {
+		return newDiscoveryProbePacer(defaultChannelDiscoveryRPM)
+	})
+}
+
+func channelDiscoveryWithPacerFactory(
+	cfgManager *config.ConfigManager,
+	modelFetchers ChannelDiscoveryModelFetchers,
+	pacerFactory func() *discoveryProbePacer,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ChannelDiscoveryRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -166,7 +267,8 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 		models.Selected = selectDiscoveryModels(models.Items, globalCapabilities)
 
 		probeModels := discoveryProtocolProbeModels(models, req.ProbeAllModels || autoDetectServiceType)
-		protocols := runDiscoveryProtocolProbes(c.Request.Context(), channel, probeModels, cfgManager)
+		pacer := pacerFactory()
+		protocols := runDiscoveryProtocolProbes(c.Request.Context(), channel, probeModels, cfgManager, pacer)
 		successByProtocol := discoverySuccessModelsByProtocol(protocols)
 		recommendedKind := recommendDiscoveryChannelKind(req.ChannelKind, req.TargetClients, protocols)
 		channel.ServiceType = resolveDiscoveryServiceType(req.ServiceType, recommendedKind)
@@ -204,6 +306,7 @@ func ChannelDiscoveryWithModelFetchers(cfgManager *config.ConfigManager, modelFe
 			Protocols:      protocols,
 			Capabilities:   capabilities,
 			Recommendation: recommendation,
+			RateLimit:      pacer.result(),
 			Evidence:       evidence,
 		})
 	}
@@ -741,7 +844,7 @@ func runDiscoveryToolCallProbe(channel *config.UpstreamConfig, channelKind, apiK
 	return result
 }
 
-const discoveryVisionProbeImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+const discoveryVisionProbeImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
 
 func runDiscoveryVisionProbe(channel *config.UpstreamConfig, channelKind, apiKey, baseURL, probeModel string) DiscoveryCapabilityProbeResult {
 	protocol := compatProbeProtocol(channel, channelKind)
@@ -1470,19 +1573,24 @@ func discoveryProtocolProbeModels(models DiscoveryModelsResult, probeAll bool) [
 	return discoveryProbeModels(models.Selected, models.Items)
 }
 
-func runDiscoveryProtocolProbes(ctx context.Context, channel *config.UpstreamConfig, models []string, cfgManager *config.ConfigManager) []DiscoveryProtocolResult {
+func runDiscoveryProtocolProbes(ctx context.Context, channel *config.UpstreamConfig, models []string, cfgManager *config.ConfigManager, pacer *discoveryProbePacer) []DiscoveryProtocolResult {
 	protocols := []string{"messages", "responses", "chat", "gemini"}
 	results := make([]DiscoveryProtocolResult, 0, len(protocols))
 	for _, protocol := range protocols {
-		results = append(results, runDiscoveryProtocolProbe(ctx, channel, protocol, models, discoveryProbeTimeout, cfgManager))
+		results = append(results, runDiscoveryProtocolProbe(ctx, channel, protocol, models, discoveryProbeTimeout, cfgManager, pacer))
 	}
 	return results
 }
 
-func runDiscoveryProtocolProbe(ctx context.Context, channel *config.UpstreamConfig, protocol string, models []string, timeout time.Duration, cfgManager *config.ConfigManager) DiscoveryProtocolResult {
+func runDiscoveryProtocolProbe(ctx context.Context, channel *config.UpstreamConfig, protocol string, models []string, timeout time.Duration, cfgManager *config.ConfigManager, pacer *discoveryProbePacer) DiscoveryProtocolResult {
 	result := DiscoveryProtocolResult{Protocol: protocol}
 	var successLatency int64
 	var successCount int
+	availableModels := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		availableModels[strings.TrimSpace(model)] = struct{}{}
+	}
+	probeResults := make(map[string]ModelTestResult, len(models))
 	probeChannel := channel
 	if strings.TrimSpace(channel.ServiceType) == "" {
 		cloned := *channel
@@ -1490,7 +1598,25 @@ func runDiscoveryProtocolProbe(ctx context.Context, channel *config.UpstreamConf
 		probeChannel = &cloned
 	}
 	for _, model := range models {
-		modelResult := executeModelTest(ctx, probeChannel, protocol, model, timeout, "", cfgManager, -1, protocol, probeChannel.APIKeys[0], nil)
+		probeModel := discoveryEquivalentProbeModel(model, availableModels)
+		modelResult, cached := probeResults[probeModel]
+		if !cached {
+			for attempt := 0; ; attempt++ {
+				if err := pacer.waitForNext(ctx); err != nil {
+					result.Error = err.Error()
+					return result
+				}
+				modelResult = executeModelTest(ctx, probeChannel, protocol, probeModel, timeout, "", cfgManager, -1, protocol, probeChannel.APIKeys[0], nil)
+				if !isDiscoveryRateLimited(modelResult) {
+					break
+				}
+				pacer.observeRateLimited()
+				if attempt >= maxDiscovery429Retries {
+					break
+				}
+			}
+			probeResults[probeModel] = modelResult
+		}
 		if modelResult.Success {
 			result.Success = true
 			result.SuccessModels = append(result.SuccessModels, model)
@@ -1508,6 +1634,32 @@ func runDiscoveryProtocolProbe(ctx context.Context, channel *config.UpstreamConf
 		result.LatencyMs = successLatency / int64(successCount)
 	}
 	return result
+}
+
+func discoveryEquivalentProbeModel(model string, availableModels map[string]struct{}) string {
+	trimmed := strings.TrimSpace(model)
+	const thinkingSuffix = "-thinking"
+	if !strings.HasSuffix(strings.ToLower(trimmed), thinkingSuffix) {
+		return trimmed
+	}
+	baseModel := trimmed[:len(trimmed)-len(thinkingSuffix)]
+	if _, exists := availableModels[baseModel]; exists {
+		return baseModel
+	}
+	return trimmed
+}
+
+func isDiscoveryRateLimited(result ModelTestResult) bool {
+	if result.statusCode != http.StatusTooManyRequests {
+		return false
+	}
+	if result.Error != nil {
+		blacklist := common.ShouldBlacklistKey(http.StatusTooManyRequests, []byte(*result.Error))
+		if blacklist.ShouldBlacklist && blacklist.Reason == "insufficient_balance" {
+			return false
+		}
+	}
+	return true
 }
 
 func discoverySuccessModelsByProtocol(protocols []DiscoveryProtocolResult) map[string][]string {

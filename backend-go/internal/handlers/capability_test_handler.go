@@ -36,6 +36,7 @@ type ModelTestResult struct {
 	Error                *string                           `json:"error,omitempty"`
 	StartedAt            string                            `json:"startedAt,omitempty"`
 	TestedAt             string                            `json:"testedAt"`
+	statusCode           int
 }
 
 // ProtocolTestResult 单个协议测试结果

@@ -1283,6 +1283,7 @@
   "autopilot.quickAdd.addUrl": "添加地址",
   "autopilot.quickAdd.addKey": "添加密钥",
   "autopilot.quickAdd.recognizedBaseUrl": "将识别为 {url}",
+  "autopilot.quickAdd.alreadyAdded": "该 Base URL 已添加为渠道「{name}」，提交后会自动追加新密钥。",
   "autopilot.quickAdd.discovering": "探测中...",
   "autopilot.quickAdd.discoveryDone": "探测完成",
   "autopilot.quickAdd.discoveryFailed": "探测失败",

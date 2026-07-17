@@ -886,6 +886,13 @@ export interface DiscoveryCapabilitiesResult {
   thinkingPassback: DiscoveryCapabilityProbeResult
 }
 
+export interface DiscoveryRateLimitResult {
+  initialRpm: number
+  effectiveRpm: number
+  rateLimited: boolean
+  rateLimitedCount?: number
+}
+
 export interface DiscoveryEvidence {
   type: string
   key?: string
@@ -915,6 +922,7 @@ export interface ChannelDiscoveryResponse {
   protocols: DiscoveryProtocolResult[]
   capabilities: DiscoveryCapabilitiesResult
   recommendation: ChannelDiscoveryRecommendation
+  rateLimit: DiscoveryRateLimitResult
   evidence?: DiscoveryEvidence[]
 }
 
@@ -1402,6 +1410,7 @@ export interface AutoAddChannelRequest {
   providerId?: string
   baseUrls?: string[]
   apiKeys: string[]
+  rateLimitHint?: DiscoveryRateLimitResult
   subscriptionUid?: string
 }
 

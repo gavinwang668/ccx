@@ -6,11 +6,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CPUS="${CCX_CONTAINER_CPUS:-4}"
-MEMORY="${CCX_CONTAINER_MEMORY:-8G}"
+MEMORY="${CCX_CONTAINER_MEMORY:-2G}"
 GO_IMAGE="${CCX_CONTAINER_GO_IMAGE:-golang:1.25-alpine}"
 BUN_IMAGE="${CCX_CONTAINER_BUN_IMAGE:-oven/bun:alpine}"
+NODE_IMAGE="${CCX_CONTAINER_NODE_IMAGE:-node:24-alpine}"
 GO_PROXY="${CCX_CONTAINER_GOPROXY:-https://goproxy.cn,direct}"
-ALPINE_MIRROR="${CCX_CONTAINER_ALPINE_MIRROR:-mirrors.aliyun.com}"
 
 if ! command -v container >/dev/null 2>&1; then
   echo "Apple Container CLI is not installed." >&2
@@ -59,12 +59,20 @@ run_frontend() {
     --cpus "$CPUS" \
     --memory "$MEMORY" \
     --user root \
-    --env "CCX_ALPINE_MIRROR=$ALPINE_MIRROR" \
     --mount "type=bind,source=$ROOT_DIR,target=/workspace,readonly" \
     --mount type=volume,source=ccx-bun-cache,target=/root/.bun/install/cache \
     --mount type=volume,source=ccx-bun-modules,target=/work/frontend/node_modules \
     --workdir / \
-    "$BUN_IMAGE" sh -c "set -eu; $stage_command; cd /work/frontend; sed -i \"s#dl-cdn.alpinelinux.org#\$CCX_ALPINE_MIRROR#g\" /etc/apk/repositories; apk add --no-cache nodejs libstdc++ libgcc >/dev/null; bun install --frozen-lockfile; ./node_modules/.bin/vue-tsc --noEmit; ./node_modules/.bin/vite build --outDir /tmp/ccx-frontend-dist"
+    "$BUN_IMAGE" sh -c "set -eu; $stage_command; cd /work/frontend; bun install --frozen-lockfile"
+
+  container run --rm --progress plain \
+    --cpus "$CPUS" \
+    --memory "$MEMORY" \
+    --user root \
+    --mount "type=bind,source=$ROOT_DIR,target=/workspace,readonly" \
+    --mount type=volume,source=ccx-bun-modules,target=/work/frontend/node_modules \
+    --workdir / \
+    "$NODE_IMAGE" sh -c "set -eu; $stage_command; cd /work/frontend; ./node_modules/.bin/vue-tsc --noEmit; ./node_modules/.bin/vite build --outDir /tmp/ccx-frontend-dist"
 }
 
 case "${1:-all}" in

@@ -335,9 +335,10 @@ func TestCustomAutoAddResponseIncludesActualRoute(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = manager.Close() })
 
-	router := setupAutoManagedRouter(&AutoManagedDeps{CfgManager: manager})
+	discoverer := NewRateLimitDiscoverer(RateLimitDiscovererConfig{QuietLogs: true})
+	router := setupAutoManagedRouter(&AutoManagedDeps{CfgManager: manager, RateLimitDiscoverer: discoverer})
 	req := httptest.NewRequest(http.MethodPost, "/api/responses/channels/auto-add", bytes.NewBufferString(
-		`{"name":"fastaitoken-com-test","baseUrls":["https://example.com"],"apiKeys":["sk-test"]}`,
+		`{"name":"fastaitoken-com-test","baseUrls":["https://example.com"],"apiKeys":["sk-test"],"rateLimitHint":{"initialRpm":30,"effectiveRpm":15,"rateLimited":true,"rateLimitedCount":1}}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -360,6 +361,136 @@ func TestCustomAutoAddResponseIncludesActualRoute(t *testing.T) {
 	cfg := manager.GetConfig()
 	if len(cfg.ResponsesUpstream) != 1 || len(cfg.Upstream) != 0 {
 		t.Fatalf("custom route persisted in wrong channel: responses=%d messages=%d", len(cfg.ResponsesUpstream), len(cfg.Upstream))
+	}
+	created := cfg.ResponsesUpstream[0]
+	baseURL := created.GetEffectiveBaseURL()
+	endpointUID := GenerateEndpointUID(created.ChannelUID, baseURL, KeyHashFromAPIKey("sk-test"))
+	if suggestion := discoverer.SuggestedLimit(endpointUID); suggestion.RPM != 15 || suggestion.Confidence != 0.7 {
+		t.Fatalf("rate limit suggestion=%+v, want rpm=15 confidence=0.7", suggestion)
+	}
+
+	store := newTestProfileStore(t)
+	runner := NewAutoDiscoveryRunner(store, nil)
+	seedAutoAddRateLimitHint(
+		&AutoManagedDeps{CfgManager: manager, Runner: runner, RateLimitDiscoverer: discoverer},
+		manager.GetAccountChannels(response.AccountUID),
+		&AutoAddRateLimitHint{InitialRPM: 30, EffectiveRPM: 15, RateLimited: true, RateLimitedCount: 1},
+		"sk-test",
+		"https://example.com",
+	)
+	profile := store.Get(endpointUID)
+	if profile == nil || profile.DiscoveredRPM != 15 || profile.RateLimitConfidence != 0.7 || profile.RateLimitSource != string(RateLimitSourcePassiveAIMD) {
+		t.Fatalf("rate limit profile=%+v", profile)
+	}
+}
+
+func TestCustomAutoAddAppendsKeyToEquivalentExistingBaseURL(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	data := `{
+  "upstream": [],
+  "chatUpstream": [{"channelUid":"ch_existing","name":"localhost-old-name","serviceType":"openai","baseUrl":"http://localhost:8990/v1","apiKeys":["sk-old"],"status":"active"}],
+  "responsesUpstream": [], "geminiUpstream": [], "imagesUpstream": [], "vectorsUpstream": []
+}`
+	if err := os.WriteFile(configPath, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := config.NewConfigManager(configPath, filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	router := setupAutoManagedRouter(&AutoManagedDeps{CfgManager: manager})
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/channels/auto-add", bytes.NewBufferString(
+		`{"name":"localhost-8990","baseUrls":["http://localhost:8990/"],"apiKeys":["sk-new"]}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var response AutoAddResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Channels) != 1 || response.Channels[0].Name != "localhost-old-name" {
+		t.Fatalf("应返回已有渠道: %+v", response.Channels)
+	}
+	cfg := manager.GetConfig()
+	if len(cfg.Upstream) != 0 || len(cfg.ChatUpstream) != 1 {
+		t.Fatalf("重复请求不应创建新渠道: messages=%d chat=%d", len(cfg.Upstream), len(cfg.ChatUpstream))
+	}
+	if got := strings.Join(cfg.ChatUpstream[0].APIKeys, ","); got != "sk-old,sk-new" {
+		t.Fatalf("已有渠道密钥=%q, want sk-old,sk-new", got)
+	}
+}
+
+func TestFindExistingAutoAddChannelsPreservesHashSemantics(t *testing.T) {
+	cfg := config.Config{
+		ChatUpstream: []config.UpstreamConfig{{
+			ChannelUID: "ch-hash", ServiceType: "openai", BaseURL: "https://example.com#",
+		}},
+	}
+	if matches := findExistingAutoAddChannels(cfg, []string{"https://example.com"}); len(matches) != 0 {
+		t.Fatalf("普通 Base URL 不应匹配禁止版本前缀的地址: %+v", matches)
+	}
+	if matches := findExistingAutoAddChannels(cfg, []string{"https://example.com/#"}); len(matches) != 1 {
+		t.Fatalf("等效 # 地址匹配数量=%d, want 1", len(matches))
+	}
+}
+
+func TestCustomAutoAddAppendsKeyAndMissingRouteToManagedAccount(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	data := `{
+  "upstream": [{"accountUid":"acct_existing","channelUid":"ch_existing","name":"localhost-8990","serviceType":"claude","baseUrl":"http://localhost:8990","apiKeys":["sk-old"],"autoManaged":true,"status":"active"}],
+  "chatUpstream": [], "responsesUpstream": [], "geminiUpstream": [], "imagesUpstream": [], "vectorsUpstream": []
+}`
+	if err := os.WriteFile(configPath, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := config.NewConfigManager(configPath, filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	router := setupAutoManagedRouter(&AutoManagedDeps{CfgManager: manager})
+	body := `{
+  "name":"localhost-8990",
+  "baseUrls":["http://localhost:8990/v1"],
+  "apiKeys":["sk-new"],
+  "routes":[
+    {"channelKind":"messages","supportedModels":["claude-test"]},
+    {"channelKind":"responses","supportedModels":["gpt-test"]}
+  ]
+}`
+	req := httptest.NewRequest(http.MethodPost, "/api/messages/channels/auto-add", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	cfg := manager.GetConfig()
+	if len(cfg.Upstream) != 1 || len(cfg.ResponsesUpstream) != 1 {
+		t.Fatalf("协议路由数量错误: messages=%d responses=%d", len(cfg.Upstream), len(cfg.ResponsesUpstream))
+	}
+	if cfg.Upstream[0].AccountUID != "acct_existing" || cfg.ResponsesUpstream[0].AccountUID != "acct_existing" {
+		t.Fatalf("应复用已有账号: messages=%q responses=%q", cfg.Upstream[0].AccountUID, cfg.ResponsesUpstream[0].AccountUID)
+	}
+	if got := strings.Join(cfg.Upstream[0].APIKeys, ","); got != "sk-old,sk-new" {
+		t.Fatalf("messages 密钥=%q, want sk-old,sk-new", got)
+	}
+	if got := strings.Join(cfg.ResponsesUpstream[0].APIKeys, ","); got != "sk-old,sk-new" {
+		t.Fatalf("responses 密钥=%q, want sk-old,sk-new", got)
+	}
+	if cfg.Upstream[0].Name != "localhost-8990-claude" || cfg.ResponsesUpstream[0].Name != "localhost-8990-codex" {
+		t.Fatalf("多协议自动命名错误: messages=%q responses=%q", cfg.Upstream[0].Name, cfg.ResponsesUpstream[0].Name)
 	}
 }
 
@@ -455,7 +586,7 @@ func TestPlanCustomManagedAccountUpdatesRenamesAndSyncsCredentials(t *testing.T)
 	}
 	updates, status, err := planCustomManagedAccountUpdates("acct-custom", updateAccountRequest{
 		Name: "renamed", APIKeys: []string{"sk-old", "sk-new"},
-	}, channels)
+	}, channels, len(channels))
 	if err != nil || status != http.StatusOK {
 		t.Fatalf("status=%d err=%v", status, err)
 	}

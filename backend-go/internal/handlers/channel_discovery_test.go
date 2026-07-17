@@ -3,17 +3,40 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/gin-gonic/gin"
 )
+
+func newNoWaitDiscoveryPacer() *discoveryProbePacer {
+	pacer := newDiscoveryProbePacer(defaultChannelDiscoveryRPM)
+	pacer.wait = func(context.Context, time.Duration) error { return nil }
+	return pacer
+}
+
+func channelDiscoveryForTest(cfgManager *config.ConfigManager, fetchers ChannelDiscoveryModelFetchers) gin.HandlerFunc {
+	return channelDiscoveryWithPacerFactory(cfgManager, fetchers, newNoWaitDiscoveryPacer)
+}
+
+func TestDiscoveryVisionProbeImageIsValidPNG(t *testing.T) {
+	imageData, err := base64.StdEncoding.DecodeString(discoveryVisionProbeImageBase64)
+	if err != nil {
+		t.Fatalf("vision probe image base64 decode failed: %v", err)
+	}
+	if _, err := png.Decode(bytes.NewReader(imageData)); err != nil {
+		t.Fatalf("vision probe PNG decode failed: %v", err)
+	}
+}
 
 func TestBuildTransientDiscoveryChannelRequiresBaseURLAndKey(t *testing.T) {
 	req := ChannelDiscoveryRequest{ServiceType: "openai"}
@@ -337,7 +360,7 @@ func TestRunDiscoveryProtocolProbeMatchesClaudeCodeOnlyRelay(t *testing.T) {
 		APIKeys:     []string{"sk-test"},
 		ServiceType: "claude",
 	}
-	result := runDiscoveryProtocolProbe(context.Background(), channel, "messages", models, 5*time.Second, nil)
+	result := runDiscoveryProtocolProbe(context.Background(), channel, "messages", models, 5*time.Second, nil, newNoWaitDiscoveryPacer())
 	if !result.Success || !sameStringSet(result.SuccessModels, models) {
 		t.Fatalf("probe result=%#v, want both Opus models successful", result)
 	}
@@ -345,6 +368,51 @@ func TestRunDiscoveryProtocolProbeMatchesClaudeCodeOnlyRelay(t *testing.T) {
 		if !seen[model] {
 			t.Fatalf("model %q was not probed", model)
 		}
+	}
+}
+
+func TestRunDiscoveryProtocolProbeReusesBaseModelForThinkingSuffix(t *testing.T) {
+	models := []string{"claude-sonnet-4.6-thinking", "claude-sonnet-4.6"}
+	var requestCount atomic.Int32
+	var probedThinking atomic.Bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		var body struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid body", http.StatusBadRequest)
+			return
+		}
+		if strings.HasSuffix(strings.ToLower(body.Model), "-thinking") {
+			probedThinking.Store(true)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"))
+		_, _ = w.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}))
+	defer upstream.Close()
+
+	channel := &config.UpstreamConfig{
+		Name: "thinking alias", BaseURL: upstream.URL, BaseURLs: []string{upstream.URL},
+		APIKeys: []string{"sk-test"}, ServiceType: "claude",
+	}
+	result := runDiscoveryProtocolProbe(context.Background(), channel, "messages", models, 5*time.Second, nil, newNoWaitDiscoveryPacer())
+	if !result.Success || !sameStringSet(result.SuccessModels, models) {
+		t.Fatalf("probe result=%#v, want both model names successful", result)
+	}
+	if got := requestCount.Load(); got != 1 {
+		t.Fatalf("upstream request count=%d, want 1", got)
+	}
+	if probedThinking.Load() {
+		t.Fatal("thinking suffix model should reuse the base model probe")
+	}
+}
+
+func TestDiscoveryEquivalentProbeModelRequiresBaseModel(t *testing.T) {
+	available := map[string]struct{}{"claude-sonnet-4.6-thinking": {}}
+	if got := discoveryEquivalentProbeModel("claude-sonnet-4.6-thinking", available); got != "claude-sonnet-4.6-thinking" {
+		t.Fatalf("equivalent model=%q, want original model when base is absent", got)
 	}
 }
 
@@ -467,7 +535,7 @@ func TestChannelDiscoveryHandlerDiscoversTransientResponsesChannel(t *testing.T)
 	defer upstream.Close()
 
 	router := gin.New()
-	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+	router.POST("/api/channel-discovery", channelDiscoveryForTest(nil, nil))
 
 	body := []byte(`{
 		"channelKind":"responses",
@@ -539,7 +607,7 @@ func TestChannelDiscoveryAutoDetectsServiceTypeAndProbesEveryModel(t *testing.T)
 	defer upstream.Close()
 
 	router := gin.New()
-	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+	router.POST("/api/channel-discovery", channelDiscoveryForTest(nil, nil))
 	body := []byte(`{
 		"baseUrls":["` + upstream.URL + `"],
 		"apiKey":"sk-test"
@@ -604,7 +672,7 @@ func TestChannelDiscoveryUsesInjectedModelsFetcher(t *testing.T) {
 	}
 
 	router := gin.New()
-	router.POST("/api/channel-discovery", ChannelDiscoveryWithModelFetchers(nil, fetchers))
+	router.POST("/api/channel-discovery", channelDiscoveryForTest(nil, fetchers))
 
 	body := []byte(`{
 		"channelKind":"messages",
@@ -706,7 +774,7 @@ func TestChannelDiscoveryCompatUsesDiscoveredActualModel(t *testing.T) {
 	defer upstream.Close()
 
 	router := gin.New()
-	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+	router.POST("/api/channel-discovery", channelDiscoveryForTest(nil, nil))
 
 	body := []byte(`{
 		"channelKind":"responses",
@@ -759,7 +827,7 @@ func TestChannelDiscoveryReportsResponsesToolCallCapability(t *testing.T) {
 	defer upstream.Close()
 
 	router := gin.New()
-	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+	router.POST("/api/channel-discovery", channelDiscoveryForTest(nil, nil))
 
 	body := []byte(`{
 		"channelKind":"responses",
@@ -819,7 +887,7 @@ func TestChannelDiscoveryReportsVisionCapabilityAndFallback(t *testing.T) {
 	defer upstream.Close()
 
 	router := gin.New()
-	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+	router.POST("/api/channel-discovery", channelDiscoveryForTest(nil, nil))
 
 	body := []byte(`{
 		"channelKind":"messages",
@@ -901,7 +969,7 @@ func TestChannelDiscoveryReportsClaudeThinkingPassbackCapability(t *testing.T) {
 	defer upstream.Close()
 
 	router := gin.New()
-	router.POST("/api/channel-discovery", ChannelDiscovery(nil))
+	router.POST("/api/channel-discovery", channelDiscoveryForTest(nil, nil))
 
 	body := []byte(`{
 		"channelKind":"messages",

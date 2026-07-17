@@ -1195,8 +1195,9 @@ func main() {
 
 			// Phase 2 第三批：自动托管 API（复用上方已构造的 autoDiscoveryRunner）
 			autopilot.RegisterAutoManagedRoutes(apiGroup, &autopilot.AutoManagedDeps{
-				CfgManager: cfgManager,
-				Runner:     autoDiscoveryRunner,
+				CfgManager:          cfgManager,
+				Runner:              autoDiscoveryRunner,
+				RateLimitDiscoverer: autopilotManager.RateLimitDiscoverer(),
 			})
 
 			// Phase 2 第三批：智能路由配置 API

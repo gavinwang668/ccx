@@ -1283,6 +1283,7 @@
   "autopilot.quickAdd.addUrl": "Add URL",
   "autopilot.quickAdd.addKey": "Add Key",
   "autopilot.quickAdd.recognizedBaseUrl": "Will be recognized as {url}",
+  "autopilot.quickAdd.alreadyAdded": "This Base URL is already configured as \"{name}\". New keys will be added to the existing channel.",
   "autopilot.quickAdd.discovering": "Discovering...",
   "autopilot.quickAdd.discoveryDone": "Discovery complete",
   "autopilot.quickAdd.discoveryFailed": "Discovery failed",

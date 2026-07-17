@@ -42,6 +42,7 @@
           v-if="quickAddMode"
           ref="quickAddFormRef"
           :channel-type="channelType"
+          :existing-channels="existingCustomChannels"
           @added="onQuickAddSuccess"
         />
 
@@ -147,6 +148,16 @@
           </v-card>
 
           <v-alert
+            v-if="duplicateChannel"
+            color="info"
+            variant="tonal"
+            density="comfortable"
+            icon="mdi-content-duplicate"
+          >
+            {{ t('autopilot.quickAdd.alreadyAdded', { name: duplicateChannel.channel.logicalName || duplicateChannel.channel.name }) }}
+          </v-alert>
+
+          <v-alert
             v-if="standardSubmitError"
             color="error"
             variant="tonal"
@@ -190,9 +201,10 @@ import {
   type DiscoveryProtocol
 } from '../utils/expectedRequestUrls'
 import { parseQuickInput as parseQuickInputUtil } from '../utils/quickInputParser'
-import { buildQuickAddChannelName } from '../utils/quickAddChannel'
+import { buildQuickAddChannelName, findExistingQuickAddChannel } from '../utils/quickAddChannel'
 import { useI18n } from '../i18n'
 import { useAuthStore } from '../stores/auth'
+import { useChannelStore } from '../stores/channel'
 import {
   autoAddChannel,
   discoverAutoAddRoutes,
@@ -226,6 +238,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const theme = useTheme()
 const authStore = useAuthStore()
+const channelStore = useChannelStore()
 
 const quickInput = ref('')
 const detectedBaseUrl = ref('')
@@ -286,6 +299,19 @@ const apiKeyStatusMessage = computed(() => {
 const generatedChannelName = computed(() => {
   return buildQuickAddChannelName(detectedBaseUrl.value, randomSuffix.value)
 })
+
+const existingCustomChannels = computed(() => [
+  ...(channelStore.channelsData.channels ?? []),
+  ...(channelStore.chatChannelsData.channels ?? []),
+  ...(channelStore.responsesChannelsData.channels ?? []),
+  ...(channelStore.geminiChannelsData.channels ?? []),
+  ...(channelStore.imagesChannelsData.channels ?? []),
+  ...(channelStore.vectorsChannelsData.channels ?? [])
+].filter(channel => !channel.providerId))
+
+const duplicateChannel = computed(() =>
+  findExistingQuickAddChannel(detectedBaseUrls.value, existingCustomChannels.value)
+)
 
 const isQuickFormValid = computed(() => {
   if (isCopilotQuickAdd.value) {
@@ -397,7 +423,8 @@ async function handleQuickSubmit() {
       name: generatedChannelName.value,
       baseUrls: detectedBaseUrls.value,
       apiKeys: detectedApiKeys.value,
-      routes: routeDiscovery.routes
+      routes: routeDiscovery.routes,
+      rateLimitHint: routeDiscovery.rateLimitHint
     })
     const currentChannel = result.channels?.find(channel => channel.channelKind === targetChannelType)
     onQuickAddSuccess(currentChannel?.index ?? result.index)

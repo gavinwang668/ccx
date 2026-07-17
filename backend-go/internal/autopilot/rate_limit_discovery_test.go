@@ -549,6 +549,44 @@ func TestRateLimitDiscoverer_GetState(t *testing.T) {
 	}
 }
 
+func TestRateLimitDiscoverer_SeedProbeEstimate(t *testing.T) {
+	d, _ := newTestDiscoverer(t)
+
+	baseline := d.SeedProbeEstimate("ep-probe", 30, false)
+	if baseline.RPM != 30 || baseline.Confidence != 0.2 || baseline.Source != RateLimitSourcePassiveAIMD {
+		t.Fatalf("baseline=%+v", baseline)
+	}
+
+	limited := d.SeedProbeEstimate("ep-probe", 15, true)
+	if limited.RPM != 15 || limited.Confidence != 0.7 || limited.Source != RateLimitSourcePassiveAIMD {
+		t.Fatalf("limited=%+v", limited)
+	}
+	state := d.GetState("ep-probe")
+	if state == nil || state.Last429At == nil {
+		t.Fatalf("429 seed state=%+v", state)
+	}
+
+	// 后续较宽松的探测结果不能放宽已经收敛的限额。
+	if got := d.SeedProbeEstimate("ep-probe", 30, false); got.RPM != 15 {
+		t.Fatalf("relaxed seed RPM=%d, want 15", got.RPM)
+	}
+}
+
+func TestRateLimitDiscoverer_SeedProbeEstimateDoesNotOverrideHeader(t *testing.T) {
+	d, now := newTestDiscoverer(t)
+	d.Observe("ep-header", RateLimitSignal{
+		Source:        SignalSourceHeader,
+		Limit:         80,
+		WindowSeconds: 60,
+		Timestamp:     *now,
+	})
+
+	got := d.SeedProbeEstimate("ep-header", 15, true)
+	if got.RPM != 80 || got.Confidence != defaultDiscovererConfig().HeaderConfidenceMax || got.Source != RateLimitSourceHeader {
+		t.Fatalf("header suggestion was overwritten: %+v", got)
+	}
+}
+
 func TestRateLimitDiscoverer_StateCount(t *testing.T) {
 	d, now := newTestDiscoverer(t)
 
