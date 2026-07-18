@@ -62,11 +62,18 @@ func extractReasoningEffortForLog(bodyBytes []byte) string {
 }
 
 func extractActualReasoningEffortForLog(req *http.Request) string {
+	_, effort := extractActualRequestLogDetails(req)
+	return effort
+}
+
+// extractActualRequestLogDetails 从最终构建的上游请求读取模型和思考等级。
+// 请求体会被恢复，调用方可继续正常发送该请求。
+func extractActualRequestLogDetails(req *http.Request) (model, reasoningEffort string) {
 	bodyBytes := snapshotRequestBodyForLog(req)
 	if len(bodyBytes) == 0 {
-		return ""
+		return "", ""
 	}
-	return extractReasoningEffortForLog(bodyBytes)
+	return strings.TrimSpace(gjson.GetBytes(bodyBytes, "model").String()), extractReasoningEffortForLog(bodyBytes)
 }
 
 func snapshotRequestBodyForLog(req *http.Request) []byte {

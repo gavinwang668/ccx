@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/BenedictKing/ccx/internal/warmup"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 func TestShouldNormalizeMetadataUserIDOnlyMessages(t *testing.T) {
@@ -607,6 +609,115 @@ func TestTryUpstreamWithAllKeysRecordsSelectionTrace(t *testing.T) {
 	}
 	if !strings.Contains(logs[0].SelectionTraceSummary, "selected=0:trace-messages/priority_order") {
 		t.Fatalf("selectionTraceSummary = %q, want selected channel summary", logs[0].SelectionTraceSummary)
+	}
+}
+
+func TestTryUpstreamWithAllKeysLogsFinalRequestModelAndReasoningEffort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	type upstreamRequest struct {
+		Model           string `json:"model"`
+		ReasoningEffort string `json:"reasoning_effort"`
+	}
+	upstreamRequests := make(chan upstreamRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request upstreamRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		upstreamRequests <- request
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	cfgManager, channelScheduler, messagesMetrics, cleanup := newTestFailoverDependencies(t, config.UpstreamConfig{
+		Name:        "auto-mapped-log-test",
+		ChannelUID:  "ch-auto-mapped-log",
+		BaseURL:     server.URL,
+		APIKeys:     []string{"sk-auto-mapped"},
+		Status:      "active",
+		ServiceType: "openai",
+		AutoManaged: true,
+	})
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	originalBody := []byte(`{"model":"claude-opus-4-8","messages":[],"reasoning_effort":"high"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(originalBody))
+
+	cfg := cfgManager.GetConfig()
+	upstream := &cfg.Upstream[0]
+	policy := &autopilot.EndpointAttemptPolicy{
+		ResolvedModelByEndpointUID: func(string) string { return "glm-5.2" },
+	}
+
+	handled, successKey, _, failoverErr, _, lastErr := TryUpstreamWithAllKeys(
+		c,
+		config.NewEnvConfig(),
+		cfgManager,
+		channelScheduler,
+		scheduler.ChannelKindMessages,
+		"Messages",
+		messagesMetrics,
+		upstream,
+		[]warmup.URLLatencyResult{{URL: server.URL, OriginalIdx: 0}},
+		originalBody,
+		nil,
+		false,
+		func(upstream *config.UpstreamConfig, failedKeys map[string]bool) (string, error) {
+			return cfgManager.GetNextAPIKey(upstream, failedKeys, "Messages")
+		},
+		func(c *gin.Context, upstreamCopy *config.UpstreamConfig, apiKey string) (*http.Request, error) {
+			actualBody, err := sjson.SetBytes(GetEffectiveRequestBody(c, nil), "reasoning_effort", "max")
+			if err != nil {
+				return nil, err
+			}
+			return http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstreamCopy.BaseURL, bytes.NewReader(actualBody))
+		},
+		func(string) {},
+		nil,
+		nil,
+		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
+			_ = resp.Body.Close()
+			return nil, nil
+		},
+		"claude-opus-4-8",
+		"",
+		0,
+		channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages),
+		WithEndpointAttemptPolicy(policy),
+	)
+
+	if !handled || successKey != "sk-auto-mapped" || failoverErr != nil || lastErr != nil {
+		t.Fatalf("unexpected failover result: handled=%v key=%q failoverErr=%v lastErr=%v", handled, successKey, failoverErr, lastErr)
+	}
+
+	gotRequest := <-upstreamRequests
+	if gotRequest.Model != "glm-5.2" || gotRequest.ReasoningEffort != "max" {
+		t.Fatalf("upstream request = %+v, want model=glm-5.2 reasoning_effort=max", gotRequest)
+	}
+
+	serviceType := scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindMessages, upstream.ServiceType)
+	metricsKey := metrics.GenerateMetricsIdentityKey(server.URL, "sk-auto-mapped", serviceType)
+	logs := channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages).Get(metricsKey)
+	if len(logs) != 1 {
+		t.Fatalf("logs count = %d, want 1", len(logs))
+	}
+	if got := logs[0]; got.Model != "glm-5.2" || got.OriginalModel != "claude-opus-4-8" ||
+		got.OriginalReasoningEffort != "high" || got.ActualReasoningEffort != "max" {
+		t.Fatalf("channel log = %+v, want final model and both reasoning efforts", got)
+	}
+
+	modelStats := messagesMetrics.GetModelStatsHistory(time.Hour, time.Minute)
+	if _, ok := modelStats["glm-5.2"]; !ok {
+		t.Fatalf("model metrics missing final model: %v", modelStats)
+	}
+	if _, ok := modelStats["claude-opus-4-8"]; ok {
+		t.Fatalf("model metrics should not record requested model: %v", modelStats)
 	}
 }
 

@@ -276,13 +276,9 @@ func TryUpstreamWithAllKeys(
 		}
 	}()
 
-	// 计算重定向后的模型（用于日志记录）
+	// 先应用用户配置的模型映射。endpoint 级自动映射会在选定 Key 后再覆盖本次尝试的模型。
 	redirectedModel := config.RedirectModel(model, upstream)
 	capabilityRequestModel := model
-	var originalModel string
-	if redirectedModel != model {
-		originalModel = model // 仅当发生重定向时记录原始模型
-	}
 
 	// 历史图片轮次限制：替换历史图片为占位符，避免不必要的 vision 回退
 	if kind != scheduler.ChannelKindImages {
@@ -307,7 +303,6 @@ func TryUpstreamWithAllKeys(
 				if replaced, err := sjson.SetBytes(requestBody, "model", fallback); err == nil {
 					requestBody = replaced
 				}
-				originalModel = model
 				redirectedModel = fallback
 				capabilityRequestModel = fallback
 				if err := channelScheduler.ValidateUpstreamContext(kind, redirectedModel, upstream, contextRequirement); err != nil {
@@ -454,6 +449,7 @@ func TryUpstreamWithAllKeys(
 			// Phase 3B-2: 应用 EndpointAttemptPolicy 的自动模型映射。
 			// MappedModel 来自 ModelResolver（AutoManaged 渠道，三条件门控通过），
 			// 优先级低于 RedirectModel（手动配置短路后 MappedModel 恒为空，不会双重映射）。
+			attemptModel := redirectedModel
 			var appliedMappedModel string
 			if endpointPolicy != nil && endpointPolicy.ResolvedModelByEndpointUID != nil {
 				keyHash := autopilot.KeyHashFromAPIKey(apiKey)
@@ -462,13 +458,13 @@ func TryUpstreamWithAllKeys(
 					if replaced, err := sjson.SetBytes(attemptBody, "model", mm); err == nil {
 						attemptBody = replaced
 						appliedMappedModel = mm
+						attemptModel = mm
 						RestoreRequestBody(c, attemptBody)
 						c.Set("requestBodyBytes", attemptBody)
 						RequestLogf(c, "[%s-AutoModel] endpoint=%s model override: %s -> %s", apiType, euid, model, mm)
 					}
 				}
 			}
-
 			// 主动限速：在构建/发送请求前获取许可（渠道级 + Key/Quota scope）
 			if rateLimitMgr := channelScheduler.GetRateLimitManager(); rateLimitMgr != nil {
 				const maxRateLimitWait = 10 * time.Second
@@ -516,7 +512,14 @@ func TryUpstreamWithAllKeys(
 			}
 			req = WithRequestLogContext(req, c)
 			originalReasoningEffort := extractReasoningEffortForLog(requestBody)
-			actualReasoningEffort := extractActualReasoningEffortForLog(req)
+			actualAttemptModel, actualReasoningEffort := extractActualRequestLogDetails(req)
+			if actualAttemptModel == "" {
+				actualAttemptModel = attemptModel
+			}
+			actualOriginalModel := ""
+			if actualAttemptModel != model {
+				actualOriginalModel = model
+			}
 
 			// 记录请求开始
 			channelScheduler.RecordRequestStart(currentBaseURL, apiKey, metricsServiceType, kind)
@@ -532,10 +535,10 @@ func TryUpstreamWithAllKeys(
 			}
 
 			// 创建 pending 状态日志（附带代理上下文与会话标识，用于 subagent 观测）
-			logRequestID := CreatePendingLog(channelLogStore, metricsKey, channelIndex, upstream.Name, redirectedModel, originalModel, originalReasoningEffort, actualReasoningEffort, apiKey, currentBaseURL, apiType, operation, metrics.RequestSourceProxy, AgentContextFromGin(c), SessionIDFromGin(c), logOpts...)
+			logRequestID := CreatePendingLog(channelLogStore, metricsKey, channelIndex, upstream.Name, actualAttemptModel, actualOriginalModel, originalReasoningEffort, actualReasoningEffort, apiKey, currentBaseURL, apiType, operation, metrics.RequestSourceProxy, AgentContextFromGin(c), SessionIDFromGin(c), logOpts...)
 
 			// TCP 建连开始即计数：将活跃度统计提前到发起上游请求之前；同时关联 proxyKeyMask 用于成本报表持久化
-			requestID := metricsManager.RecordRequestConnectedWithProxyKeyMask(currentBaseURL, apiKey, metricsServiceType, redirectedModel, proxyKeyMask)
+			requestID := metricsManager.RecordRequestConnectedWithProxyKeyMask(currentBaseURL, apiKey, metricsServiceType, actualAttemptModel, proxyKeyMask)
 
 			attemptStartedAt := time.Now()
 			lifecycleTrace := &RequestLifecycleTrace{
@@ -636,12 +639,12 @@ func TryUpstreamWithAllKeys(
 							RequestLogf(c, "[%s-Blacklist] 拉黑 Key 失败: %v", apiType, err)
 						}
 					}
-				} else if restrictionReason := keyModelRestrictionReason(respBodyBytes); redirectedModel != "" && restrictionReason != "" &&
+				} else if restrictionReason := keyModelRestrictionReason(respBodyBytes); actualAttemptModel != "" && restrictionReason != "" &&
 					(restrictionReason != "image_generation_not_enabled" || !upstream.IsStripImageGenerationToolEnabled()) {
 					// 上游明确声明该模型或其 Codex 图片工具不受支持：限制该 Key 对这个实际模型的路由。
 					// 仅限制 (Key, 模型) 组合（持久化+定时恢复），保留 failover 换渠道，不连累该 Key 其他模型。
 					summary := errorBodySummaryForLog(apiType, resp.StatusCode, respBodyBytes)
-					if err := cfgManager.DisableKeyModel(apiType, channelIndex, apiKey, redirectedModel, restrictionReason, summary); err != nil {
+					if err := cfgManager.DisableKeyModel(apiType, channelIndex, apiKey, actualAttemptModel, restrictionReason, summary); err != nil {
 						RequestLogf(c, "[%s-KeyModel] 限制 (Key,模型) 组合失败: %v", apiType, err)
 					}
 				}
@@ -713,7 +716,7 @@ func TryUpstreamWithAllKeys(
 					channelErrorInfo = errorSummary
 					if errorSummary != "" {
 						RequestLogf(c, "[Vectors-UpstreamError] channel=[%d] %s status=%d original_model=%q mapped_model=%q summary=%s",
-							channelIndex, upstream.Name, resp.StatusCode, model, redirectedModel, errorSummary)
+							channelIndex, upstream.Name, resp.StatusCode, model, actualAttemptModel, errorSummary)
 					}
 				}
 				metricsManager.RecordRequestFinalizeFailureWithClass(currentBaseURL, apiKey, metricsServiceType, requestID, metrics.FailureClassNonRetryable)
@@ -835,7 +838,7 @@ func TryUpstreamWithAllKeys(
 			if appliedMappedModel != "" {
 				routingCfg := cfgManager.GetAutopilotRouting()
 				if routingCfg.ModelMapping.EchoMappedModel {
-					c.Header("X-CCX-Mapped-Model", appliedMappedModel)
+					c.Header("X-CCX-Mapped-Model", actualAttemptModel)
 					c.Header("X-CCX-Original-Model", model)
 					c.Header("X-CCX-Mapping-Source", "auto_resolve")
 				}
