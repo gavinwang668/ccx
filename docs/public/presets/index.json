@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "dataVersion": "v2.9.37+20260716",
+  "dataVersion": "v2.9.37+20260718",
   "shards": [
     {
       "kind": "subscriptionPreset",
@@ -11,8 +11,8 @@
     {
       "kind": "modelRegistry",
       "url": "./model-registry.json",
-      "sha256": "9c35add24dda9ea5dade66c69acc2725bfe4143af8e77cac840a6e0382f36d2c",
-      "sizeBytes": 29222
+      "sha256": "bdf5a6be2081942dff959fee3eeb2a149614a223dfc62fd2d9087d78010bdfd9",
+      "sizeBytes": 43720
     },
     {
       "kind": "channelPresets",

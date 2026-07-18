@@ -463,6 +463,12 @@ func TestDeriveQualityTier(t *testing.T) {
 			want:    QualityTierNormal,
 		},
 		{
+			name:    "gpt-5.4-nano → normal",
+			family:  ModelFamilyOpenAI,
+			modelID: "gpt-5.4-nano",
+			want:    QualityTierNormal,
+		},
+		{
 			name:    "glm-5.2 → premium",
 			family:  ModelFamilyGLM,
 			modelID: "glm-5.2",

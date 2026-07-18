@@ -183,6 +183,45 @@ func TestResolveDomainStrength_AppliesProviderQualityAsDownwardFactor(t *testing
 	}
 }
 
+func TestResolveDomainStrength_DeepSWEUsesBoundedRelativeCodingSignal(t *testing.T) {
+	gpt55 := &ModelProfile{ModelID: "gpt-5.5", ModelFamily: ModelFamilyOpenAI}
+	evidence := ResolveDomainStrength(gpt55, TaskDomainCoding)
+	if evidence.Source != "relative_benchmark" {
+		t.Fatalf("Source = %q, want relative_benchmark", evidence.Source)
+	}
+	if evidence.BenchmarkName != "deepswe" || evidence.BenchmarkVersion != "v1.1" {
+		t.Fatalf("benchmark metadata = %+v", evidence)
+	}
+	if evidence.BenchmarkMetric != "pass_at_1" || evidence.BenchmarkEffort != "xhigh" {
+		t.Fatalf("benchmark effort metadata = %+v", evidence)
+	}
+	if evidence.BenchmarkRawValue != 0.67 || evidence.BenchmarkPercentile <= 0.5 {
+		t.Fatalf("benchmark values = %+v", evidence)
+	}
+	if evidence.Score <= 0.8 || evidence.Score >= 0.9 {
+		t.Fatalf("bounded score = %v, want small upward adjustment from 0.8", evidence.Score)
+	}
+
+	gpt54 := &ModelProfile{ModelID: "gpt-5.4", ModelFamily: ModelFamilyOpenAI}
+	lower := ResolveDomainStrength(gpt54, TaskDomainCoding)
+	if lower.Source != "relative_benchmark" || lower.Score >= 0.8 || lower.Score <= 0.7 {
+		t.Fatalf("gpt-5.4 evidence = %+v, want bounded downward adjustment", lower)
+	}
+
+	review := ResolveDomainStrength(gpt55, TaskDomainCodeReview)
+	if review.Source != "family_seed" || review.Score != 0.9 {
+		t.Fatalf("DeepSWE coding evidence must not leak to code review: %+v", review)
+	}
+}
+
+func TestResolveDomainStrength_CategoryScoreWinsOverRelativeEvidence(t *testing.T) {
+	profile := &ModelProfile{ModelID: "gpt-5.6-sol", ModelFamily: ModelFamilyOpenAI}
+	evidence := ResolveDomainStrength(profile, TaskDomainCoding)
+	if evidence.Source != "canonical_benchmark" || math.Abs(evidence.Score-0.646) > 1e-9 {
+		t.Fatalf("evidence = %+v, want existing category score", evidence)
+	}
+}
+
 func TestResolveDomainStrength_OverrideAndFallbackPriority(t *testing.T) {
 	profile := &ModelProfile{
 		ModelID:     "claude-opus-4-8",

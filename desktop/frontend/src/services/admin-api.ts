@@ -127,12 +127,30 @@ export interface ModelBenchmarkProfile {
   canonicalModel: string
   overallScore?: number
   categoryScores?: Record<string, number>
+  benchmarkEvidence?: ModelBenchmarkEvidence[]
   sources?: string[]
   verifiedAt?: string
   lane?: 'provisional' | 'verified'
   sharedResults?: number
   comparableCategories?: number
   totalCategories?: number
+}
+
+export interface ModelBenchmarkEvidence {
+  benchmark: string
+  benchmarkVersion: string
+  sourceModel: string
+  domain: string
+  metric: string
+  rawValue: number
+  uncertainty?: number
+  cohortPercentile: number
+  taskCount: number
+  cohortSize: number
+  effort: string
+  selectionBasis: string
+  sourceUrl: string
+  capturedAt: string
 }
 
 export interface EmbeddingCapability {

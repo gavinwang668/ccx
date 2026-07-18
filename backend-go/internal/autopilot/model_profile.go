@@ -16,7 +16,7 @@ type QualityTier string
 const (
 	QualityTierPremium QualityTier = "premium" // 旗舰：claude-opus, gpt-5.5, gpt-5.4
 	QualityTierHigh    QualityTier = "high"    // 高端：claude-sonnet, gpt-5.3-codex
-	QualityTierNormal  QualityTier = "normal"  // 标准：claude-haiku, gpt-5.4-mini
+	QualityTierNormal  QualityTier = "normal"  // 标准：claude-haiku, gpt-5.4-mini/nano
 	QualityTierLow     QualityTier = "low"     // 低端：其他
 )
 
@@ -233,13 +233,13 @@ func ModelProfileQualityTierFromFamily(family ModelFamily, modelID string) Quali
 	case ModelFamilyOpenAI:
 		if strings.Contains(lowerID, "gpt-5.6") ||
 			strings.Contains(lowerID, "gpt-5.5") ||
-			strings.Contains(lowerID, "gpt-5.4") && !strings.Contains(lowerID, "mini") {
+			strings.Contains(lowerID, "gpt-5.4") && !strings.Contains(lowerID, "mini") && !strings.Contains(lowerID, "nano") {
 			return QualityTierPremium
 		}
 		if strings.Contains(lowerID, "gpt-5.3") || strings.Contains(lowerID, "gpt-5.2") {
 			return QualityTierHigh
 		}
-		if strings.Contains(lowerID, "mini") {
+		if strings.Contains(lowerID, "mini") || strings.Contains(lowerID, "nano") {
 			return QualityTierNormal
 		}
 		return QualityTierNormal

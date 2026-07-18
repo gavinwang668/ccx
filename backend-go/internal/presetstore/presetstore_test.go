@@ -106,6 +106,30 @@ func TestValidateModelBenchmarkProfiles(t *testing.T) {
 		t.Fatalf("合法 benchmark profile 未通过校验: %v", err)
 	}
 
+	evidenceOnly := validBenchmark
+	evidenceOnly.CategoryScores = nil
+	evidenceOnly.OverallScore = 0
+	evidenceOnly.BenchmarkEvidence = []ModelBenchmarkEvidencePreset{{
+		Benchmark:        "deepswe",
+		BenchmarkVersion: "v1.1",
+		SourceModel:      "gpt-5.6-sol",
+		Domain:           "coding",
+		Metric:           "pass_at_1",
+		RawValue:         0.73,
+		Uncertainty:      0.03,
+		CohortPercentile: 1,
+		TaskCount:        113,
+		CohortSize:       16,
+		Effort:           "max",
+		SelectionBasis:   "best_available_effort",
+		SourceURL:        "https://deepswe.datacurve.ai/",
+		CapturedAt:       "2026-07-18",
+	}}
+	b.ModelRegistry = &ModelRegistryPreset{SchemaVersion: 1, BenchmarkProfiles: []ModelBenchmarkProfilePreset{evidenceOnly}}
+	if err := Validate(b); err != nil {
+		t.Fatalf("只含 benchmark evidence 的 profile 未通过校验: %v", err)
+	}
+
 	tests := map[string]func(*ModelBenchmarkProfilePreset){
 		"缺少 pattern":         func(p *ModelBenchmarkProfilePreset) { p.Patterns = nil },
 		"pattern 非法":         func(p *ModelBenchmarkProfilePreset) { p.Patterns = []string{"("} },
@@ -118,6 +142,11 @@ func TestValidateModelBenchmarkProfiles(t *testing.T) {
 		"lane 非法":            func(p *ModelBenchmarkProfilePreset) { p.Lane = "draft" },
 		"共享结果数缺失":            func(p *ModelBenchmarkProfilePreset) { p.SharedResults = 0 },
 		"覆盖类别数越界":            func(p *ModelBenchmarkProfilePreset) { p.ComparableCategories = 9 },
+		"证据 sourceUrl 非法": func(p *ModelBenchmarkProfilePreset) {
+			p.BenchmarkEvidence = append([]ModelBenchmarkEvidencePreset(nil), evidenceOnly.BenchmarkEvidence...)
+			p.CategoryScores = nil
+			p.BenchmarkEvidence[0].SourceURL = "http://deepswe.datacurve.ai/"
+		},
 	}
 	for name, corrupt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -125,6 +154,7 @@ func TestValidateModelBenchmarkProfiles(t *testing.T) {
 			profile.Patterns = append([]string(nil), validBenchmark.Patterns...)
 			profile.Sources = append([]string(nil), validBenchmark.Sources...)
 			profile.CategoryScores = map[string]float64{"coding": validBenchmark.CategoryScores["coding"]}
+			profile.BenchmarkEvidence = nil
 			corrupt(&profile)
 			candidate := validBundle()
 			candidate.ModelRegistry = &ModelRegistryPreset{SchemaVersion: 1, BenchmarkProfiles: []ModelBenchmarkProfilePreset{profile}}

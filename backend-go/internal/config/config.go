@@ -286,15 +286,35 @@ type UpstreamModelCapability struct {
 // ModelBenchmarkProfile 描述规范模型在独立基准中的能力上界证据。
 // 该结构只用于 Autopilot 软评分，不参与模型支持、上下文或协议能力等硬过滤。
 type ModelBenchmarkProfile struct {
-	CanonicalModel       string             `json:"canonicalModel"`
-	OverallScore         float64            `json:"overallScore,omitempty"`   // 0-100，仅用于展示
-	CategoryScores       map[string]float64 `json:"categoryScores,omitempty"` // 0-100，保留来源领域向量
-	Sources              []string           `json:"sources,omitempty"`
-	VerifiedAt           string             `json:"verifiedAt,omitempty"` // YYYY-MM-DD
-	Lane                 string             `json:"lane,omitempty"`       // provisional | verified
-	SharedResults        int                `json:"sharedResults,omitempty"`
-	ComparableCategories int                `json:"comparableCategories,omitempty"`
-	TotalCategories      int                `json:"totalCategories,omitempty"`
+	CanonicalModel       string                   `json:"canonicalModel"`
+	OverallScore         float64                  `json:"overallScore,omitempty"`   // 0-100，仅用于展示
+	CategoryScores       map[string]float64       `json:"categoryScores,omitempty"` // 0-100，保留来源领域向量
+	BenchmarkEvidence    []ModelBenchmarkEvidence `json:"benchmarkEvidence,omitempty"`
+	Sources              []string                 `json:"sources,omitempty"`
+	VerifiedAt           string                   `json:"verifiedAt,omitempty"` // YYYY-MM-DD
+	Lane                 string                   `json:"lane,omitempty"`       // provisional | verified
+	SharedResults        int                      `json:"sharedResults,omitempty"`
+	ComparableCategories int                      `json:"comparableCategories,omitempty"`
+	TotalCategories      int                      `json:"totalCategories,omitempty"`
+}
+
+// ModelBenchmarkEvidence 保存单个基准观测，避免将特定 harness 的原始指标误作通用能力分。
+// CohortPercentile 在固定 cohort 内从原始指标派生，供 Autopilot 做有界的相对软修正。
+type ModelBenchmarkEvidence struct {
+	Benchmark        string  `json:"benchmark"`
+	BenchmarkVersion string  `json:"benchmarkVersion"`
+	SourceModel      string  `json:"sourceModel"`
+	Domain           string  `json:"domain"`
+	Metric           string  `json:"metric"`
+	RawValue         float64 `json:"rawValue"`
+	Uncertainty      float64 `json:"uncertainty,omitempty"`
+	CohortPercentile float64 `json:"cohortPercentile"`
+	TaskCount        int     `json:"taskCount"`
+	CohortSize       int     `json:"cohortSize"`
+	Effort           string  `json:"effort"`
+	SelectionBasis   string  `json:"selectionBasis"`
+	SourceURL        string  `json:"sourceUrl"`
+	CapturedAt       string  `json:"capturedAt"`
 }
 
 type EmbeddingCapability struct {

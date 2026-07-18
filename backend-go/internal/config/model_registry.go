@@ -122,71 +122,116 @@ func (c ContextRoutingConfig) EffectiveUnknownSafeWindowTokens() int {
 	return DefaultUnknownSafeWindowTokens
 }
 
+func builtinGPTAgentModelProfile(displayName string, contextWindowTokens, maxContextWindowTokens, maxOutputTokens int, truncationMode string, reasoningEfforts []string, supportsPriorityTier bool) AgentModelProfile {
+	return AgentModelProfile{
+		DisplayName:            displayName,
+		ContextWindowTokens:    contextWindowTokens,
+		MaxContextWindowTokens: maxContextWindowTokens,
+		MaxOutputTokens:        maxOutputTokens,
+		EffectiveContextRatio:  0.95,
+		AutoCompactRatio:       0.90,
+		TruncationMode:         truncationMode,
+		TruncationLimit:        10000,
+		ReasoningEfforts:       reasoningEfforts,
+		SupportsPriorityTier:   supportsPriorityTier,
+	}
+}
+
 // BuiltinAgentModelProfiles 返回 CCX 内置的下游 agent 模型知识库。
 func BuiltinAgentModelProfiles() map[string]AgentModelProfile {
 	return map[string]AgentModelProfile{
-		"gpt-5.2": {
-			DisplayName:            "GPT-5.5 / gpt-5.2",
-			ContextWindowTokens:    272000,
-			MaxContextWindowTokens: 272000,
-			EffectiveContextRatio:  0.95,
-			AutoCompactRatio:       0.90,
-			TruncationMode:         "bytes",
-			TruncationLimit:        10000,
-			ReasoningEfforts:       []string{"low", "medium", "high", "xhigh"},
-		},
-		"gpt-5.4": {
-			DisplayName:            "gpt-5.4",
-			ContextWindowTokens:    272000,
-			MaxContextWindowTokens: 1000000,
-			EffectiveContextRatio:  0.95,
-			AutoCompactRatio:       0.90,
-			TruncationMode:         "tokens",
-			TruncationLimit:        10000,
-			ReasoningEfforts:       []string{"low", "medium", "high", "xhigh"},
-			SupportsPriorityTier:   true,
-		},
-		"gpt-5.4-mini": {
-			DisplayName:            "gpt-5.4-mini",
-			ContextWindowTokens:    272000,
-			MaxContextWindowTokens: 272000,
-			EffectiveContextRatio:  0.95,
-			AutoCompactRatio:       0.90,
-			TruncationMode:         "tokens",
-			TruncationLimit:        10000,
-			ReasoningEfforts:       []string{"low", "medium", "high", "xhigh"},
-		},
-		"gpt-5.3-codex": {
-			DisplayName:            "gpt-5.3-codex",
-			ContextWindowTokens:    272000,
-			MaxContextWindowTokens: 272000,
-			EffectiveContextRatio:  0.95,
-			AutoCompactRatio:       0.90,
-			TruncationMode:         "tokens",
-			TruncationLimit:        10000,
-			ReasoningEfforts:       []string{"low", "medium", "high", "xhigh"},
-		},
-		"codex-auto-review": {
-			DisplayName:            "Codex Auto Review",
-			ContextWindowTokens:    272000,
-			MaxContextWindowTokens: 1000000,
-			EffectiveContextRatio:  0.95,
-			AutoCompactRatio:       0.90,
-			TruncationMode:         "tokens",
-			TruncationLimit:        10000,
-			ReasoningEfforts:       []string{"low", "medium", "high", "xhigh"},
-		},
-		"gpt-5.5": {
-			DisplayName:            "GPT-5.5",
-			ContextWindowTokens:    272000,
-			MaxContextWindowTokens: 272000,
-			EffectiveContextRatio:  0.95,
-			AutoCompactRatio:       0.90,
-			TruncationMode:         "tokens",
-			TruncationLimit:        10000,
-			ReasoningEfforts:       []string{"low", "medium", "high", "xhigh"},
-			SupportsPriorityTier:   true,
-		},
+		"gpt-5.2": builtinGPTAgentModelProfile(
+			"GPT-5.2", 272000, 272000, 128000, "bytes",
+			[]string{"none", "minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.2-2025-12-11": builtinGPTAgentModelProfile(
+			"GPT-5.2", 272000, 272000, 128000, "bytes",
+			[]string{"none", "minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.2-chat-latest": builtinGPTAgentModelProfile(
+			"GPT-5.2 Chat Latest", 128000, 128000, 16384, "tokens",
+			[]string{"minimal", "low", "medium", "high"}, false,
+		),
+		"gpt-5.2-pro": builtinGPTAgentModelProfile(
+			"GPT-5.2 Pro", 272000, 272000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high", "xhigh"}, false,
+		),
+		"gpt-5.2-pro-2025-12-11": builtinGPTAgentModelProfile(
+			"GPT-5.2 Pro", 272000, 272000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high", "xhigh"}, false,
+		),
+		"gpt-5.2-codex": builtinGPTAgentModelProfile(
+			"GPT-5.2 Codex", 272000, 272000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high", "xhigh"}, false,
+		),
+		"gpt-5.3-codex": builtinGPTAgentModelProfile(
+			"GPT-5.3 Codex", 272000, 272000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high"}, false,
+		),
+		"gpt-5.3-chat-latest": builtinGPTAgentModelProfile(
+			"GPT-5.3 Chat Latest", 128000, 128000, 16384, "tokens",
+			[]string{"minimal", "low", "medium", "high"}, false,
+		),
+		"gpt-5.4": builtinGPTAgentModelProfile(
+			"GPT-5.4", 272000, 1050000, 128000, "tokens",
+			[]string{"none", "minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-2026-03-05": builtinGPTAgentModelProfile(
+			"GPT-5.4", 272000, 1050000, 128000, "tokens",
+			[]string{"none", "minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-openai-compact": builtinGPTAgentModelProfile(
+			"GPT-5.4", 272000, 1050000, 128000, "tokens",
+			[]string{"none", "minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-pro": builtinGPTAgentModelProfile(
+			"GPT-5.4 Pro", 272000, 1050000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-pro-2026-03-05": builtinGPTAgentModelProfile(
+			"GPT-5.4 Pro", 272000, 1050000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-mini": builtinGPTAgentModelProfile(
+			"GPT-5.4 Mini", 272000, 272000, 128000, "tokens",
+			[]string{"none", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-mini-2026-03-17": builtinGPTAgentModelProfile(
+			"GPT-5.4 Mini", 272000, 272000, 128000, "tokens",
+			[]string{"none", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-nano": builtinGPTAgentModelProfile(
+			"GPT-5.4 Nano", 272000, 272000, 128000, "tokens",
+			[]string{"none", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.4-nano-2026-03-17": builtinGPTAgentModelProfile(
+			"GPT-5.4 Nano", 272000, 272000, 128000, "tokens",
+			[]string{"none", "low", "medium", "high", "xhigh"}, true,
+		),
+		"codex-auto-review": builtinGPTAgentModelProfile(
+			"Codex Auto Review", 272000, 1000000, 128000, "tokens",
+			[]string{"low", "medium", "high", "xhigh"}, false,
+		),
+		"gpt-5.5": builtinGPTAgentModelProfile(
+			"GPT-5.5", 272000, 1050000, 128000, "tokens",
+			[]string{"none", "minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.5-2026-04-23": builtinGPTAgentModelProfile(
+			"GPT-5.5", 272000, 1050000, 128000, "tokens",
+			[]string{"none", "minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.5-pro": builtinGPTAgentModelProfile(
+			"GPT-5.5 Pro", 272000, 1050000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.5-pro-2026-04-23": builtinGPTAgentModelProfile(
+			"GPT-5.5 Pro", 272000, 1050000, 128000, "tokens",
+			[]string{"minimal", "low", "medium", "high", "xhigh"}, true,
+		),
+		"gpt-5.6": builtinGPTAgentModelProfile(
+			"Amazon Bedrock GPT-5.6", 272000, 272000, 128000, "tokens",
+			[]string{"low", "medium", "high", "xhigh", "max"}, false,
+		),
 		"gpt-5.6-*": {
 			DisplayName:            "Amazon Bedrock GPT-5.6",
 			ContextWindowTokens:    272000,
@@ -484,6 +529,9 @@ func cloneBenchmarkProfile(src ModelBenchmarkProfile) ModelBenchmarkProfile {
 	if len(src.Sources) > 0 {
 		dst.Sources = append([]string(nil), src.Sources...)
 	}
+	if len(src.BenchmarkEvidence) > 0 {
+		dst.BenchmarkEvidence = append([]ModelBenchmarkEvidence(nil), src.BenchmarkEvidence...)
+	}
 	return dst
 }
 
@@ -577,6 +625,27 @@ func convertRuntimeBenchmarkProfiles(preset *presetstore.ModelRegistryPreset) ma
 			profile.CategoryScores = make(map[string]float64, len(entry.CategoryScores))
 			for category, score := range entry.CategoryScores {
 				profile.CategoryScores[category] = score
+			}
+		}
+		if len(entry.BenchmarkEvidence) > 0 {
+			profile.BenchmarkEvidence = make([]ModelBenchmarkEvidence, len(entry.BenchmarkEvidence))
+			for i, evidence := range entry.BenchmarkEvidence {
+				profile.BenchmarkEvidence[i] = ModelBenchmarkEvidence{
+					Benchmark:        evidence.Benchmark,
+					BenchmarkVersion: evidence.BenchmarkVersion,
+					SourceModel:      evidence.SourceModel,
+					Domain:           evidence.Domain,
+					Metric:           evidence.Metric,
+					RawValue:         evidence.RawValue,
+					Uncertainty:      evidence.Uncertainty,
+					CohortPercentile: evidence.CohortPercentile,
+					TaskCount:        evidence.TaskCount,
+					CohortSize:       evidence.CohortSize,
+					Effort:           evidence.Effort,
+					SelectionBasis:   evidence.SelectionBasis,
+					SourceURL:        evidence.SourceURL,
+					CapturedAt:       evidence.CapturedAt,
+				}
 			}
 		}
 		for _, pattern := range entry.Patterns {

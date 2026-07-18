@@ -163,15 +163,20 @@ func validateModelRegistryPreset(preset *ModelRegistryPreset) error {
 		if err := validateBenchmarkScore("overallScore", benchmark.OverallScore); err != nil {
 			return fmt.Errorf("%s.%w", prefix, err)
 		}
-		if len(benchmark.CategoryScores) == 0 {
-			return fmt.Errorf("%s.categoryScores 不能为空", prefix)
-		}
 		for category, score := range benchmark.CategoryScores {
 			if strings.TrimSpace(category) == "" {
 				return fmt.Errorf("%s.categoryScores 包含空类别", prefix)
 			}
 			if err := validateBenchmarkScore("categoryScores."+category, score); err != nil {
 				return fmt.Errorf("%s.%w", prefix, err)
+			}
+		}
+		if len(benchmark.CategoryScores) == 0 && len(benchmark.BenchmarkEvidence) == 0 {
+			return fmt.Errorf("%s 至少需要 categoryScores 或 benchmarkEvidence", prefix)
+		}
+		for evidenceIdx, evidence := range benchmark.BenchmarkEvidence {
+			if err := validateModelBenchmarkEvidence(evidence); err != nil {
+				return fmt.Errorf("%s.benchmarkEvidence[%d].%w", prefix, evidenceIdx, err)
 			}
 		}
 		if len(benchmark.Sources) == 0 {
@@ -205,6 +210,51 @@ func validateModelPattern(pattern string) error {
 func validateBenchmarkScore(field string, value float64) error {
 	if value < 0 || value > 100 {
 		return fmt.Errorf("%s 必须在 0-100 之间", field)
+	}
+	return nil
+}
+
+func validateModelBenchmarkEvidence(evidence ModelBenchmarkEvidencePreset) error {
+	for field, value := range map[string]string{
+		"benchmark":        evidence.Benchmark,
+		"benchmarkVersion": evidence.BenchmarkVersion,
+		"sourceModel":      evidence.SourceModel,
+		"domain":           evidence.Domain,
+		"metric":           evidence.Metric,
+		"effort":           evidence.Effort,
+		"selectionBasis":   evidence.SelectionBasis,
+		"sourceUrl":        evidence.SourceURL,
+		"capturedAt":       evidence.CapturedAt,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s 不能为空", field)
+		}
+	}
+	if err := validateBenchmarkFraction("rawValue", evidence.RawValue); err != nil {
+		return err
+	}
+	if err := validateBenchmarkFraction("uncertainty", evidence.Uncertainty); err != nil {
+		return err
+	}
+	if err := validateBenchmarkFraction("cohortPercentile", evidence.CohortPercentile); err != nil {
+		return err
+	}
+	if evidence.TaskCount <= 0 || evidence.CohortSize <= 0 {
+		return fmt.Errorf("taskCount 和 cohortSize 必须为正数")
+	}
+	parsedURL, err := url.ParseRequestURI(evidence.SourceURL)
+	if err != nil || parsedURL.Scheme != "https" || parsedURL.Host == "" {
+		return fmt.Errorf("sourceUrl 必须是 HTTPS URL")
+	}
+	if _, err := time.Parse("2006-01-02", evidence.CapturedAt); err != nil {
+		return fmt.Errorf("capturedAt 必须是 YYYY-MM-DD: %w", err)
+	}
+	return nil
+}
+
+func validateBenchmarkFraction(field string, value float64) error {
+	if value < 0 || value > 1 {
+		return fmt.Errorf("%s 必须在 0-1 之间", field)
 	}
 	return nil
 }

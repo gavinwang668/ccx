@@ -14,8 +14,8 @@ func TestResolveAgentModelProfile_CodexBuiltins(t *testing.T) {
 	if profile.Profile.ContextWindowTokens != 272000 {
 		t.Fatalf("ContextWindowTokens = %d, want 272000", profile.Profile.ContextWindowTokens)
 	}
-	if profile.Profile.MaxContextWindowTokens != 1000000 {
-		t.Fatalf("MaxContextWindowTokens = %d, want 1000000", profile.Profile.MaxContextWindowTokens)
+	if profile.Profile.MaxContextWindowTokens != 1050000 {
+		t.Fatalf("MaxContextWindowTokens = %d, want 1050000", profile.Profile.MaxContextWindowTokens)
 	}
 	if profile.Profile.TruncationMode != "tokens" {
 		t.Fatalf("TruncationMode = %q, want tokens", profile.Profile.TruncationMode)
@@ -23,18 +23,78 @@ func TestResolveAgentModelProfile_CodexBuiltins(t *testing.T) {
 }
 
 func TestResolveAgentModelProfile_GPT56BedrockBuiltins(t *testing.T) {
-	profile := ResolveAgentModelProfile("gpt-5.6-sol", nil)
+	for _, model := range []string{"gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		t.Run(model, func(t *testing.T) {
+			profile := ResolveAgentModelProfile(model, nil)
+			if !profile.Known {
+				t.Fatalf("expected built-in %s profile", model)
+			}
+			if profile.Profile.ContextWindowTokens != 272000 {
+				t.Fatalf("ContextWindowTokens = %d, want 272000", profile.Profile.ContextWindowTokens)
+			}
+			if profile.Profile.MaxContextWindowTokens != 272000 {
+				t.Fatalf("MaxContextWindowTokens = %d, want 272000", profile.Profile.MaxContextWindowTokens)
+			}
+			if !containsString(profile.Profile.ReasoningEfforts, "max") {
+				t.Fatalf("ReasoningEfforts = %v, want max", profile.Profile.ReasoningEfforts)
+			}
+		})
+	}
+}
+
+func TestResolveAgentModelProfile_GPT55UsesLiteLLMMaximumContext(t *testing.T) {
+	profile := ResolveAgentModelProfile("gpt-5.5", nil)
 	if !profile.Known {
-		t.Fatal("expected built-in gpt-5.6-sol profile")
+		t.Fatal("expected built-in gpt-5.5 profile")
 	}
 	if profile.Profile.ContextWindowTokens != 272000 {
-		t.Fatalf("ContextWindowTokens = %d, want 272000", profile.Profile.ContextWindowTokens)
+		t.Fatalf("ContextWindowTokens = %d, want conservative routing minimum 272000", profile.Profile.ContextWindowTokens)
 	}
-	if profile.Profile.MaxContextWindowTokens != 272000 {
-		t.Fatalf("MaxContextWindowTokens = %d, want 272000", profile.Profile.MaxContextWindowTokens)
+	if profile.Profile.MaxContextWindowTokens != 1050000 {
+		t.Fatalf("MaxContextWindowTokens = %d, want 1050000", profile.Profile.MaxContextWindowTokens)
 	}
-	if !containsString(profile.Profile.ReasoningEfforts, "max") {
-		t.Fatalf("ReasoningEfforts = %v, want max", profile.Profile.ReasoningEfforts)
+}
+
+func TestResolveAgentModelProfile_LiteLLMGPTVariants(t *testing.T) {
+	tests := []struct {
+		model      string
+		context    int
+		maxContext int
+		maxOutput  int
+		xhigh      bool
+		none       bool
+	}{
+		{"gpt-5.2-2025-12-11", 272000, 272000, 128000, true, true},
+		{"gpt-5.2-chat-latest", 128000, 128000, 16384, false, false},
+		{"gpt-5.2-pro-2025-12-11", 272000, 272000, 128000, true, false},
+		{"gpt-5.2-codex", 272000, 272000, 128000, true, false},
+		{"gpt-5.3-codex", 272000, 272000, 128000, false, false},
+		{"gpt-5.3-chat-latest", 128000, 128000, 16384, false, false},
+		{"gpt-5.4-2026-03-05", 272000, 1050000, 128000, true, true},
+		{"gpt-5.4-pro-2026-03-05", 272000, 1050000, 128000, true, false},
+		{"gpt-5.4-mini-2026-03-17", 272000, 272000, 128000, true, true},
+		{"gpt-5.4-nano-2026-03-17", 272000, 272000, 128000, true, true},
+		{"gpt-5.5-2026-04-23", 272000, 1050000, 128000, true, true},
+		{"gpt-5.5-pro-2026-04-23", 272000, 1050000, 128000, true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			resolved := ResolveAgentModelProfile(tt.model, nil)
+			if !resolved.Known || resolved.Source != "builtin" {
+				t.Fatalf("resolved = %+v, want builtin profile", resolved)
+			}
+			profile := resolved.Profile
+			if profile.ContextWindowTokens != tt.context || profile.MaxContextWindowTokens != tt.maxContext || profile.MaxOutputTokens != tt.maxOutput {
+				t.Fatalf("profile = %+v, want context=%d maxContext=%d maxOutput=%d", profile, tt.context, tt.maxContext, tt.maxOutput)
+			}
+			if got := containsString(profile.ReasoningEfforts, "xhigh"); got != tt.xhigh {
+				t.Fatalf("xhigh = %v, want %v; efforts=%v", got, tt.xhigh, profile.ReasoningEfforts)
+			}
+			if got := containsString(profile.ReasoningEfforts, "none"); got != tt.none {
+				t.Fatalf("none = %v, want %v; efforts=%v", got, tt.none, profile.ReasoningEfforts)
+			}
+		})
 	}
 }
 
@@ -286,6 +346,70 @@ func TestResolveUpstreamCapability_GPT56BedrockBuiltin(t *testing.T) {
 	}
 }
 
+func TestResolveUpstreamCapability_GPT55LiteLLMDefaults(t *testing.T) {
+	resolved := ResolveUpstreamCapability("gpt-5.5", nil, nil)
+	if !resolved.Known || resolved.Source != "builtin" {
+		t.Fatalf("resolved = %+v, want builtin capability", resolved)
+	}
+	if resolved.Capability.ContextWindowTokens != 1050000 {
+		t.Fatalf("ContextWindowTokens = %d, want 1050000", resolved.Capability.ContextWindowTokens)
+	}
+	if resolved.Capability.MaxOutputTokens != 128000 {
+		t.Fatalf("MaxOutputTokens = %d, want 128000", resolved.Capability.MaxOutputTokens)
+	}
+	for _, capability := range []string{"vision", "toolCalls", "jsonMode"} {
+		if !resolved.Capability.Capabilities[capability] {
+			t.Fatalf("Capabilities[%q] = false, want true", capability)
+		}
+	}
+}
+
+func TestResolveUpstreamCapability_LiteLLMGPTVariants(t *testing.T) {
+	tests := []struct {
+		model     string
+		context   int
+		maxOutput int
+		xhigh     bool
+		none      bool
+		jsonMode  bool
+	}{
+		{"gpt-5.2-2025-12-11", 272000, 128000, true, true, true},
+		{"gpt-5.2-chat-latest", 128000, 16384, false, false, true},
+		{"gpt-5.2-pro-2025-12-11", 272000, 128000, true, false, true},
+		{"gpt-5.2-codex", 272000, 128000, true, false, true},
+		{"gpt-5.3-codex", 272000, 128000, false, false, true},
+		{"gpt-5.3-chat-latest", 128000, 16384, false, false, true},
+		{"gpt-5.4-2026-03-05", 1050000, 128000, true, true, true},
+		{"gpt-5.4-pro-2026-03-05", 1050000, 128000, true, false, false},
+		{"gpt-5.4-mini-2026-03-17", 272000, 128000, true, true, true},
+		{"gpt-5.4-nano-2026-03-17", 272000, 128000, true, true, true},
+		{"gpt-5.5-2026-04-23", 1050000, 128000, true, true, true},
+		{"gpt-5.5-pro-2026-04-23", 1050000, 128000, true, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			resolved := ResolveUpstreamCapability(tt.model, nil, nil)
+			if !resolved.Known || resolved.Source != "builtin" {
+				t.Fatalf("resolved = %+v, want builtin capability", resolved)
+			}
+			capability := resolved.Capability
+			if capability.ContextWindowTokens != tt.context || capability.MaxOutputTokens != tt.maxOutput {
+				t.Fatalf("capability = %+v, want context=%d maxOutput=%d", capability, tt.context, tt.maxOutput)
+			}
+			if got := containsString(capability.ReasoningEfforts, "xhigh"); got != tt.xhigh {
+				t.Fatalf("xhigh = %v, want %v; efforts=%v", got, tt.xhigh, capability.ReasoningEfforts)
+			}
+			if got := containsString(capability.ReasoningEfforts, "none"); got != tt.none {
+				t.Fatalf("none = %v, want %v; efforts=%v", got, tt.none, capability.ReasoningEfforts)
+			}
+			if got, exists := capability.Capabilities["jsonMode"]; !exists || got != tt.jsonMode {
+				t.Fatalf("jsonMode = %v exists=%v, want %v", got, exists, tt.jsonMode)
+			}
+		})
+	}
+}
+
 func TestResolveUpstreamCapability_Qwen37PlusTieredPricing(t *testing.T) {
 	upstream := &UpstreamConfig{
 		ModelMapping: map[string]string{
@@ -534,8 +658,12 @@ func TestResolveModelBenchmarkProfile_DistinguishesGPT56Variants(t *testing.T) {
 		})
 	}
 
-	if resolved := ResolveModelBenchmarkProfile("gpt-5.6-luna"); resolved.Known {
-		t.Fatalf("Luna 不应复用 Sol/Terra 的基准: %+v", resolved)
+	luna := ResolveModelBenchmarkProfile("gpt-5.6-luna")
+	if !luna.Known || luna.Profile.CanonicalModel != "gpt-5.6-luna" {
+		t.Fatalf("Luna 应有独立基准证据: %+v", luna)
+	}
+	if len(luna.Profile.BenchmarkEvidence) != 1 || luna.Profile.BenchmarkEvidence[0].RawValue != 0.67 {
+		t.Fatalf("Luna benchmark evidence = %+v", luna.Profile.BenchmarkEvidence)
 	}
 }
 
@@ -581,6 +709,7 @@ func TestBuiltinModelBenchmarkProfiles_ReturnsDeepCopy(t *testing.T) {
 		}
 		profile.CategoryScores["coding"] = 1
 		profile.Sources[0] = "mutated"
+		profile.BenchmarkEvidence[0].SourceURL = "https://mutated.example/"
 		profiles[pattern] = profile
 		break
 	}
@@ -591,5 +720,8 @@ func TestBuiltinModelBenchmarkProfiles_ReturnsDeepCopy(t *testing.T) {
 	}
 	if len(resolved.Profile.Sources) == 0 || resolved.Profile.Sources[0] == "mutated" {
 		t.Fatalf("Sources 未深拷贝: %v", resolved.Profile.Sources)
+	}
+	if len(resolved.Profile.BenchmarkEvidence) == 0 || resolved.Profile.BenchmarkEvidence[0].SourceURL == "https://mutated.example/" {
+		t.Fatalf("BenchmarkEvidence 未深拷贝: %v", resolved.Profile.BenchmarkEvidence)
 	}
 }

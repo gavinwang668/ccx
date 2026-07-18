@@ -55,16 +55,34 @@ type ModelRegistryCapabilityPreset struct {
 }
 
 type ModelBenchmarkProfilePreset struct {
-	Patterns             []string           `json:"patterns"`
-	CanonicalModel       string             `json:"canonicalModel"`
-	OverallScore         float64            `json:"overallScore,omitempty"`
-	CategoryScores       map[string]float64 `json:"categoryScores,omitempty"`
-	Sources              []string           `json:"sources,omitempty"`
-	VerifiedAt           string             `json:"verifiedAt,omitempty"`
-	Lane                 string             `json:"lane,omitempty"`
-	SharedResults        int                `json:"sharedResults,omitempty"`
-	ComparableCategories int                `json:"comparableCategories,omitempty"`
-	TotalCategories      int                `json:"totalCategories,omitempty"`
+	Patterns             []string                       `json:"patterns"`
+	CanonicalModel       string                         `json:"canonicalModel"`
+	OverallScore         float64                        `json:"overallScore,omitempty"`
+	CategoryScores       map[string]float64             `json:"categoryScores,omitempty"`
+	BenchmarkEvidence    []ModelBenchmarkEvidencePreset `json:"benchmarkEvidence,omitempty"`
+	Sources              []string                       `json:"sources,omitempty"`
+	VerifiedAt           string                         `json:"verifiedAt,omitempty"`
+	Lane                 string                         `json:"lane,omitempty"`
+	SharedResults        int                            `json:"sharedResults,omitempty"`
+	ComparableCategories int                            `json:"comparableCategories,omitempty"`
+	TotalCategories      int                            `json:"totalCategories,omitempty"`
+}
+
+type ModelBenchmarkEvidencePreset struct {
+	Benchmark        string  `json:"benchmark"`
+	BenchmarkVersion string  `json:"benchmarkVersion"`
+	SourceModel      string  `json:"sourceModel"`
+	Domain           string  `json:"domain"`
+	Metric           string  `json:"metric"`
+	RawValue         float64 `json:"rawValue"`
+	Uncertainty      float64 `json:"uncertainty,omitempty"`
+	CohortPercentile float64 `json:"cohortPercentile"`
+	TaskCount        int     `json:"taskCount"`
+	CohortSize       int     `json:"cohortSize"`
+	Effort           string  `json:"effort"`
+	SelectionBasis   string  `json:"selectionBasis"`
+	SourceURL        string  `json:"sourceUrl"`
+	CapturedAt       string  `json:"capturedAt"`
 }
 
 type ModelPricingPreset struct {

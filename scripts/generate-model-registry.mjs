@@ -64,6 +64,7 @@ function compactBenchmarkProfile(entry) {
     'canonicalModel',
     'overallScore',
     'categoryScores',
+    'benchmarkEvidence',
     'sources',
     'verifiedAt',
     'lane',
@@ -188,6 +189,8 @@ function formatGoBenchmarkProfile(profile) {
   if (profile.OverallScore) fields.push(`OverallScore: ${Number(profile.OverallScore)}`)
   const categoryScores = formatGoFloatMap(profile.CategoryScores)
   if (categoryScores) fields.push(`CategoryScores: ${categoryScores}`)
+  const benchmarkEvidence = formatGoBenchmarkEvidence(profile.BenchmarkEvidence)
+  if (benchmarkEvidence) fields.push(`BenchmarkEvidence: ${benchmarkEvidence}`)
   if (profile.Sources?.length) fields.push(`Sources: ${formatGoStringSlice(profile.Sources)}`)
   if (profile.VerifiedAt) fields.push(`VerifiedAt: ${quoteGoString(profile.VerifiedAt)}`)
   if (profile.Lane) fields.push(`Lane: ${quoteGoString(profile.Lane)}`)
@@ -197,11 +200,36 @@ function formatGoBenchmarkProfile(profile) {
   return `ModelBenchmarkProfile{${fields.join(', ')}}`
 }
 
+function formatGoBenchmarkEvidence(items) {
+  if (!items?.length) return ''
+  const values = items.map(item => {
+    const fields = [
+      'Benchmark: ' + quoteGoString(item.benchmark),
+      'BenchmarkVersion: ' + quoteGoString(item.benchmarkVersion),
+      'SourceModel: ' + quoteGoString(item.sourceModel),
+      'Domain: ' + quoteGoString(item.domain),
+      'Metric: ' + quoteGoString(item.metric),
+      'RawValue: ' + Number(item.rawValue),
+      'Uncertainty: ' + Number(item.uncertainty || 0),
+      'CohortPercentile: ' + Number(item.cohortPercentile),
+      'TaskCount: ' + Number(item.taskCount),
+      'CohortSize: ' + Number(item.cohortSize),
+      'Effort: ' + quoteGoString(item.effort),
+      'SelectionBasis: ' + quoteGoString(item.selectionBasis),
+      'SourceURL: ' + quoteGoString(item.sourceUrl),
+      'CapturedAt: ' + quoteGoString(item.capturedAt),
+    ]
+    return '{' + fields.join(', ') + '}'
+  })
+  return '[]ModelBenchmarkEvidence{' + values.join(', ') + '}'
+}
+
 function toGoBenchmarkProfile(profile) {
   return {
     CanonicalModel: profile.canonicalModel,
     OverallScore: profile.overallScore,
     CategoryScores: profile.categoryScores,
+    BenchmarkEvidence: profile.benchmarkEvidence,
     Sources: profile.sources,
     VerifiedAt: profile.verifiedAt,
     Lane: profile.lane,

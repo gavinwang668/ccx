@@ -256,6 +256,13 @@ type DomainStrengthEvidence struct {
 	BenchmarkSources      []string `json:"benchmarkSources,omitempty"`
 	BenchmarkVerifiedAt   string   `json:"benchmarkVerifiedAt,omitempty"`
 	BenchmarkLane         string   `json:"benchmarkLane,omitempty"`
+	BenchmarkName         string   `json:"benchmarkName,omitempty"`
+	BenchmarkVersion      string   `json:"benchmarkVersion,omitempty"`
+	BenchmarkMetric       string   `json:"benchmarkMetric,omitempty"`
+	BenchmarkRawValue     float64  `json:"benchmarkRawValue,omitempty"`
+	BenchmarkPercentile   float64  `json:"benchmarkPercentile,omitempty"`
+	BenchmarkEffort       string   `json:"benchmarkEffort,omitempty"`
+	BenchmarkSelection    string   `json:"benchmarkSelection,omitempty"`
 	EvidenceConfidence    float64  `json:"evidenceConfidence,omitempty"`
 }
 
@@ -276,6 +283,10 @@ var benchmarkDomainMappings = map[TaskDomain]benchmarkDomainMapping{
 	TaskDomainTranslation:  {category: "multilingual", confidence: 0.8},
 	TaskDomainWriting:      {category: "writing", confidence: 1.0},
 }
+
+// relativeBenchmarkMaxDelta 限制单个相对榜单对既有家族先验的修正幅度。
+// 深度编程 benchmark 的 Pass@1 不是通用能力百分比，只能作为局部软信号。
+const relativeBenchmarkMaxDelta = 0.10
 
 // DomainStrength 返回指定模型在给定任务域的优势分。
 // 覆盖优先级：ModelProfile 级值 > 规范模型基准 > 种子矩阵 > 0.5 中性。
@@ -318,6 +329,9 @@ func ResolveDomainStrength(profile *ModelProfile, domain TaskDomain) DomainStren
 					EvidenceConfidence:    clampUnit(confidence),
 				}
 			}
+			if evidence, ok := resolveRelativeBenchmarkEvidence(profile, resolved.Profile, domain); ok {
+				return evidence
+			}
 		}
 	}
 
@@ -346,6 +360,63 @@ func benchmarkEvidenceConfidence(profile config.ModelBenchmarkProfile) float64 {
 		return 0
 	}
 	return clampUnit(float64(profile.ComparableCategories) / float64(profile.TotalCategories))
+}
+
+// resolveRelativeBenchmarkEvidence 将固定 cohort 内的 percentile 保守地折算到家族先验。
+// 该路径刻意不使用 raw Pass@1 作为能力绝对值；它仅说明同一 harness 下的相对位置。
+func resolveRelativeBenchmarkEvidence(profile *ModelProfile, benchmark config.ModelBenchmarkProfile, domain TaskDomain) (DomainStrengthEvidence, bool) {
+	if profile == nil {
+		return DomainStrengthEvidence{}, false
+	}
+
+	prior := seedLookup(profile.ModelFamily, profile.ModelID, domain)
+	if prior <= 0 {
+		prior = 0.5
+	}
+
+	var selected config.ModelBenchmarkEvidence
+	confidence := 0.0
+	for _, candidate := range benchmark.BenchmarkEvidence {
+		if !strings.EqualFold(candidate.Domain, string(domain)) {
+			continue
+		}
+		candidateConfidence := relativeBenchmarkEvidenceConfidence(candidate)
+		if candidateConfidence > confidence {
+			selected = candidate
+			confidence = candidateConfidence
+		}
+	}
+	if confidence <= 0 {
+		return DomainStrengthEvidence{}, false
+	}
+
+	adjustment := (selected.CohortPercentile - 0.5) * 2 * relativeBenchmarkMaxDelta * confidence
+	providerFactor := providerQualityFactor(profile)
+	return DomainStrengthEvidence{
+		Source:                "relative_benchmark",
+		Score:                 clampUnit((prior + adjustment) * providerFactor),
+		ProviderQualityFactor: providerFactor,
+		CanonicalModel:        benchmark.CanonicalModel,
+		BenchmarkCategory:     selected.Domain,
+		BenchmarkSources:      []string{selected.SourceURL},
+		BenchmarkVerifiedAt:   selected.CapturedAt,
+		BenchmarkLane:         benchmark.Lane,
+		BenchmarkName:         selected.Benchmark,
+		BenchmarkVersion:      selected.BenchmarkVersion,
+		BenchmarkMetric:       selected.Metric,
+		BenchmarkRawValue:     selected.RawValue,
+		BenchmarkPercentile:   selected.CohortPercentile,
+		BenchmarkEffort:       selected.Effort,
+		BenchmarkSelection:    selected.SelectionBasis,
+		EvidenceConfidence:    confidence,
+	}, true
+}
+
+func relativeBenchmarkEvidenceConfidence(evidence config.ModelBenchmarkEvidence) float64 {
+	taskConfidence := clampUnit(float64(evidence.TaskCount) / 100)
+	cohortConfidence := clampUnit(float64(evidence.CohortSize) / 10)
+	uncertaintyConfidence := clampUnit(1 - evidence.Uncertainty*3)
+	return clampUnit(taskConfidence * cohortConfidence * uncertaintyConfidence)
 }
 
 func clampUnit(value float64) float64 {
