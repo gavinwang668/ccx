@@ -744,6 +744,7 @@ func (u *UpstreamConfig) Clone() *UpstreamConfig {
 		c := *u.Racing
 		cloned.Racing = &c
 	}
+	cloned.BalanceCheck = cloneChannelBalanceCheckConfig(u.BalanceCheck)
 
 	return &cloned
 }

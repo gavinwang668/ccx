@@ -91,6 +91,8 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 		"channelPaymentAmount":   up.ChannelPaymentAmount,
 		"channelCreditCurrency":  up.ChannelCreditCurrency,
 		"channelCreditAmount":    up.ChannelCreditAmount,
+		// 渠道级上游余额探测配置：编辑表单从 view 回读
+		"balanceCheck": up.BalanceCheck,
 	}
 	for _, keyConfig := range up.APIKeyConfigs {
 		if uid := strings.TrimSpace(keyConfig.SourceSubscriptionUID); uid != "" {

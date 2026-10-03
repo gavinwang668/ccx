@@ -171,6 +171,8 @@ type UpstreamConfig struct {
 	HealthCheck *ChannelHealthCheckConfig `json:"healthCheck,omitempty"`
 	// 渠道级竞速参与配置（可选，nil 时继承全局；关闭=既不做主触发也不做影子目标）
 	Racing *ChannelRacingConfig `json:"racing,omitempty"`
+	// 渠道级上游余额探测配置（可选，nil 时继承全局与托管类型默认；见 balance_check.go）
+	BalanceCheck *ChannelBalanceCheckConfig `json:"balanceCheck,omitempty"`
 	// LogicalChannelUID 是该物理渠道所属逻辑渠道的稳定身份。
 	// 六个物理数组仍是运行时存储；本字段是非权威指针，加载旧配置时由 ConfigManager
 	// 自动回填，逻辑渠道 CRUD 也使用它保持各协议物理路由同步。空值表示旧数据。
@@ -1315,6 +1317,8 @@ type UpstreamUpdate struct {
 	ConvertImageURLToB64JSON *bool                              `json:"convertImageUrlToB64Json"`
 	// 渠道级竞速参与配置（nil=继承全局）
 	Racing *ChannelRacingConfig `json:"racing"`
+	// 渠道级上游余额探测配置（nil=不修改）
+	BalanceCheck *ChannelBalanceCheckConfig `json:"balanceCheck"`
 	// 多渠道调度相关字段
 	Priority                *int       `json:"priority"`
 	Status                  *string    `json:"status"`
@@ -1443,6 +1447,9 @@ type Config struct {
 
 	// 渠道保活验证全局配置（可选，nil 使用默认值）
 	HealthCheck *GlobalHealthCheckConfig `json:"healthCheck,omitempty"`
+
+	// 上游余额探测全局配置（可选，nil 时 new_api 托管渠道默认开启、其余默认关闭）
+	BalanceCheck *GlobalBalanceCheckConfig `json:"balanceCheck,omitempty"`
 
 	// 竞速（影子请求）全局配置（可选，nil 默认关闭；行为参数由策略表自动推导）
 	Racing *GlobalRacingConfig `json:"racing,omitempty"`
@@ -1611,6 +1618,16 @@ func (cm *ConfigManager) GetConfig() Config {
 	if cm.config.CircuitBreaker != nil {
 		cb := *cm.config.CircuitBreaker
 		cloned.CircuitBreaker = &cb
+	}
+
+	// 深拷贝 BalanceCheck 指针字段（含渠道级配置内嵌的 Enabled 指针）
+	if cm.config.BalanceCheck != nil {
+		g := *cm.config.BalanceCheck
+		if cm.config.BalanceCheck.Enabled != nil {
+			v := *cm.config.BalanceCheck.Enabled
+			g.Enabled = &v
+		}
+		cloned.BalanceCheck = &g
 	}
 
 	// 深拷贝 AutopilotRouting（map 字段需要独立分配）
