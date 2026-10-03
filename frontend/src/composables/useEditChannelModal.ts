@@ -126,6 +126,7 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
     proxyUrl: '',
     proxyPreferDirect: false,
     racing: undefined as { enabled?: boolean } | undefined,
+    balanceCheck: undefined as Channel['balanceCheck'] | undefined,
     costMultiplier: null as string | number | null,
     maxGroupMultiplier: null as string | number | null,
     channelPaymentCurrency: '',
@@ -335,6 +336,7 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
       proxyUrl: form.proxyUrl.trim(),
       proxyPreferDirect: form.proxyPreferDirect,
       racing: form.racing,
+      balanceCheck: form.balanceCheck,
       remark: form.remark.trim(),
       costMultiplier: form.costMultiplier,
       maxGroupMultiplier: form.maxGroupMultiplier,
@@ -449,6 +451,7 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
     form.proxyUrl = ''
     form.proxyPreferDirect = false
     form.racing = undefined
+    form.balanceCheck = undefined
     form.costMultiplier = null
     form.maxGroupMultiplier = null
     form.channelPaymentCurrency = ''
@@ -541,6 +544,7 @@ export function useEditChannelModal(props: ResolvedEditChannelModalProps, emit: 
     form.proxyUrl = channel.proxyUrl || ''
     form.proxyPreferDirect = !!channel.proxyPreferDirect
     form.racing = channel.racing ? { ...channel.racing } : undefined
+    form.balanceCheck = channel.balanceCheck ? { ...channel.balanceCheck } : undefined
     form.costMultiplier = channel.costMultiplier ?? null
     form.maxGroupMultiplier = channel.maxGroupMultiplier ?? null
     form.channelPaymentCurrency = channel.channelPaymentCurrency ?? ''
