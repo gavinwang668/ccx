@@ -19,28 +19,28 @@ func TestLookupBuiltinManifest_ExactHostMatch(t *testing.T) {
 			baseURL:     "https://api.anthropic.com",
 			serviceType: "messages",
 			wantFound:   true,
-			wantModels:  14,
+			wantModels:  15,
 		},
 		{
 			name:        "Anthropic API 带尾部斜杠",
 			baseURL:     "https://api.anthropic.com/",
 			serviceType: "messages",
 			wantFound:   true,
-			wantModels:  14,
+			wantModels:  15,
 		},
 		{
 			name:        "Anthropic API 带路径前缀",
 			baseURL:     "https://api.anthropic.com/v1",
 			serviceType: "messages",
 			wantFound:   true,
-			wantModels:  14,
+			wantModels:  15,
 		},
 		{
 			name:        "Anthropic API 带 # 标记",
 			baseURL:     "https://api.anthropic.com#",
 			serviceType: "messages",
 			wantFound:   true,
-			wantModels:  14,
+			wantModels:  15,
 		},
 	}
 
@@ -155,6 +155,7 @@ func TestLookupBuiltinManifest_ModelIDsContent(t *testing.T) {
 		"claude-sonnet-5",
 		"claude-opus-4-8",
 		"claude-sonnet-4-6",
+		"claude-haiku-5-5",
 		"claude-haiku-4-5",
 	}
 	modelSet := make(map[string]bool, len(manifest.ModelIDs))

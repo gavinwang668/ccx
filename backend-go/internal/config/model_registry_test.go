@@ -248,6 +248,20 @@ func TestResolveAgentModelProfile_ClaudeBuiltins(t *testing.T) {
 	if sonnet55Dot.Profile.DisplayName != "Claude Sonnet 5.5" {
 		t.Fatalf("sonnet55Dot profile = %+v, want Claude Sonnet 5.5", sonnet55Dot.Profile)
 	}
+
+	for _, model := range []string{"claude-haiku-5-5", "claude-haiku-5.5"} {
+		haiku55 := ResolveAgentModelProfile(model, nil)
+		if !haiku55.Known {
+			t.Fatalf("expected built-in %s profile", model)
+		}
+		if haiku55.Profile.DisplayName != "Claude Haiku 5.5" || haiku55.Profile.ContextWindowTokens != 1_000_000 ||
+			haiku55.Profile.MaxOutputTokens != 128_000 || haiku55.Profile.SupportsPriorityTier {
+			t.Fatalf("haiku55 profile = %+v, want Claude Haiku 5.5 (1M/128K, no priority)", haiku55.Profile)
+		}
+		if !containsString(haiku55.Profile.ReasoningEfforts, "max") {
+			t.Fatalf("haiku55 ReasoningEfforts = %v, want max", haiku55.Profile.ReasoningEfforts)
+		}
+	}
 }
 
 func TestResolveAgentModelProfile_KimiCodeBuiltins(t *testing.T) {
@@ -1056,6 +1070,45 @@ func TestResolveUpstreamCapability_ClaudeSonnet55Variants(t *testing.T) {
 			}
 			if capability.ThinkingMode != "adaptive_always_on" {
 				t.Fatalf("ThinkingMode = %q, want adaptive_always_on", capability.ThinkingMode)
+			}
+		})
+	}
+}
+
+func TestResolveUpstreamCapability_ClaudeHaiku55Variants(t *testing.T) {
+	models := []string{
+		"claude-haiku-5-5",
+		"claude-haiku-5.5",
+		"claude-haiku-5-5-20261007",
+		"anthropic/claude-haiku-5-5",
+	}
+
+	for _, model := range models {
+		t.Run(model, func(t *testing.T) {
+			resolved := ResolveUpstreamCapability(model, nil, nil)
+			if !resolved.Known || resolved.Source != "builtin" {
+				t.Fatalf("resolved = %+v, want builtin capability for %s", resolved, model)
+			}
+			capability := resolved.Capability
+			if capability.DisplayName != "Claude Haiku 5.5" || capability.ContextWindowTokens != 1_000_000 ||
+				capability.MaxOutputTokens != 128_000 || capability.ThinkingMode != "adaptive" {
+				t.Fatalf("capability = %+v for model %s", capability, model)
+			}
+			wantEfforts := []string{"low", "medium", "high", "xhigh", "max"}
+			for _, effort := range wantEfforts {
+				if !containsString(capability.ReasoningEfforts, effort) {
+					t.Fatalf("ReasoningEfforts = %v, want %s", capability.ReasoningEfforts, effort)
+				}
+			}
+			if capability.Pricing == nil || len(capability.Pricing.Tiers) != 2 {
+				t.Fatalf("Pricing = %+v, want two tiers", capability.Pricing)
+			}
+			if capability.Pricing.Tiers[0].InputTokensUpTo != 100_000 || capability.Pricing.Tiers[1].InputTokensAbove != 100_000 {
+				t.Fatalf("Pricing tiers = %+v", capability.Pricing.Tiers)
+			}
+			if capability.ParamConstraints == nil || !containsString(capability.ParamConstraints.FixedParams, "top_k") ||
+				capability.ParamConstraints.ThinkingFixedValue["type"] != "adaptive" {
+				t.Fatalf("ParamConstraints = %+v", capability.ParamConstraints)
 			}
 		})
 	}

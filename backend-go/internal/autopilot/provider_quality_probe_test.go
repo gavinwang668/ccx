@@ -163,6 +163,20 @@ func TestBuildProviderQualityRequestReasoningControl(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:        "adaptive Claude 使用 output_config effort",
+			serviceType: "claude",
+			modelID:     "claude-haiku-5-5",
+			assert: func(t *testing.T, body map[string]any) {
+				if _, exists := body["thinking"]; exists {
+					t.Fatalf("adaptive 不应注入旧式 thinking: %#v", body["thinking"])
+				}
+				outputConfig, _ := body["output_config"].(map[string]any)
+				if outputConfig["effort"] != "low" {
+					t.Fatalf("output_config=%#v, want low effort", outputConfig)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

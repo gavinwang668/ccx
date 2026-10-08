@@ -2769,7 +2769,11 @@ func rewriteOutboundEffort(body []byte, target *autopilot.ResolvedRouteTarget, u
 	if err := json.Unmarshal(body, &reqMap); err != nil {
 		return body, false
 	}
-	config.ApplyReasoningParamStyle(reqMap, style, string(target.Effort))
+	thinkingMode := ""
+	if cap.Known {
+		thinkingMode = cap.Capability.ThinkingMode
+	}
+	config.ApplyReasoningParamStyleForModel(reqMap, style, string(target.Effort), thinkingMode)
 	config.NormalizeReasoningObjectForUpstream(reqMap, upstream)
 	effortBody, err := json.Marshal(reqMap)
 	if err != nil {

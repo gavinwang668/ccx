@@ -11,6 +11,7 @@ const modelPriorityPatterns: RegExp[] = [
   /sonnet-5[.-]5/i,
   /sonnet-5/i,
   /sonnet-4-7/i,
+  /haiku-5[.-]5/i,
   /haiku-4-7/i,
   /opus-4-6/i,
   /sonnet-4-6/i,

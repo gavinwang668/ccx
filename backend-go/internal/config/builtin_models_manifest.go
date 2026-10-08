@@ -63,6 +63,7 @@ var builtinModelsManifests = []BuiltinModelsManifest{
 			"claude-sonnet-4-6",
 			"claude-sonnet-4-5",
 			"claude-opus-4-5",
+			"claude-haiku-5-5",
 			"claude-haiku-4-5",
 		},
 		DisableProbe: false,

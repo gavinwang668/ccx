@@ -54,6 +54,8 @@ export const ARTIFICIAL_ANALYSIS_MODEL_MAP = {
   'claude-sonnet-5-5': 'claude-sonnet-5-5',
   'claude-sonnet-5': 'claude-sonnet-5',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
+  // Claude Haiku 5.5（2026-10-07 发布）：AA slug 与 canonical 同名
+  'claude-haiku-5-5': 'claude-haiku-5-5',
   'claude-haiku-4-5': 'claude-haiku-4.5',
   'claude-fable-5': 'claude-fable-5',
   'claude-fable-5-1': 'claude-fable-5-1',

@@ -102,6 +102,8 @@ export const BENCHLM_MODEL_MAP = {
   'claude-sonnet-5-5': 'claude-sonnet-5-5',
   'claude-sonnet-5': 'claude-sonnet-5',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',
+  // Claude Haiku 5.5（2026-10-07 发布）：benchlm slug 与 canonical 同名
+  'claude-haiku-5-5': 'claude-haiku-5-5',
   'glm-5-3': 'glm-5.3',
   'glm-5-3-flash': 'glm-5.3-flash',
   'glm-5-2': 'glm-5.2',

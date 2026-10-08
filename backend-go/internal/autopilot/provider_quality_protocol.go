@@ -191,6 +191,8 @@ func applyProviderQualityReasoningControl(body map[string]any, serviceType, mode
 			return
 		}
 		switch resolved.Capability.ThinkingMode {
+		case "adaptive":
+			body["output_config"] = map[string]any{"effort": effort}
 		case "thinking":
 			body["thinking"] = map[string]any{"type": "enabled", "effort": effort}
 		default:

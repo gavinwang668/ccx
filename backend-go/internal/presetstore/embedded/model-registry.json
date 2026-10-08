@@ -27,6 +27,67 @@
     },
     {
       "patterns": [
+        "(?:^|[-/])claude-haiku-5[.-]5(?:-\\d{4}-\\d{2}-\\d{2}|-\\d{6,8})?(?=$|@)"
+      ],
+      "provider": "anthropic",
+      "displayName": "Claude Haiku 5.5",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingMode": "adaptive",
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "pricing": {
+        "unit": "per_1m_tokens_usd",
+        "currency": "USD",
+        "inputCacheMissPrice": 0.1,
+        "outputPrice": 0.5,
+        "inputCacheHitPrice": 0.01,
+        "tiers": [
+          {
+            "label": "prompt_le_100k",
+            "inputTokensUpTo": 100000,
+            "inputCacheMissPrice": 0.1,
+            "outputPrice": 0.5,
+            "inputCacheHitPrice": 0.01
+          },
+          {
+            "label": "prompt_gt_100k",
+            "inputTokensAbove": 100000,
+            "inputCacheMissPrice": 0.5,
+            "outputPrice": 2.5,
+            "inputCacheHitPrice": 0.05
+          }
+        ]
+      },
+      "capabilities": {
+        "document": true,
+        "reasoning": true,
+        "vision": true,
+        "toolCalls": true
+      },
+      "paramConstraints": {
+        "fixedParams": [
+          "temperature",
+          "top_p",
+          "top_k"
+        ],
+        "thinkingFixedValue": {
+          "type": "adaptive"
+        }
+      },
+      "sources": [
+        "https://www.anthropic.com/claude-haiku-5-5",
+        "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+        "https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide"
+      ]
+    },
+    {
+      "patterns": [
         "(?:^|[-/])claude-sonnet-4-5(?:-\\d{4}-\\d{2}-\\d{2}|-\\d{6,8})?(?=$|@)"
       ],
       "provider": "anthropic",
@@ -4013,6 +4074,237 @@
         "coding": 30.7,
         "knowledge": 41.6,
         "math": 28.8
+      }
+    },
+    {
+      "patterns": [
+        "(?:^|[-/])claude-haiku-5[.-]5(?:-\\d{4}-\\d{2}-\\d{2}|-\\d{6,8})?(?=$|@)"
+      ],
+      "canonicalModel": "claude-haiku-5-5",
+      "verifiedAt": "2026-10-08",
+      "lane": "provisional",
+      "sharedResults": 696,
+      "comparableCategories": 5,
+      "totalCategories": 8,
+      "sources": [
+        "https://artificialanalysis.ai/models/claude-haiku-5-5-high",
+        "https://benchlm.ai/methodology",
+        "https://benchlm.ai/models/claude-haiku-5-5",
+        "https://www.anthropic.com/claude-haiku-5-5"
+      ],
+      "benchmarkEvidence": [
+        {
+          "benchmark": "aa_briefcase_v1_1",
+          "benchmarkVersion": "1.1",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "knowledge",
+          "metric": "elo",
+          "rawValue": 1578,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "max",
+          "selectionBasis": "official_release_announcement",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        },
+        {
+          "benchmark": "artificial_analysis",
+          "benchmarkVersion": "v4.3",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "overall",
+          "metric": "intelligence_index",
+          "rawValue": 43.4,
+          "uncertainty": 0,
+          "cohortPercentile": 0.94,
+          "cohortSize": 696,
+          "taskCount": 10,
+          "effort": "default",
+          "selectionBasis": "composite_index",
+          "sourceUrl": "https://artificialanalysis.ai/models/claude-haiku-5-5",
+          "capturedAt": "2026-10-08"
+        },
+        {
+          "benchmark": "artificial_analysis",
+          "benchmarkVersion": "v4.3",
+          "sourceModel": "claude-haiku-5-5-high",
+          "domain": "overall",
+          "metric": "intelligence_index",
+          "rawValue": 37.8,
+          "uncertainty": 0,
+          "cohortPercentile": 0.891,
+          "cohortSize": 696,
+          "taskCount": 10,
+          "effort": "high",
+          "selectionBasis": "best_available_effort",
+          "sourceUrl": "https://artificialanalysis.ai/models/claude-haiku-5-5-high",
+          "capturedAt": "2026-10-08"
+        },
+        {
+          "benchmark": "artificial_analysis",
+          "benchmarkVersion": "v4.3",
+          "sourceModel": "claude-haiku-5-5-low",
+          "domain": "overall",
+          "metric": "intelligence_index",
+          "rawValue": 29.4,
+          "uncertainty": 0,
+          "cohortPercentile": 0.825,
+          "cohortSize": 696,
+          "taskCount": 10,
+          "effort": "low",
+          "selectionBasis": "best_available_effort",
+          "sourceUrl": "https://artificialanalysis.ai/models/claude-haiku-5-5-low",
+          "capturedAt": "2026-10-08"
+        },
+        {
+          "benchmark": "artificial_analysis",
+          "benchmarkVersion": "v4.3",
+          "sourceModel": "claude-haiku-5-5-medium",
+          "domain": "overall",
+          "metric": "intelligence_index",
+          "rawValue": 34.5,
+          "uncertainty": 0,
+          "cohortPercentile": 0.876,
+          "cohortSize": 696,
+          "taskCount": 10,
+          "effort": "medium",
+          "selectionBasis": "best_available_effort",
+          "sourceUrl": "https://artificialanalysis.ai/models/claude-haiku-5-5-medium",
+          "capturedAt": "2026-10-08"
+        },
+        {
+          "benchmark": "artificial_analysis",
+          "benchmarkVersion": "v4.3",
+          "sourceModel": "claude-haiku-5-5-xhigh",
+          "domain": "overall",
+          "metric": "intelligence_index",
+          "rawValue": 41.2,
+          "uncertainty": 0,
+          "cohortPercentile": 0.925,
+          "cohortSize": 696,
+          "taskCount": 10,
+          "effort": "xhigh",
+          "selectionBasis": "best_available_effort",
+          "sourceUrl": "https://artificialanalysis.ai/models/claude-haiku-5-5-xhigh",
+          "capturedAt": "2026-10-08"
+        },
+        {
+          "benchmark": "chartography",
+          "benchmarkVersion": "1.0",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "vision",
+          "metric": "pass_rate",
+          "rawValue": 0.464,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "max",
+          "selectionBasis": "official_release_announcement",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        },
+        {
+          "benchmark": "frontier_code_1_1",
+          "benchmarkVersion": "1.1-main",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "coding",
+          "metric": "pass_rate",
+          "rawValue": 0.464,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "max",
+          "selectionBasis": "official_release_announcement",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        },
+        {
+          "benchmark": "gdpval_aa_v2_1",
+          "benchmarkVersion": "2.1",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "knowledge",
+          "metric": "elo",
+          "rawValue": 1620,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "max",
+          "selectionBasis": "official_release_announcement",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        },
+        {
+          "benchmark": "hle",
+          "benchmarkVersion": "with-tools",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "knowledge",
+          "metric": "pass_rate",
+          "rawValue": 0.574,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "max",
+          "selectionBasis": "official_release_announcement",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        },
+        {
+          "benchmark": "official_release",
+          "benchmarkVersion": "4.0",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "coding",
+          "metric": "deepswe_equivalent",
+          "rawValue": 0.605,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "medium",
+          "selectionBasis": "anchor_interp raw=0.60494@official_release@medium anchors=claude-opus-5:0.689,gpt-6-astra:0.728,gpt-5.6-sol:0.611 per-benchmark: 0.392@terminal_bench_4@max→0.621 0.464@frontier_code_1_1@max→0.589",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        },
+        {
+          "benchmark": "osworld_2_1",
+          "benchmarkVersion": "2.1-offline",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "agentic",
+          "metric": "pass_rate",
+          "rawValue": 0.724,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "max",
+          "selectionBasis": "official_release_announcement",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        },
+        {
+          "benchmark": "terminal_bench_4",
+          "benchmarkVersion": "4.0",
+          "sourceModel": "claude-haiku-5-5",
+          "domain": "coding",
+          "metric": "pass_rate",
+          "rawValue": 0.392,
+          "uncertainty": 0,
+          "cohortPercentile": 0,
+          "taskCount": 1,
+          "cohortSize": 1,
+          "effort": "max",
+          "selectionBasis": "official_release_announcement",
+          "sourceUrl": "https://www.anthropic.com/claude-haiku-5-5",
+          "capturedAt": "2026-10-07"
+        }
+      ],
+      "overallScore": 66.32,
+      "categoryScores": {
+        "knowledge": 72.8
       }
     },
     {

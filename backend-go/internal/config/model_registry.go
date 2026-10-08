@@ -280,6 +280,19 @@ func BuiltinAgentModelProfiles() map[string]AgentModelProfile {
 			MaxOutputTokens:     64000,
 			ReasoningEfforts:    []string{"extended"},
 		},
+		// Haiku 5.5 是独立模型（非 Haiku 4.5 别名），同时登记点号/连字符写法。
+		"claude-haiku-5-5*": {
+			DisplayName:         "Claude Haiku 5.5",
+			ContextWindowTokens: 1000000,
+			MaxOutputTokens:     128000,
+			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh", "max"},
+		},
+		"claude-haiku-5.5*": {
+			DisplayName:         "Claude Haiku 5.5",
+			ContextWindowTokens: 1000000,
+			MaxOutputTokens:     128000,
+			ReasoningEfforts:    []string{"low", "medium", "high", "xhigh", "max"},
+		},
 		"claude-sonnet-4-5*": {
 			DisplayName:         "Claude Sonnet 4.5",
 			ContextWindowTokens: 200000,
